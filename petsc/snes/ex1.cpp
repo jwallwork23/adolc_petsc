@@ -186,7 +186,9 @@ PetscErrorCode FormFunction1(SNES snes,Vec x,Vec f,void *ctx)
   ierr = VecGetArrayRead(x,&xx);CHKERRQ(ierr);
   ierr = VecGetArray(f,&ff);CHKERRQ(ierr);
 
-  // xx_a <<= xx;		/* ##### Declare xx_a as an indep. variable ##### */
+  // trace_on(1);		/* ##### START OF ACTIVE SECTION ##### */
+
+  // *xx_a <<= *xx;	/* ##### Declare xx_a as indep., set its value to xx ##### */
 
   /* Compute function */
   ff[0] = xx[0]*xx[0] + xx[0]*xx[1] - 3.0;
@@ -196,9 +198,10 @@ PetscErrorCode FormFunction1(SNES snes,Vec x,Vec f,void *ctx)
   // ff_a[0] = xx_a[0]*xx_a[0] + xx_a[0]*xx_a[1] - 3.0;
   // ff_a[1] = xx_a[0]*xx_a[1] + xx_a[1]*xx_a[1] - 6.0;
 
-  // ff_a >>= ff;		/* ##### Declare ff_a as a dep. variable ##### */
+  // *ff_a >>= *ff;	/* ##### Declare ff_a as dep., set value of ff to ff_a.value() ##### */
 
-  delete xx_a;		/* ##### Delete active indep. variables after use ##### */
+  delete xx_a;		/* ##### Should delete active indep. variables after use ##### */
+  // trace_off(1);		/* #####  END OF ACTIVE SECTION  ##### */
 
   /* Restore vectors */
   ierr = VecRestoreArrayRead(x,&xx);CHKERRQ(ierr);

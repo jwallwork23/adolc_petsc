@@ -1,5 +1,5 @@
-#CPPFLAGS	= -std=c++11 -I/homes/jwallwork/software/adol-c/ADOL-C-2.6.0/build/include
-CPPFLAGS	= -std=c++11 -I/${ADOLC_HOME}/build/include
+CPPFLAGS	= -std=c++11 -I${ADOLC_HOME}/build/include
+# Where to put?: -L${ADOLC_HOME}/build -ladolc
 CFLAGS		=
 EXAMPLESC	= ex1.cpp
 
