@@ -1,0 +1,20 @@
+# Directories
+
+petsc/ts/
+tapenade/luexam/
+tapenade/detexam/
+tapenade/powexam/
+tapenade/odexam/
+
+
+# File types
+*.o
+*.tap
+*.msg
+*~
+
+# Derivative files
+*_d.c
+*_b.c
+*_d.h
+*_b.h
