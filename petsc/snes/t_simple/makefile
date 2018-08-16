@@ -1,8 +1,13 @@
-all: clean tangent
+all: clean exec
 
+
+exec:
+	gcc -c -o f1.o f1.c
+	tapenade -tangent -head "f1 (xx)\(ff)" f1.c
+	gcc -c -o f1_d.o f1_d.c
+	gcc -c -o ex1.o ex1.c
+	gcc -o exec f1.o f1_d.o ex1.o
+	rm *.o
 
 clean:
-	rm -Rf *.o *.msg *_d.c *~ *.tap
-
-tangent:
-	tapenade -tangent -head "FormFunction1 (xx)\(ff)" f1.c
+	rm -Rf *.msg *_d.c *_d.h *~ *.tap exec diff
