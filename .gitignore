@@ -11,6 +11,7 @@ tapenade/odexam/
 *.o
 *.tap
 *.msg
+*.swp
 *~
 
 # Derivative files
