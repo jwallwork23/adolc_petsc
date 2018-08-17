@@ -20,7 +20,7 @@ int main(){
   // Jacobian calculation
 //  double J[2][2];
   double J[4];
-  J1(ff,xx,J);
+  ComputeJacobian1(ff,xx,J);
 
   // print results
   printf("x = [%.4f, %.4f]\n",xx[0],xx[1]);

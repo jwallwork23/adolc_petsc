@@ -1,6 +1,6 @@
 #include "ex1_d.h"
 
-void J1(double ff[2],const double *xx, double J[4]) {
+void ComputeJacobian1(double ff[2],const double *xx, double J[4]) {
     int i,j,k = 0;
     double ffd[2];
     double seed[2];
@@ -14,8 +14,22 @@ void J1(double ff[2],const double *xx, double J[4]) {
     }
 }
 
+void ComputeJacobian2(double ff[2],const double *xx, double J[4]) {
+    int i,j,k = 0;
+    double ffd[2];
+    double seed[2];
+    for(i=0; i<2; i++){
+        seed[i] = 1;
+        f2_d(ff,ffd,xx,seed);
+        seed[i] = 0;
+        for(j=0; j<2; j++){
+            J[2*j+i] = ffd[j];
+        }
+    }
+}
+
 /*
-void J1(double ff[2], const double *xx, double J[2][2]) {
+void ComputeJacobian(double ff[2], const double *xx, double J[2][2]) {
     int i,j;
     double ffd[2];
     double seed[2];

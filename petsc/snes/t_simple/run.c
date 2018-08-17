@@ -27,7 +27,7 @@ or if the {\tt -hard} options is given
 \end{equation}
 F*/
 #include <petscsnes.h>
-#include "ex1_d.h"		/* ##### Include local function and its derivative ##### */
+#include "ex1_d.h"		/* ##### (1) Include local function and its derivative ##### */
 
 /*
    User-defined routines
@@ -37,7 +37,7 @@ extern PetscErrorCode FormFunction1(SNES,Vec,Vec,void*);
 extern PetscErrorCode FormJacobian2(SNES,Vec,Mat,Mat,void*);
 extern PetscErrorCode FormFunction2(SNES,Vec,Vec,void*);
 
-/* #### Need form vector in Jacobian computation #### */
+/* #### (2) Need form vector in Jacobian computation #### */
 typedef struct {
   Vec    F;
 } FormCtx;
@@ -90,15 +90,16 @@ int main(int argc,char **argv)
     */
     ierr = SNESSetFunction(snes,r,FormFunction1,NULL);CHKERRQ(ierr);
 
-    fctx.F = r;	/* ##### Define form in context ##### */
+    fctx.F = r;	/* ##### (3) Define form in context ##### */
 
     /*
      Set Jacobian matrix data structure and Jacobian evaluation routine
     */
     ierr = SNESSetJacobian(snes,J,J,FormJacobian1,&fctx);CHKERRQ(ierr);
   } else {
+    fctx.F = r;	/* ##### (3) Define form in context ##### */
     ierr = SNESSetFunction(snes,r,FormFunction2,NULL);CHKERRQ(ierr);
-    ierr = SNESSetJacobian(snes,J,J,FormJacobian2,NULL);CHKERRQ(ierr);
+    ierr = SNESSetJacobian(snes,J,J,FormJacobian2,&fctx);CHKERRQ(ierr);
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -187,7 +188,7 @@ PetscErrorCode FormFunction1(SNES snes,Vec x,Vec f,void *ctx)
   ierr = VecGetArrayRead(x,&xx);CHKERRQ(ierr);
   ierr = VecGetArray(f,&ff);CHKERRQ(ierr);
 
-  f1(ff,xx);	/* ##### Call localised function ##### */
+  f1(ff,xx);	/* ##### (4) Call localised function ##### */
 
   /* Restore vectors */
   ierr = VecRestoreArrayRead(x,&xx);CHKERRQ(ierr);
@@ -210,8 +211,8 @@ PetscErrorCode FormFunction1(SNES snes,Vec x,Vec f,void *ctx)
 */
 PetscErrorCode FormJacobian1(SNES snes,Vec x,Mat jac,Mat B,void *ctx)
 {
-  FormCtx           *user = (FormCtx*) ctx;	/* ##### Need extract form context ##### */
-  PetscScalar       *ff;			/* ##### Need use function values  ##### */
+  FormCtx           *user = (FormCtx*) ctx;	/* ##### (5) Need extract form context ##### */
+  PetscScalar       *ff;			/* ##### (6) Need use function values  ##### */
   const PetscScalar *xx;
   PetscScalar       A[4];
   PetscErrorCode    ierr;
@@ -221,16 +222,14 @@ PetscErrorCode FormJacobian1(SNES snes,Vec x,Mat jac,Mat B,void *ctx)
      Get pointer to vector data
   */
   ierr = VecGetArrayRead(x,&xx);CHKERRQ(ierr);
-  ierr = VecGetArray(user->F,&ff);CHKERRQ(ierr);	/* ##### Get form values ##### */
+  ierr = VecGetArray(user->F,&ff);CHKERRQ(ierr);	/* ##### (7) Get form values ##### */
 
   /*
      Compute Jacobian entries and insert into matrix.
       - Since this is such a small problem, we set all entries for
         the matrix at once.
   */
-  // A[0]  = 2.0*xx[0] + xx[1]; A[1] = xx[0];
-  // A[2]  = xx[1]; A[3] = xx[0] + 2.0*xx[1];
-  J1(ff,xx,A);
+  ComputeJacobian1(ff,xx,A);				/* ##### (8) Call local Jacobian ##### */
   printf("x = [%f,%f]\n",xx[0],xx[1]);
   printf("J =\n    [%f, %f]\n    [%f, %f]\n",A[0],A[1],A[2],A[3]);
 
@@ -240,7 +239,7 @@ PetscErrorCode FormJacobian1(SNES snes,Vec x,Mat jac,Mat B,void *ctx)
      Restore vector
   */
   ierr = VecRestoreArrayRead(x,&xx);CHKERRQ(ierr);
-  ierr = VecRestoreArray(user->F,&ff);CHKERRQ(ierr);	/* ##### Restore array values ##### */
+  ierr = VecRestoreArray(user->F,&ff);CHKERRQ(ierr);	/* ##### (9) Restore array values ##### */
 
   /*
      Assemble matrix
@@ -274,8 +273,9 @@ PetscErrorCode FormFunction2(SNES snes,Vec x,Vec f,void *dummy)
   /*
      Compute function
   */
-  ff[0] = PetscSinScalar(3.0*xx[0]) + xx[0];
-  ff[1] = xx[1];
+  // ff[0] = PetscSinScalar(3.0*xx[0]) + xx[0];
+  // ff[1] = xx[1];
+  f2(ff,xx);	/* ##### (4) Call localised function ##### */
 
   /*
      Restore vectors
@@ -285,8 +285,10 @@ PetscErrorCode FormFunction2(SNES snes,Vec x,Vec f,void *dummy)
   return 0;
 }
 /* ------------------------------------------------------------------- */
-PetscErrorCode FormJacobian2(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
+PetscErrorCode FormJacobian2(SNES snes,Vec x,Mat jac,Mat B,void *ctx)
 {
+  FormCtx           *user = (FormCtx*) ctx;	/* ##### (5) Need extract form context ##### */
+  PetscScalar       *ff;			/* ##### (6) Need use function values  ##### */
   const PetscScalar *xx;
   PetscScalar       A[4];
   PetscErrorCode    ierr;
@@ -296,15 +298,21 @@ PetscErrorCode FormJacobian2(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
      Get pointer to vector data
   */
   ierr = VecGetArrayRead(x,&xx);CHKERRQ(ierr);
+  ierr = VecGetArray(user->F,&ff);CHKERRQ(ierr);	/* ##### (7) Get form values ##### */
 
   /*
      Compute Jacobian entries and insert into matrix.
       - Since this is such a small problem, we set all entries for
         the matrix at once.
   */
-  A[0]  = 3.0*PetscCosScalar(3.0*xx[0]) + 1.0; A[1] = 0.0;
-  A[2]  = 0.0;                     A[3] = 1.0;
+  // A[0]  = 3.0*PetscCosScalar(3.0*xx[0]) + 1.0; A[1] = 0.0;
+  // A[2]  = 0.0;                     A[3] = 1.0;
+  ComputeJacobian2(ff,xx,A);				/* ##### (8) Call local Jacobian ##### */
+  printf("x = [%f,%f]\n",xx[0],xx[1]);
+  printf("J =\n    [%f, %f]\n    [%f, %f]\n",A[0],A[1],A[2],A[3]);
+
   ierr  = MatSetValues(B,2,idx,2,idx,A,INSERT_VALUES);CHKERRQ(ierr);
+  ierr = VecRestoreArray(user->F,&ff);CHKERRQ(ierr);	/* ##### (9) Restore array values ##### */
 
   /*
      Restore vector
