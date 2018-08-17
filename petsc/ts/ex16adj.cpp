@@ -53,7 +53,7 @@ Input parameters include:\n\
 #include <petscts.h>
 #include <petscmat.h>
 
-#include <adolc/adolc.h>	/* ##### (1) Include ADOL-C ##### */
+#include <adolc/adolc.h>	/* ##### Include ADOL-C ##### */
 
 typedef struct _n_User *User;
 struct _n_User {
@@ -80,10 +80,10 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);          // Get array for passive dependent variables
   
   trace_on(1);			/* ##### Start of active section ##### */
-  // x_a[0] <<= x[0]; x_a[1] <<= x[1];                   // Mark as independent
+  // x_a[0] <<= x[0]; x_a[1] <<= x[1];                   // TODO: Mark as independent
   // f_a[0] = x_a[1];
   // f_a[1] = user->mu*(1.-x_a[0]*x_a[0])*x_a[1]-x_a[0];
-  // f_a[0] >>= f[0]; f_a[1] >>= f[1];                   // Mark as dependent
+  // f_a[0] >>= f[0]; f_a[1] >>= f[1];                   // TODO: Mark as dependent
 
   delete x_a;
   trace_off(1);			/* ##### End of active section #####*/
@@ -106,6 +106,8 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
   PetscInt          rowcol[] = {0,1};
   PetscScalar       J[2][2];
   const PetscScalar *x;
+
+  // TODO: calculate Jacobian using `jacobian(1,2,2,x,J);`
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
@@ -130,6 +132,8 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
   PetscInt          row[] = {0,1},col[]={0};
   PetscScalar       J[2][1];
   const PetscScalar *x;
+
+  // TODO: here we will need to mark different dependencies
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
