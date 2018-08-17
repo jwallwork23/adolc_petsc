@@ -1,7 +1,7 @@
 #include "ex1_d.h"
 
 void ComputeJacobian1(double ff[2],const double *xx, double J[4]) {
-    int i,j,k = 0;
+    int i,j;
     double ffd[2];
     double seed[2];
     for(i=0; i<2; i++){
@@ -15,7 +15,7 @@ void ComputeJacobian1(double ff[2],const double *xx, double J[4]) {
 }
 
 void ComputeJacobian2(double ff[2],const double *xx, double J[4]) {
-    int i,j,k = 0;
+    int i,j;
     double ffd[2];
     double seed[2];
     for(i=0; i<2; i++){
