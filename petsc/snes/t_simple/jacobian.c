@@ -1,7 +1,23 @@
 #include "ex1_d.h"
 
-void J1(double ff[2], double ffd[2], const double *xx, const double *xxd, double J[2][2]) {
+void J1(double ff[2],const double *xx, double J[4]) {
+    int i,j,k = 0;
+    double ffd[2];
+    double seed[2];
+    for(i=0; i<2; i++){
+        seed[i] = 1;
+        f1_d(ff,ffd,xx,seed);
+        seed[i] = 0;
+        for(j=0; j<2; j++){
+            J[2*j+i] = ffd[j];
+        }
+    }
+}
+
+/*
+void J1(double ff[2], const double *xx, double J[2][2]) {
     int i,j;
+    double ffd[2];
     double seed[2];
     for(i=0; i<2; i++){
         seed[i] = 1;
@@ -12,3 +28,4 @@ void J1(double ff[2], double ffd[2], const double *xx, const double *xxd, double
     }
   }
 }
+*/
