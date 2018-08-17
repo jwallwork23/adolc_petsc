@@ -77,8 +77,6 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);
 
-  //f[0] = x[1];
-  //f[1] = user->mu*(1.-x[0]*x[0])*x[1]-x[0];
   rhs(f,x,user->mu);	/* ##### Call localised function TODO: always use user context ##### */
 
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
@@ -100,23 +98,7 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecGetArray(user->F,&f);CHKERRQ(ierr);		/* ##### Get form values ##### */
 
-  //J[0][0] = 0;
-  //J[1][0] = -2.*mu*x[1]*x[0]-1.;
-  //J[0][1] = 1.0;
-  //J[1][1] = mu*(1.0-x[0]*x[0]);
   ComputeJacobian(f,x,mu,J);		/* ##### Call local Jacobian function ##### */
-/*
-  int i,j;
-  printf("x = [%.4f, %.4f]\n",x[0],x[1]);
-  printf("J =\n");
-  for(i=0; i<2; i++){
-    printf("    [");
-    for(j=0; j<2; j++){
-      printf("%.4f, ",J[i][j]);
-    }
-    printf("]\n");
-  }
-*/
 
   ierr    = MatSetValues(A,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
@@ -143,8 +125,6 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecGetArray(user->F,&f);CHKERRQ(ierr);		/* ##### Get form values ##### */
 
-  //J[0][0] = 0;
-  //J[1][0] = (1.-x[0]*x[0])*x[1];
   ComputeJacobianP(f,x,user->mu,J);		/* ##### Call local Jacobian function ##### */
 
   ierr = MatSetValues(A,2,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
