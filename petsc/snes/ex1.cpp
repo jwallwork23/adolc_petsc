@@ -28,7 +28,7 @@ or if the {\tt -hard} options is given
 F*/
 #include <petscsnes.h>
 
-#include <adolc/adolc.h>	/* ########## INCLUDE ADOL-C ########## */
+#include <adolc/adolc.h>	/* ##### (1) Include ADOL-C ##### */
 
 
 /*
