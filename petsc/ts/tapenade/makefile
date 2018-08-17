@@ -3,7 +3,7 @@ CFLAGS		=
 FFLAGS		=
 CPPFLAGS	=
 FPPFLAGS	=
-CLEANFILES	= *.msg *_d.c *_d.h *~ *.tap ex16adj
+CLEANFILES	= *.msg *_d.c *_d.h *~ *.tap ex16adj ex16opt_p
 
 include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules
@@ -18,6 +18,10 @@ diff: rhs.o
 
 ex16adj: ex16adj.o rhs.o rhs_d.o rhsp_d.o jacobian.o chkopts
 	-${CLINKER} -o ex16adj ex16adj.o rhs.o rhs_d.o rhsp_d.o jacobian.o  ${PETSC_TS_LIB}
-	${RM} ex16.o
+	${RM} *.o
+
+ex16opt_p: ex16opt_p.o rhs.o rhs_d.o rhsp_d.o jacobian.o chkopts
+	-${CLINKER} -o ex16opt_p ex16opt_p.o rhs.o rhs_d.o rhsp_d.o jacobian.o  ${PETSC_TS_LIB}
+	${RM} *.o
 
 include ${PETSC_DIR}/lib/petsc/conf/test

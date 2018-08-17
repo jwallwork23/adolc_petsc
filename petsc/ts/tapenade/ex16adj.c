@@ -64,7 +64,7 @@ struct _n_User {
 };
 
 /*
-*  User-defined routines
+  User-defined routines
 */
 static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 {
@@ -77,7 +77,7 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);
 
-  rhs(f,x,user->mu);	/* ##### Call localised function TODO: always use user context ##### */
+  rhs(f,x,user->mu);			/* ##### Call localised function ##### */
 
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
