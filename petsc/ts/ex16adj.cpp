@@ -68,7 +68,7 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
-  PetscReal         mu   = user->mu;
+  const PetscReal         mu   = user->mu;
   PetscScalar       *f;
   const PetscScalar *x;
  
@@ -104,8 +104,6 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode    ierr;
-  User              user = (User)ctx;
-  PetscReal         mu   = user->mu;
   PetscInt          rowcol[] = {0,1};
   PetscScalar       J[2][2];
   const PetscScalar *x;
@@ -122,18 +120,6 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
   J[0][1] = Jx[0][1];
   J[1][0] = Jx[1][0];
   J[1][1] = Jx[1][1];
-
-/*
-  J[0][0] = 0;
-  J[1][0] = -2.*mu*x[1]*x[0]-1.;
-  J[0][1] = 1.0;
-  J[1][1] = mu*(1.0-x[0]*x[0]);
-*/
-/*
-  // ##### TESTING: evaluate exact Jacobian #####
-  printf("J_{exact} =\n    [%.4f, %.4f]\n    [%.4f, %.4f]\n\n",J[0][0],J[0][1],J[1][0],J[1][1]);
-  printf("J_{adolc} =\n    [%.4f, %.4f]\n    [%.4f, %.4f]\n\n",Jx[0][0],Jx[0][1],Jx[1][0],Jx[1][1]);
-*/
 
   ierr = MatSetValues(A,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
@@ -163,18 +149,18 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
 
   // ##### Evaluate Jacobian using ADOL-C #####
   PetscScalar** Jp = (PetscScalar**) malloc(2*sizeof(PetscScalar*));
-//  jacobian(2,2,1,mu_ptr,Jp);
+  Jp[0] = (PetscScalar*)malloc(1*sizeof(PetscScalar));
+  jacobian(2,2,1,mu_ptr,Jp);
 
   J[0][0] = 0;
   J[1][0] = (1.-x[0]*x[0])*x[1];
 
   // ##### TESTING: evaluate exact Jacobian #####
-//  printf("J_{exact} = [%.4f, %.4f]\n",J[0][0],J[1][0]);
-//  printf("J_{adolc} = [%.4f, %.4f]\n\n",Jp[0],Jp[1]);
+  printf("J_{exact} = [%.4f, %.4f]\n",J[0][0],J[1][0]);
+  printf("J_{adolc} = [%.4f, %.4f]\n\n",Jp[0][0],Jp[1][0]);
 
-
-//  J[0][0] = Jp[0][0];
-//  J[1][0] = Jp[1][0];
+  J[0][0] = Jp[0][0];
+  J[1][0] = Jp[1][0];
 
   ierr = MatSetValues(A,2,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
