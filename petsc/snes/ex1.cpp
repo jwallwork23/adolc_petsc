@@ -27,8 +27,7 @@ or if the {\tt -hard} options is given
 \end{equation}
 F*/
 #include <petscsnes.h>
-
-#include <adolc/adolc.h>	/* ##### (1) Include ADOL-C ##### */
+#include <adolc/adolc.h>	/* ##### Include ADOL-C ##### */
 
 
 /*
@@ -168,13 +167,11 @@ int main(int argc,char **argv)
 PetscErrorCode FormFunction1(SNES snes,Vec x,Vec f,void *ctx)
 {
   PetscErrorCode    ierr;
-  // const PetscScalar *xx;
-  // PetscScalar       *ff;
-  const double      *xx;	/* ##### TEMP: replace PetscScalars    ##### */
-  double            *ff;	/* #####        with doubles           ##### */
+  const PetscScalar *xx;
+  PetscScalar       *ff;
 
-  adouble           *xx_a;	/* ##### Create active indep. variable ##### */
-  adouble           *ff_a;	/* #####  Create active dep. variable  ##### */
+  adouble           xx_a[2];	/* ##### Create active indep. variable ##### */
+  adouble           ff_a[2];	/* #####  Create active dep. variable  ##### */
 
   /*
    Get pointers to vector data.
@@ -188,19 +185,13 @@ PetscErrorCode FormFunction1(SNES snes,Vec x,Vec f,void *ctx)
 
   trace_on(1);		/* ##### START OF ACTIVE SECTION ##### */
 
-  // *xx_a <<= *xx;	/* ##### Declare xx_a as indep., set its value to xx ##### */
+  xx_a[0] <<= xx[0];	/* ##### Declare xx_a as independent,   ##### */
+  xx_a[1] <<= xx[1];    /* #####            set its value to xx ##### */
+  ff_a[0] = xx_a[0]*xx_a[0] + xx_a[0]*xx_a[1] - 3.0;
+  ff_a[1] = xx_a[0]*xx_a[1] + xx_a[1]*xx_a[1] - 6.0;
+  ff_a[0] >>= ff[0];    /* ##### Declare ff_a as dependent,     ##### */
+  ff_a[1] >>= ff[1];    /* ##### set value of ff to ff_a.value() ##### */
 
-  /* Compute function */
-  ff[0] = xx[0]*xx[0] + xx[0]*xx[1] - 3.0;
-  ff[1] = xx[0]*xx[1] + xx[1]*xx[1] - 6.0;
-
-  // /* ##### Compute function on ACTIVE variables ##### */
-  // ff_a[0] = xx_a[0]*xx_a[0] + xx_a[0]*xx_a[1] - 3.0;
-  // ff_a[1] = xx_a[0]*xx_a[1] + xx_a[1]*xx_a[1] - 6.0;
-
-  // *ff_a >>= *ff;	/* ##### Declare ff_a as dep., set value of ff to ff_a.value() ##### */
-
-  delete xx_a;		/* ##### Should delete active indep. variables after use ##### */
   trace_off(1);		/* #####  END OF ACTIVE SECTION  ##### */
 
   /* Restore vectors */
@@ -239,8 +230,14 @@ PetscErrorCode FormJacobian1(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
       - Since this is such a small problem, we set all entries for
         the matrix at once.
   */
-  A[0]  = 2.0*xx[0] + xx[1]; A[1] = xx[0];
-  A[2]  = xx[1]; A[3] = xx[0] + 2.0*xx[1];
+
+  // ##### Evaluate Jacobian using ADOL-C #####
+  PetscScalar** J = (PetscScalar**) malloc(2*sizeof(PetscScalar*));
+  J[0] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
+  J[1] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
+  jacobian(1,2,2,xx,J);
+  A[0] = J[0][0]; A[1] = J[0][1]; A[2] = J[1][0]; A[3] = J[1][1];
+
   ierr  = MatSetValues(B,2,idx,2,idx,A,INSERT_VALUES);CHKERRQ(ierr);
 
   /*
@@ -267,6 +264,9 @@ PetscErrorCode FormFunction2(SNES snes,Vec x,Vec f,void *dummy)
   const PetscScalar *xx;
   PetscScalar       *ff;
 
+  adouble           xx_a[2];	/* ##### Create active indep. variable ##### */
+  adouble           ff_a[2];	/* #####  Create active dep. variable  ##### */
+
   /*
      Get pointers to vector data.
        - For default PETSc vectors, VecGetArray() returns a pointer to
@@ -280,9 +280,20 @@ PetscErrorCode FormFunction2(SNES snes,Vec x,Vec f,void *dummy)
   /*
      Compute function
   */
+/*
   ff[0] = PetscSinScalar(3.0*xx[0]) + xx[0];
   ff[1] = xx[1];
+*/
+  trace_on(2);		/* ##### START OF ACTIVE SECTION ##### */
 
+  xx_a[0] <<= xx[0];	/* ##### Declare xx_a as independent,   ##### */
+  xx_a[1] <<= xx[1];    /* #####            set its value to xx ##### */
+  ff_a[0] = PetscSinScalar(3.0*xx_a[0]) + xx_a[0];
+  ff_a[1] = xx_a[1];
+  ff_a[0] >>= ff[0];    /* ##### Declare ff_a as dependent,     ##### */
+  ff_a[1] >>= ff[1];    /* ##### set value of ff to ff_a.value() ##### */
+
+  trace_off(2);		/* #####  END OF ACTIVE SECTION  ##### */
   /*
      Restore vectors
   */
@@ -308,10 +319,15 @@ PetscErrorCode FormJacobian2(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
       - Since this is such a small problem, we set all entries for
         the matrix at once.
   */
-  A[0]  = 3.0*PetscCosScalar(3.0*xx[0]) + 1.0; A[1] = 0.0;
-  A[2]  = 0.0;                     A[3] = 1.0;
-  ierr  = MatSetValues(B,2,idx,2,idx,A,INSERT_VALUES);CHKERRQ(ierr);
 
+  // ##### Evaluate Jacobian using ADOL-C #####
+  PetscScalar** J = (PetscScalar**) malloc(2*sizeof(PetscScalar*));
+  J[0] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
+  J[1] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
+  jacobian(2,2,2,xx,J);
+  A[0] = J[0][0]; A[1] = J[0][1]; A[2] = J[1][0]; A[3] = J[1][1];
+
+  ierr  = MatSetValues(B,2,idx,2,idx,A,INSERT_VALUES);CHKERRQ(ierr);
   /*
      Restore vector
   */

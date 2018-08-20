@@ -156,13 +156,16 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
   PetscInt          row[] = {0,1},col[]={0};
   PetscScalar       J[2][1];
   const PetscScalar *x;
+  const PetscScalar *mu_ptr;
+
+  mu_ptr = &mu;
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
 
   // ##### Evaluate Jacobian using ADOL-C #####
   PetscScalar** Jp = (PetscScalar**) malloc(2*sizeof(PetscScalar*));
-//  jacobian(2,2,1,&mu,Jp);
+//  jacobian(2,2,1,mu_ptr,Jp);
 
   J[0][0] = 0;
   J[1][0] = (1.-x[0]*x[0])*x[1];
