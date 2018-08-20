@@ -75,7 +75,7 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
 
   // ##### Evaluate Jacobian using ADOL-C #####
-  PetscScalar** Jx = (PetscScalar**) malloc(2*sizeof(PetscScalar*));
+  PetscScalar** Jx = (PetscScalar**) malloc(2*sizeof(PetscScalar*));	// TODO: use PetscMalloc1
   Jx[0] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
   Jx[1] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
   jacobian(1,2,2,x,Jx);
@@ -83,6 +83,7 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
   J[0][1] = Jx[0][1];
   J[1][0] = Jx[1][0];
   J[1][1] = Jx[1][1];
+  free(Jx);								// TODO: Use PetscFree
 
   ierr = MatSetValues(A,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);

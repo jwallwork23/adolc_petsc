@@ -154,8 +154,7 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
   ierr = MatSetValues(A,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
 
   free(Jx);
-  //ierr = PetscFree(Jx);CHKERRQ(ierr);		// TODO: use PetscMalloc1
-
+  //ierr = PetscFree(Jx);CHKERRQ(ierr);		// TODO: use PetscFree
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (A != B) {
@@ -169,8 +168,8 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
 static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
 {
   PetscErrorCode    ierr;
-  User              user = (User)ctx;	/* ##### Need context ##### */
-  PetscReal         mu   = user->mu;	/* ##### Need param ##### */
+  User              user = (User)ctx;		/* ##### Need context ##### */
+  PetscReal         mu   = user->mu;		/* ##### Need param ##### */
   PetscInt          row[] = {0,1},col[]={0};
   PetscScalar       J[2][1];
   // PetscScalar       *Jp;			// TODO: use PetscMalloc1
@@ -184,7 +183,7 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
   
   //ierr = PetscMalloc1(2,&Jp);CHKERRQ(ierr);	// TODO: use PetscMalloc1
   //jacobian(2,2,1,&mu,&Jp);			// TODO: use PetscMalloc1
-  //jacobian(2,2,1,&mu,Jp);			// ##### Evaluate Jacobian using ADOL-C #####
+  jacobian(2,2,1,&mu,Jp);			// ##### Evaluate Jacobian using ADOL-C #####
   //jacobian(1,2,1,&mu,Jp);			// ##### Evaluate Jacobian using ADOL-C #####
 
   J[0][0] = 0;
@@ -200,8 +199,7 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
   //J[1][0] = Jp[1];
 
   free(Jp);	// ##### Free memory associated with JacobianP #####
-
-  // ierr = PetscFree(Jp);CHKERRQ(ierr);	// TODO: use PetscMalloc1
+  // ierr = PetscFree(Jp);CHKERRQ(ierr);	// TODO: use PetscFree
   ierr = MatSetValues(A,2,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
