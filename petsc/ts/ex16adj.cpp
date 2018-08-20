@@ -191,9 +191,8 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
 
   // ##### TESTING: evaluate exact Jacobian #####
   printf("J_{exact} = [%.4f, %.4f]\n",J[0][0],J[1][0]);
-  printf("J_{adolc} = [%.4f, %.4f]\n",Jp[0][0],Jp[1][0]);
+  printf("J_{adolc} = [%.4f, %.4f]\n\n",Jp[0][0],Jp[1][0]);  // FIXME: this is currently indep. of x
   //printf("J_{adolc} = [%.4f, %.4f]\n",Jp[0],Jp[1]);
-  printf("mu = %.4f\n\n",mu);
 
   //J[0][0] = Jp[0];
   //J[1][0] = Jp[1];
