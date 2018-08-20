@@ -220,10 +220,6 @@ PetscErrorCode FormFunction2(SNES snes,Vec x,Vec f,void *dummy)
   /*
      Compute function
   */
-/*
-  ff[0] = PetscSinScalar(3.0*xx[0]) + xx[0];
-  ff[1] = xx[1];
-*/
   trace_on(1);		/* ##### START OF ACTIVE SECTION ##### */
 
   xx_a[0] <<= xx[0];	/* ##### Declare xx_a as independent,   ##### */

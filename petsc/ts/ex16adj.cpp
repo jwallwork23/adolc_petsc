@@ -52,7 +52,6 @@ Input parameters include:\n\
 
 #include <petscts.h>
 #include <petscmat.h>
-
 #include <adolc/adolc.h>	/* ##### Include ADOL-C ##### */
 
 typedef struct _n_User *User;
@@ -89,7 +88,6 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
   f_a[1] = mu*(1.-x_a[0]*x_a[0])*x_a[1]-x_a[0];
   f_a[0] >>= f[0]; f_a[1] >>= f[1];	// Mark as dependent
   trace_off(1);			// ##### End of active section for df/dx #####
-
 
   trace_on(2);			// ##### Start of active section for dmu/dx #####
   mu_a <<= mu;
@@ -137,7 +135,7 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
   printf("J_{adolc} =\n    [%.4f, %.4f]\n    [%.4f, %.4f]\n\n",Jx[0][0],Jx[0][1],Jx[1][0],Jx[1][1]);
 */
 
-  ierr    = MatSetValues(A,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
+  ierr = MatSetValues(A,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (A != B) {
