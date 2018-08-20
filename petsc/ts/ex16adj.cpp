@@ -68,7 +68,7 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
-  const PetscReal         mu   = user->mu;
+  const PetscReal   mu   = user->mu;
   PetscScalar       *f;
   const PetscScalar *x;
  
@@ -92,7 +92,7 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
   trace_on(2);			// ##### Start of active section for dmu/dx #####
   mu_a <<= mu;
   fp_a[0] = x[1];
-  fp_a[1] = mu_a*(1-x[0]*x[0])*x[1]-x[0];
+  fp_a[1] = mu_a*(1.-x[0]*x[0])*x[1]-x[0];
   fp_a[0] >>= f[0]; fp_a[1] >>= f[1];
   trace_off(2);			// ##### End of active section for dmu/dx #####
 
@@ -104,8 +104,11 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode    ierr;
+  User              user = (User)ctx;
+  const PetscReal   mu   = user->mu;
   PetscInt          rowcol[] = {0,1};
   PetscScalar       J[2][2];
+  //PetscScalar       *Jx;			// TODO: use PetscMalloc1
   const PetscScalar *x;
 
   PetscFunctionBeginUser;
@@ -115,13 +118,36 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
   PetscScalar** Jx = (PetscScalar**) malloc(2*sizeof(PetscScalar*));
   Jx[0] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
   Jx[1] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
+  
+  //ierr = PetscMalloc1(4,&Jx);CHKERRQ(ierr);	// TODO: use PetscMalloc1
+  //ierr = PetscMalloc1(2,&Jx[0]);CHKERRQ(ierr);
+  //ierr = PetscMalloc1(2,&Jx[1]);CHKERRQ(ierr);
+  //jacobian(1,2,2,x,&Jx);			// TODO: use PetscMalloc1
   jacobian(1,2,2,x,Jx);
   J[0][0] = Jx[0][0];
   J[0][1] = Jx[0][1];
   J[1][0] = Jx[1][0];
   J[1][1] = Jx[1][1];
+  free(Jx[0]);
+  
+  //J[0][0] = 0;
+  //J[0][1] = 1.;
+  //J[1][0] = -2.*mu*x[1]*x[0]-1.;
+  //J[1][1] = mu*(1.0-x[0]*x[0]);
+
+  //printf("J_{exact} =\n    [%.4f, %.4f]\n    [%.4f, %.4f]\n",J[0][0],J[0][1],J[1][0],J[1][1]);
+  //printf("J_{adolc} =\n    [%.4f, %.4f]\n    [%.4f, %.4f]\n\n",Jx[0][0],Jx[0][1],Jx[1][0],Jx[1][1]);
+  //printf("J_{adolc} =\n    [%.4f, %.4f]\n    [%.4f, %.4f]\n\n",Jx[0],Jx[1],Jx[2],Jx[3]);
+
+  //J[0][0] = Jx[0];
+  //J[0][1] = Jx[1];
+  //J[1][0] = Jx[2];
+  //J[1][1] = Jx[3];
 
   ierr = MatSetValues(A,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
+
+  //ierr = PetscFree(Jx);CHKERRQ(ierr);		// TODO: use PetscMalloc1
+
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (A != B) {
@@ -139,29 +165,34 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
   PetscReal         mu   = user->mu;	/* ##### Need param ##### */
   PetscInt          row[] = {0,1},col[]={0};
   PetscScalar       J[2][1];
+  // PetscScalar       *Jp;			// TODO: use PetscMalloc1
   const PetscScalar *x;
-  const PetscScalar *mu_ptr;
-
-  mu_ptr = &mu;
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
-
-  // ##### Evaluate Jacobian using ADOL-C #####
   PetscScalar** Jp = (PetscScalar**) malloc(2*sizeof(PetscScalar*));
   Jp[0] = (PetscScalar*)malloc(1*sizeof(PetscScalar));
-  jacobian(2,2,1,mu_ptr,Jp);
+  Jp[1] = (PetscScalar*)malloc(1*sizeof(PetscScalar));
+  
+  //ierr = PetscMalloc1(2,&Jp);CHKERRQ(ierr);	// TODO: use PetscMalloc1
+  //jacobian(2,2,1,&mu,&Jp);			// TODO: use PetscMalloc1
+  jacobian(2,2,1,&mu,Jp);			// ##### Evaluate Jacobian using ADOL-C #####
 
   J[0][0] = 0;
   J[1][0] = (1.-x[0]*x[0])*x[1];
 
   // ##### TESTING: evaluate exact Jacobian #####
   printf("J_{exact} = [%.4f, %.4f]\n",J[0][0],J[1][0]);
-  printf("J_{adolc} = [%.4f, %.4f]\n\n",Jp[0][0],Jp[1][0]);
+  printf("J_{adolc} = [%.4f, %.4f]\n",Jp[0][0],Jp[1][0]);
+  //printf("J_{adolc} = [%.4f, %.4f]\n",Jp[0],Jp[1]);
+  printf("mu = %.4f\n\n",mu);
 
-  J[0][0] = Jp[0][0];
-  J[1][0] = Jp[1][0];
+  //J[0][0] = Jp[0];
+  //J[1][0] = Jp[1];
 
+  free(Jp);	// ##### Free memory associated with JacobianP #####
+
+  // ierr = PetscFree(Jp);CHKERRQ(ierr);	// TODO: use PetscMalloc1
   ierr = MatSetValues(A,2,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
