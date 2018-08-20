@@ -33,9 +33,8 @@ F*/
 /*
    User-defined routines
 */
-extern PetscErrorCode FormJacobian1(SNES,Vec,Mat,Mat,void*);
+extern PetscErrorCode FormJacobian(SNES,Vec,Mat,Mat,void*);
 extern PetscErrorCode FormFunction1(SNES,Vec,Vec,void*);
-extern PetscErrorCode FormJacobian2(SNES,Vec,Mat,Mat,void*);
 extern PetscErrorCode FormFunction2(SNES,Vec,Vec,void*);
 
 int main(int argc,char **argv)
@@ -88,11 +87,10 @@ int main(int argc,char **argv)
     /*
      Set Jacobian matrix data structure and Jacobian evaluation routine
     */
-    ierr = SNESSetJacobian(snes,J,J,FormJacobian1,NULL);CHKERRQ(ierr);
   } else {
     ierr = SNESSetFunction(snes,r,FormFunction2,NULL);CHKERRQ(ierr);
-    ierr = SNESSetJacobian(snes,J,J,FormJacobian2,NULL);CHKERRQ(ierr);
   }
+  ierr = SNESSetJacobian(snes,J,J,FormJacobian,NULL);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Customize nonlinear solver; set runtime options
@@ -200,8 +198,52 @@ PetscErrorCode FormFunction1(SNES snes,Vec x,Vec f,void *ctx)
   return 0;
 }
 /* ------------------------------------------------------------------- */
+PetscErrorCode FormFunction2(SNES snes,Vec x,Vec f,void *dummy)
+{
+  PetscErrorCode    ierr;
+  const PetscScalar *xx;
+  PetscScalar       *ff;
+
+  adouble           xx_a[2];	/* ##### Create active indep. variable ##### */
+  adouble           ff_a[2];	/* #####  Create active dep. variable  ##### */
+
+  /*
+     Get pointers to vector data.
+       - For default PETSc vectors, VecGetArray() returns a pointer to
+         the data array.  Otherwise, the routine is implementation dependent.
+       - You MUST call VecRestoreArray() when you no longer need access to
+         the array.
+  */
+  ierr = VecGetArrayRead(x,&xx);CHKERRQ(ierr);
+  ierr = VecGetArray(f,&ff);CHKERRQ(ierr);
+
+  /*
+     Compute function
+  */
 /*
-   FormJacobian1 - Evaluates Jacobian matrix.
+  ff[0] = PetscSinScalar(3.0*xx[0]) + xx[0];
+  ff[1] = xx[1];
+*/
+  trace_on(1);		/* ##### START OF ACTIVE SECTION ##### */
+
+  xx_a[0] <<= xx[0];	/* ##### Declare xx_a as independent,   ##### */
+  xx_a[1] <<= xx[1];    /* #####            set its value to xx ##### */
+  ff_a[0] = PetscSinScalar(3.0*xx_a[0]) + xx_a[0];
+  ff_a[1] = xx_a[1];
+  ff_a[0] >>= ff[0];    /* ##### Declare ff_a as dependent,     ##### */
+  ff_a[1] >>= ff[1];    /* ##### set value of ff to ff_a.value() ##### */
+
+  trace_off(1);		/* #####  END OF ACTIVE SECTION  ##### */
+  /*
+     Restore vectors
+  */
+  ierr = VecRestoreArrayRead(x,&xx);CHKERRQ(ierr);
+  ierr = VecRestoreArray(f,&ff);CHKERRQ(ierr);
+  return 0;
+}
+/* ------------------------------------------------------------------- */
+/*
+   FormJacobian - Evaluates Jacobian matrix using automatic differentiation.
 
    Input Parameters:
 .  snes - the SNES context
@@ -213,7 +255,7 @@ PetscErrorCode FormFunction1(SNES snes,Vec x,Vec f,void *ctx)
 .  B - optionally different preconditioning matrix
 .  flag - flag indicating matrix structure
 */
-PetscErrorCode FormJacobian1(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
+PetscErrorCode FormJacobian(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
 {
   const PetscScalar *xx;
   PetscScalar       A[4];
@@ -256,95 +298,6 @@ PetscErrorCode FormJacobian1(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
   }
   return 0;
 }
-
-/* ------------------------------------------------------------------- */
-PetscErrorCode FormFunction2(SNES snes,Vec x,Vec f,void *dummy)
-{
-  PetscErrorCode    ierr;
-  const PetscScalar *xx;
-  PetscScalar       *ff;
-
-  adouble           xx_a[2];	/* ##### Create active indep. variable ##### */
-  adouble           ff_a[2];	/* #####  Create active dep. variable  ##### */
-
-  /*
-     Get pointers to vector data.
-       - For default PETSc vectors, VecGetArray() returns a pointer to
-         the data array.  Otherwise, the routine is implementation dependent.
-       - You MUST call VecRestoreArray() when you no longer need access to
-         the array.
-  */
-  ierr = VecGetArrayRead(x,&xx);CHKERRQ(ierr);
-  ierr = VecGetArray(f,&ff);CHKERRQ(ierr);
-
-  /*
-     Compute function
-  */
-/*
-  ff[0] = PetscSinScalar(3.0*xx[0]) + xx[0];
-  ff[1] = xx[1];
-*/
-  trace_on(2);		/* ##### START OF ACTIVE SECTION ##### */
-
-  xx_a[0] <<= xx[0];	/* ##### Declare xx_a as independent,   ##### */
-  xx_a[1] <<= xx[1];    /* #####            set its value to xx ##### */
-  ff_a[0] = PetscSinScalar(3.0*xx_a[0]) + xx_a[0];
-  ff_a[1] = xx_a[1];
-  ff_a[0] >>= ff[0];    /* ##### Declare ff_a as dependent,     ##### */
-  ff_a[1] >>= ff[1];    /* ##### set value of ff to ff_a.value() ##### */
-
-  trace_off(2);		/* #####  END OF ACTIVE SECTION  ##### */
-  /*
-     Restore vectors
-  */
-  ierr = VecRestoreArrayRead(x,&xx);CHKERRQ(ierr);
-  ierr = VecRestoreArray(f,&ff);CHKERRQ(ierr);
-  return 0;
-}
-/* ------------------------------------------------------------------- */
-PetscErrorCode FormJacobian2(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
-{
-  const PetscScalar *xx;
-  PetscScalar       A[4];
-  PetscErrorCode    ierr;
-  PetscInt          idx[2] = {0,1};
-
-  /*
-     Get pointer to vector data
-  */
-  ierr = VecGetArrayRead(x,&xx);CHKERRQ(ierr);
-
-  /*
-     Compute Jacobian entries and insert into matrix.
-      - Since this is such a small problem, we set all entries for
-        the matrix at once.
-  */
-
-  // ##### Evaluate Jacobian using ADOL-C #####
-  PetscScalar** J = (PetscScalar**) malloc(2*sizeof(PetscScalar*));
-  J[0] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
-  J[1] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
-  jacobian(2,2,2,xx,J);
-  A[0] = J[0][0]; A[1] = J[0][1]; A[2] = J[1][0]; A[3] = J[1][1];
-
-  ierr  = MatSetValues(B,2,idx,2,idx,A,INSERT_VALUES);CHKERRQ(ierr);
-  /*
-     Restore vector
-  */
-  ierr = VecRestoreArrayRead(x,&xx);CHKERRQ(ierr);
-
-  /*
-     Assemble matrix
-  */
-  ierr = MatAssemblyBegin(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  if (jac != B) {
-    ierr = MatAssemblyBegin(jac,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-    ierr = MatAssemblyEnd(jac,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  }
-  return 0;
-}
-
 
 
 
