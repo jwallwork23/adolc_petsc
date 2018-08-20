@@ -96,6 +96,14 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
   fp_a[0] >>= f[0]; fp_a[1] >>= f[1];
   trace_off(2);			// ##### End of active section for dmu/dx #####
 
+/*
+  trace_on(1);
+  x_a[0] <<= x[0]; x_a[1] <<= x[1]; mu_a <<= mu;
+  f_a[0] = x_a[1];
+  f_a[1] = mu_a*(1.-x_a[0]*x_a[0])*x_a[1]-x_a[0];
+  f_a[0] >>= f[0]; f_a[1] >>= f[1];
+  trace_off(1);
+*/
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);  // Restore passive indep. variable array
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);      // Give values to passive dep. varible array
   PetscFunctionReturn(0);
@@ -128,7 +136,6 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
   J[0][1] = Jx[0][1];
   J[1][0] = Jx[1][0];
   J[1][1] = Jx[1][1];
-  free(Jx[0]);
   
   //J[0][0] = 0;
   //J[0][1] = 1.;
@@ -146,6 +153,7 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
 
   ierr = MatSetValues(A,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
 
+  free(Jx);
   //ierr = PetscFree(Jx);CHKERRQ(ierr);		// TODO: use PetscMalloc1
 
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
@@ -176,7 +184,8 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
   
   //ierr = PetscMalloc1(2,&Jp);CHKERRQ(ierr);	// TODO: use PetscMalloc1
   //jacobian(2,2,1,&mu,&Jp);			// TODO: use PetscMalloc1
-  jacobian(2,2,1,&mu,Jp);			// ##### Evaluate Jacobian using ADOL-C #####
+  //jacobian(2,2,1,&mu,Jp);			// ##### Evaluate Jacobian using ADOL-C #####
+  //jacobian(1,2,1,&mu,Jp);			// ##### Evaluate Jacobian using ADOL-C #####
 
   J[0][0] = 0;
   J[1][0] = (1.-x[0]*x[0])*x[1];
