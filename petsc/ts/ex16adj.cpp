@@ -69,29 +69,25 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
-  double            *f;  	/* ##### TEMP: PetscScalars have been ##### */
-  const double      *x;  	/* #####  replaced by doubles for now ##### */
+  PetscScalar       *f;
+  const PetscScalar *x;
  
-  adouble           *f_a;   	/* ##### Create active dependent variables ##### */
-  adouble           *x_a;   	/* ##### Create active independent variables ##### */
+  adouble           f_a[2];   	/* ##### Create adouble for dependent variables ##### */
+  adouble           x_a[2];   	/* ##### Create adouble for independent variables ##### */
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);      // Get values for passive independent variables
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);          // Get array for passive dependent variables
   
   trace_on(1);			/* ##### Start of active section ##### */
-  // x_a[0] <<= x[0]; x_a[1] <<= x[1];                   // TODO: Mark as independent
-  // f_a[0] = x_a[1];
-  // f_a[1] = user->mu*(1.-x_a[0]*x_a[0])*x_a[1]-x_a[0];
-  // f_a[0] >>= f[0]; f_a[1] >>= f[1];                   // TODO: Mark as dependent
+  
+  x_a[0] <<= x[0]; x_a[1] <<= x[1];                   // Mark as independent
+  f_a[0] = x_a[1];
+  f_a[1] = user->mu*(1.-x_a[0]*x_a[0])*x_a[1]-x_a[0];
+  f_a[0] >>= f[0]; f_a[1] >>= f[1];                   // Mark as dependent
 
-  delete x_a;
+  // delete x_a;
   trace_off(1);			/* ##### End of active section #####*/
-
-  /* ----------  START TEMP SECTION  -----------*/
-  f[0] = x[1];
-  f[1] = user->mu*(1.-x[0]*x[0])*x[1]-x[0];
-  /* ----------   END TEMP SECTION   -----------*/
 
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);  // Restore passive indep. variable array
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);      // Give values to passive dep. varible array
@@ -107,14 +103,30 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
   PetscScalar       J[2][2];
   const PetscScalar *x;
 
-  // TODO: calculate Jacobian using `jacobian(1,2,2,x,J);`
-
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
+
+  // ##### Evaluate Jacobian using ADOL-C #####
+  PetscScalar** Ja = (PetscScalar**) malloc(2*sizeof(PetscScalar*));
+  Ja[0] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
+  Ja[1] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
+  jacobian(1,2,2,x,Ja);
+  J[0][0] = Ja[0][0];
+  J[0][1] = Ja[0][1];
+  J[1][0] = Ja[1][0];
+  J[1][1] = Ja[1][1];
+
+/*
   J[0][0] = 0;
   J[1][0] = -2.*mu*x[1]*x[0]-1.;
   J[0][1] = 1.0;
   J[1][1] = mu*(1.0-x[0]*x[0]);
+
+  // ##### TESTING: evaluate exact Jacobian #####
+  printf("J_{exact} =\n    [%.4f, %.4f]\n    [%.4f, %.4f]\n\n",J[0][0],J[0][1],J[1][0],J[1][1]);
+  printf("J =\n    [%.4f, %.4f]\n    [%.4f, %.4f]\n\n",Ja[0][0],Ja[0][1],Ja[1][0],Ja[1][1]);
+*/
+
   ierr    = MatSetValues(A,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
