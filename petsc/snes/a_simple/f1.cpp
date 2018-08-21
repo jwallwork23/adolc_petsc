@@ -24,9 +24,7 @@ int main()
   // initialisation
   int i,j;
   double ff[2];
-  double xx[2];
-  xx[0] = 2.;
-  xx[1] = -1.;
+  double xx[2] = {2., 1.};
 
   // function evaluation
   f1(ff,xx);
@@ -58,6 +56,7 @@ int main()
     }
     printf("]\n");
   }
+  free(J);
 
   return 0;
 }

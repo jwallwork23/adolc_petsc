@@ -270,13 +270,14 @@ PetscErrorCode FormJacobian(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
   */
 
   // ##### Evaluate Jacobian using ADOL-C #####
-  PetscScalar** J = (PetscScalar**) malloc(2*sizeof(PetscScalar*));
+  PetscScalar** J = (PetscScalar**) malloc(2*sizeof(PetscScalar*));	// TODO: use PetscMalloc1
   J[0] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
   J[1] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
   jacobian(1,2,2,xx,J);
   A[0] = J[0][0]; A[1] = J[0][1]; A[2] = J[1][0]; A[3] = J[1][1];
 
   ierr  = MatSetValues(B,2,idx,2,idx,A,INSERT_VALUES);CHKERRQ(ierr);
+  free(J);								// TODO: use PetscFree
 
   /*
      Restore vector
