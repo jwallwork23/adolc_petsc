@@ -52,7 +52,7 @@ Input parameters include:\n\
 
 #include <petscts.h>
 #include <petscmat.h>
-#include <adolc/adolc.h>	/* ##### Include ADOL-C ##### */
+#include <adolc/adolc.h>	// Include ADOL-C
 
 typedef struct _n_User *User;
 struct _n_User {
@@ -72,20 +72,20 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
   PetscScalar       *f;
   const PetscScalar *x;
  
-  adouble           f_a[2];   	// ##### adouble for dependent variables #####
-  adouble           x_a[2];   	// ##### adouble for independent variables #####
-  adouble           mu_a;	// ##### adouble for mu parameter #####
+  adouble           f_a[2];   	// adouble for dependent variables
+  adouble           x_a[2];   	// adouble for independent variables
+  adouble           mu_a;	// adouble for mu parameter
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);      // Get values for passive independent variables
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);          // Get array for passive dependent variables
 
-  trace_on(1);			// ##### Start of active section for df/dx #####
-  x_a[0] <<= x[0]; x_a[1] <<= x[1]; mu_a <<= mu;	// ##### Mark independents #####
+  trace_on(1);						// Start of active section
+  x_a[0] <<= x[0]; x_a[1] <<= x[1]; mu_a <<= mu;	// Declare independence
   f_a[0] = x_a[1];
   f_a[1] = mu_a*(1.-x_a[0]*x_a[0])*x_a[1]-x_a[0];
-  f_a[0] >>= f[0]; f_a[1] >>= f[1];			// ##### Mark dependents #####
-  trace_off(1);			// ##### End of active section for df/dx #####
+  f_a[0] >>= f[0]; f_a[1] >>= f[1];			// Mark dependence
+  trace_off(1);						// End of active section
 
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);  // Restore passive indep. variable array
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);      // Give values to passive dep. varible array
@@ -97,28 +97,27 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
   PetscErrorCode    ierr;
   User              user = (User)ctx;
   const PetscReal   mu   = user->mu;
-  PetscInt          rowcol[] = {0,1};
+  PetscInt          rowcol[] = {0,1},i,j;
   PetscScalar       J[2][2];
   PetscScalar       **Jx;
-  PetscScalar       *row0, *row1;
+  PetscScalar       *row0,*row1;
   const PetscScalar *x;
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
 
-  const PetscScalar indep_variables[3] = {x[0],x[1],mu};
-  const PetscScalar *ptr_to_indep = indep_variables;
+  const PetscScalar indep_vars[3] = {x[0],x[1],mu};	// Concatenate independent vars
+  const PetscScalar *ptr_to_indep = indep_vars;		// Give a pointer
 
-  // ##### Evaluate Jacobian using ADOL-C #####
-  ierr = PetscMalloc1(2,&Jx);CHKERRQ(ierr);
+  ierr = PetscMalloc1(2,&Jx);CHKERRQ(ierr);		// Allocate memory for Jacobian
   ierr = PetscMalloc1(3,&row0);CHKERRQ(ierr);
   ierr = PetscMalloc1(3,&row1);CHKERRQ(ierr);
   Jx[0] = row0; Jx[1] = row1;
-  jacobian(1,2,3,ptr_to_indep,Jx);
-  J[0][0] = Jx[0][0];
-  J[0][1] = Jx[0][1];
-  J[1][0] = Jx[1][0];
-  J[1][1] = Jx[1][1];
+  jacobian(1,2,3,ptr_to_indep,Jx);			// Calculate Jacobian using ADOL-C
+  for(i=0; i<2; i++){
+    for(j=0; j<2; j++)
+      J[i][j] = Jx[i][j];
+  }
   ierr = MatSetValues(A,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
 
   ierr = PetscFree(Jx);CHKERRQ(ierr);
@@ -137,8 +136,8 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
 static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
 {
   PetscErrorCode    ierr;
-  User              user = (User)ctx;		/* ##### Need context ##### */
-  PetscReal         mu   = user->mu;		/* ##### Need param ##### */
+  User              user = (User)ctx;
+  PetscReal         mu   = user->mu;
   PetscInt          row[] = {0,1},col[]={0};
   PetscScalar       J[2][1];
   PetscScalar       **Jp;
@@ -151,17 +150,16 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
   const PetscScalar indep_vars[3] = {x[0],x[1],mu};
   const PetscScalar *ptr_to_indep = indep_vars;
 
-  // ##### Evaluate Jacobian using ADOL-C #####
-  ierr = PetscMalloc1(2,&Jp);CHKERRQ(ierr);
+  ierr = PetscMalloc1(2,&Jp);CHKERRQ(ierr);		// Allocate memory for Jacobian
   ierr = PetscMalloc1(3,&row0);CHKERRQ(ierr);
   ierr = PetscMalloc1(3,&row1);CHKERRQ(ierr);
   Jp[0] = row0; Jp[1] = row1;
-  jacobian(1,2,3,ptr_to_indep,Jp);
+  jacobian(1,2,3,ptr_to_indep,Jp);			// Calculate Jacobian using ADOL-C
   J[0][0] = Jp[0][2];
   J[1][0] = Jp[1][2];
   ierr = MatSetValues(A,2,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
 
-  ierr = PetscFree(Jp);CHKERRQ(ierr);
+  ierr = PetscFree(Jp);CHKERRQ(ierr);			// Free allocated memory
   ierr = PetscFree(row0);CHKERRQ(ierr);
   ierr = PetscFree(row1);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);

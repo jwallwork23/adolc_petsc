@@ -27,7 +27,7 @@ or if the {\tt -hard} options is given
 \end{equation}
 F*/
 #include <petscsnes.h>
-#include <adolc/adolc.h>	/* ##### Include ADOL-C ##### */
+#include <adolc/adolc.h>	// Include ADOL-C
 
 
 /*
@@ -168,8 +168,8 @@ PetscErrorCode FormFunction1(SNES snes,Vec x,Vec f,void *ctx)
   const PetscScalar *xx;
   PetscScalar       *ff;
 
-  adouble           xx_a[2];	/* ##### Create active indep. variable ##### */
-  adouble           ff_a[2];	/* #####  Create active dep. variable  ##### */
+  adouble           xx_a[2];	// Create active indep. variable
+  adouble           ff_a[2];	// Create active dep. variable
 
   /*
    Get pointers to vector data.
@@ -181,16 +181,12 @@ PetscErrorCode FormFunction1(SNES snes,Vec x,Vec f,void *ctx)
   ierr = VecGetArrayRead(x,&xx);CHKERRQ(ierr);
   ierr = VecGetArray(f,&ff);CHKERRQ(ierr);
 
-  trace_on(1);		/* ##### START OF ACTIVE SECTION ##### */
-
-  xx_a[0] <<= xx[0];	/* ##### Declare xx_a as independent,   ##### */
-  xx_a[1] <<= xx[1];    /* #####            set its value to xx ##### */
+  trace_on(1);						// Start active section
+  xx_a[0] <<= xx[0]; xx_a[1] <<= xx[1];			// Declare independence
   ff_a[0] = xx_a[0]*xx_a[0] + xx_a[0]*xx_a[1] - 3.0;
   ff_a[1] = xx_a[0]*xx_a[1] + xx_a[1]*xx_a[1] - 6.0;
-  ff_a[0] >>= ff[0];    /* ##### Declare ff_a as dependent,     ##### */
-  ff_a[1] >>= ff[1];    /* ##### set value of ff to ff_a.value() ##### */
-
-  trace_off(1);		/* #####  END OF ACTIVE SECTION  ##### */
+  ff_a[0] >>= ff[0]; ff_a[1] >>= ff[1];   		// Declare dependence
+  trace_off(1);						// End of active section
 
   /* Restore vectors */
   ierr = VecRestoreArrayRead(x,&xx);CHKERRQ(ierr);
@@ -204,8 +200,8 @@ PetscErrorCode FormFunction2(SNES snes,Vec x,Vec f,void *dummy)
   const PetscScalar *xx;
   PetscScalar       *ff;
 
-  adouble           xx_a[2];	/* ##### Create active indep. variable ##### */
-  adouble           ff_a[2];	/* #####  Create active dep. variable  ##### */
+  adouble           xx_a[2];	// Create active indep. variable
+  adouble           ff_a[2];	// Create active dep. variable
 
   /*
      Get pointers to vector data.
@@ -220,16 +216,12 @@ PetscErrorCode FormFunction2(SNES snes,Vec x,Vec f,void *dummy)
   /*
      Compute function
   */
-  trace_on(1);		/* ##### START OF ACTIVE SECTION ##### */
-
-  xx_a[0] <<= xx[0];	/* ##### Declare xx_a as independent,   ##### */
-  xx_a[1] <<= xx[1];    /* #####            set its value to xx ##### */
+  trace_on(1);						// Start of active section
+  xx_a[0] <<= xx[0]; xx_a[1] <<= xx[1];			// Declare independence
   ff_a[0] = PetscSinScalar(3.0*xx_a[0]) + xx_a[0];
   ff_a[1] = xx_a[1];
-  ff_a[0] >>= ff[0];    /* ##### Declare ff_a as dependent,     ##### */
-  ff_a[1] >>= ff[1];    /* ##### set value of ff to ff_a.value() ##### */
-
-  trace_off(1);		/* #####  END OF ACTIVE SECTION  ##### */
+  ff_a[0] >>= ff[0]; ff_a[1] >>= ff[1];			// Declare dependence
+  trace_off(1);						// End of active section
   /*
      Restore vectors
   */
@@ -271,16 +263,15 @@ PetscErrorCode FormJacobian(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
         the matrix at once.
   */
 
-  // ##### Evaluate Jacobian using ADOL-C #####
-  ierr = PetscMalloc1(2,&J);CHKERRQ(ierr);
+  ierr = PetscMalloc1(2,&J);CHKERRQ(ierr);		// Allocate memory for Jacobian
   ierr = PetscMalloc1(2,&row0);CHKERRQ(ierr);
   ierr = PetscMalloc1(2,&row1);CHKERRQ(ierr);
   J[0] = row0; J[1] = row1;
-  jacobian(1,2,2,xx,J);
+  jacobian(1,2,2,xx,J);					// Calculate Jacobian using ADOL-C
   A[0] = J[0][0]; A[1] = J[0][1]; A[2] = J[1][0]; A[3] = J[1][1];
-
   ierr = MatSetValues(B,2,idx,2,idx,A,INSERT_VALUES);CHKERRQ(ierr);
-  ierr = PetscFree(J);CHKERRQ(ierr); 
+
+  ierr = PetscFree(J);CHKERRQ(ierr); 			// Free Allocated memory
   ierr = PetscFree(row0);CHKERRQ(ierr); 
   ierr = PetscFree(row1);CHKERRQ(ierr); 
   /*

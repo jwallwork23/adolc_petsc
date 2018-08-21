@@ -1,4 +1,4 @@
-ALL: ex16adj
+ALL: clean ex16adj
 CFLAGS		= ${ADOLC_HOME}/build/include
 FFLAGS		=
 CPPFLAGS	=
