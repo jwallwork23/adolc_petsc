@@ -257,6 +257,8 @@ PetscErrorCode FormJacobian(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
   PetscScalar       A[4];
   PetscErrorCode    ierr;
   PetscInt          idx[2] = {0,1};
+  PetscScalar       **J;
+  PetscScalar       *row0,*row1;
 
   /*
      Get pointer to vector data
@@ -270,15 +272,17 @@ PetscErrorCode FormJacobian(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
   */
 
   // ##### Evaluate Jacobian using ADOL-C #####
-  PetscScalar** J = (PetscScalar**) malloc(2*sizeof(PetscScalar*));	// TODO: use PetscMalloc1
-  J[0] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
-  J[1] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
+  ierr = PetscMalloc1(2,&J);CHKERRQ(ierr);
+  ierr = PetscMalloc1(2,&row0);CHKERRQ(ierr);
+  ierr = PetscMalloc1(2,&row1);CHKERRQ(ierr);
+  J[0] = row0; J[1] = row1;
   jacobian(1,2,2,xx,J);
   A[0] = J[0][0]; A[1] = J[0][1]; A[2] = J[1][0]; A[3] = J[1][1];
 
-  ierr  = MatSetValues(B,2,idx,2,idx,A,INSERT_VALUES);CHKERRQ(ierr);
-  free(J);								// TODO: use PetscFree
-
+  ierr = MatSetValues(B,2,idx,2,idx,A,INSERT_VALUES);CHKERRQ(ierr);
+  ierr = PetscFree(J);CHKERRQ(ierr); 
+  ierr = PetscFree(row0);CHKERRQ(ierr); 
+  ierr = PetscFree(row1);CHKERRQ(ierr); 
   /*
      Restore vector
   */

@@ -142,7 +142,7 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
   PetscInt          row[] = {0,1},col[]={0};
   PetscScalar       J[2][1];
   PetscScalar       **Jp;
-  PetscScalar       *row0, *row1;
+  PetscScalar       *row0,*row1;
   const PetscScalar *x;
 
   PetscFunctionBeginUser;
