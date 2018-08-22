@@ -50,8 +50,8 @@ static char help[] = "Performs adjoint sensitivity analysis for the van der Pol 
   ------------------------------------------------------------------------- */
 #include <petscts.h>
 #include <petsctao.h>
-#include <adolc/adolc.h>		// Include ADOL-C
-#include "subjacobian.c"
+#include <adolc/adolc.h>	// Include ADOL-C
+#include "subjacobian.c"	// User-defined function to calculate a submatrix of Jacobian
 
 typedef struct _n_User *User;
 struct _n_User {
@@ -89,8 +89,8 @@ static PetscErrorCode IFunction(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx
   x_a[0] <<= x[0]; x_a[1] <<= x[1]; xdot_a[0] <<= xdot[0]; xdot_a[1] <<= xdot[1]; mu_a <<= mu;
   f_a[0] = xdot_a[0] - x_a[1];
   f_a[1] = c21*(xdot_a[0]-x_a[1]) + xdot_a[1] - mu_a*((1.0-x_a[0]*x_a[0])*x_a[1] - x_a[0]);
-  f_a[0] >>= f[0]; f_a[1] >>= f[1];			// End of active section
-  trace_off();
+  f_a[0] >>= f[0]; f_a[1] >>= f[1];
+  trace_off();						// End of active section
 
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(Xdot,&xdot);CHKERRQ(ierr);
@@ -113,15 +113,10 @@ static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m
   const PetscScalar indep_vars[] = {x[0],x[1],xdot[0],xdot[1],mu};  // Concatenate independent vars
   const PetscScalar *ptr_to_indep = indep_vars;         // TODO: how to do this more generally?
 
-  Jx = myalloc2(m,n);                                   // Contiguous ADOL-C matrix memory allocation
+  Jx = myalloc2(m,s);                                   // Contiguous ADOL-C matrix memory allocation
   subjacobian(1,m,n,s,indep_cols,ptr_to_indep,Jx);      // Calculate Jacobian using ADOL-C
-  for(i=0; i<m; i++){
-    for(j=0; j<s; j++){
-      J[i][j] = Jx[i][j];
-    }
-  }
-  for(i=0; i<s; i++)                                    // Shift column index subset
-    indep_cols[i] = i;
+  for(i=0; i<s; i++)
+    indep_cols[i] = i;					// Shift column index subset
   ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
 
   myfree2(Jx);                                          // Free allocated memory

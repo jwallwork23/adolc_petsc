@@ -53,7 +53,7 @@ Input parameters include:\n\
 #include <petscts.h>
 #include <petscmat.h>
 #include <adolc/adolc.h>	// Include ADOL-C
-#include "subjacobian.c"
+#include "subjacobian.c"	// User-defined function to calculate a subcomponent of Jacobian
 
 typedef struct _n_User *User;
 struct _n_User {
@@ -97,8 +97,8 @@ static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscIn
   PetscErrorCode    ierr;
   User              user = (User)ctx;
   const PetscScalar mu   = user->mu;
-  PetscInt          i,j;
-  PetscScalar       J[m][s],**Jx;
+  PetscInt          i;
+  PetscScalar       **J;
   const PetscScalar *x;
 
   PetscFunctionBeginUser;
@@ -107,18 +107,13 @@ static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscIn
   const PetscScalar indep_vars[] = {x[0],x[1],mu};	// Concatenate independent vars
   const PetscScalar *ptr_to_indep = indep_vars;		// TODO: how to do this more generally?
 
-  Jx = myalloc2(m,s);					// Contiguous ADOL-C matrix memory allocation
-  subjacobian(1,m,n,s,indep_cols,ptr_to_indep,Jx);	// Calculate Jacobian using ADOL-C
-  for(i=0; i<m; i++){
-    for(j=0; j<s; j++){
-      J[i][j] = Jx[i][j];
-    }
-  }
-  for(i=0; i<s; i++)					// Shift column index subset
-    indep_cols[i] = i;
+  J = myalloc2(m,s);					// Contiguous ADOL-C matrix memory allocation
+  subjacobian(1,m,n,s,indep_cols,ptr_to_indep,J);	// Calculate Jacobian using ADOL-C
+  for(i=0; i<s; i++)
+    indep_cols[i] = i;					// Shift column index subset
   ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
 
-  myfree2(Jx);						// Free allocated memory
+  myfree2(J);						// Free allocated memory
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (A != B) {
