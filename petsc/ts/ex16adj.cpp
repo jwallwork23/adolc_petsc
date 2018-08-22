@@ -98,7 +98,7 @@ static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscIn
   User              user = (User)ctx;
   const PetscReal   mu   = user->mu;
   PetscInt          i,j;
-  PetscScalar       J[m][s],**Jx,*row0,*row1;		// TODO: how to do this more generally?
+  PetscScalar       J[m][s],**Jx;
   const PetscScalar *x;
 
   PetscFunctionBeginUser;
@@ -107,10 +107,7 @@ static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscIn
   const PetscScalar indep_vars[] = {x[0],x[1],mu};	// Concatenate independent vars
   const PetscScalar *ptr_to_indep = indep_vars;		// TODO: how to do this more generally?
 
-  ierr = PetscMalloc1(m,&Jx);CHKERRQ(ierr);		// Allocate memory for Jacobian
-  ierr = PetscMalloc1(n,&row0);CHKERRQ(ierr);		// TODO: how to do this more generally?
-  ierr = PetscMalloc1(n,&row1);CHKERRQ(ierr);		// TODO: ------------"-----------------
-  Jx[0] = row0; Jx[1] = row1;				// TODO: ------------"-----------------
+  Jx = myalloc2(m,n);					// Contiguous ADOL-C matrix memory allocation
   jacobian(1,m,n,ptr_to_indep,Jx);			// Calculate Jacobian using ADOL-C
   for(i=0; i<m; i++){
     for(j=0; j<s; j++){
@@ -121,9 +118,7 @@ static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscIn
     indep_cols[i] = i;
   ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
 
-  ierr = PetscFree(Jx);CHKERRQ(ierr);
-  ierr = PetscFree(row0);CHKERRQ(ierr);			// TODO: how to do this more generally?
-  ierr = PetscFree(row1);CHKERRQ(ierr);			// TODO: ------------"-----------------
+  myfree2(Jx);						// Free memory
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (A != B) {

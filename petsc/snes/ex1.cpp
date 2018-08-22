@@ -250,7 +250,6 @@ PetscErrorCode FormJacobian(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
   PetscErrorCode    ierr;
   PetscInt          idx[2] = {0,1};
   PetscScalar       **J;
-  PetscScalar       *row0,*row1;			// TODO: how to do this more generally?
 
   /*
      Get pointer to vector data
@@ -262,18 +261,12 @@ PetscErrorCode FormJacobian(SNES snes,Vec x,Mat jac,Mat B,void *dummy)
       - Since this is such a small problem, we set all entries for
         the matrix at once.
   */
-
-  ierr = PetscMalloc1(2,&J);CHKERRQ(ierr);		// Allocate memory for Jacobian
-  ierr = PetscMalloc1(2,&row0);CHKERRQ(ierr);		// TODO: how to do this more generally?
-  ierr = PetscMalloc1(2,&row1);CHKERRQ(ierr);		// TODO: ------------"-----------------
-  J[0] = row0; J[1] = row1;				// TODO: ------------"-----------------
+  J = myalloc2(2,2);					// Contiguous ADOL-C matrix memory allocation
   jacobian(1,2,2,xx,J);					// Calculate Jacobian using ADOL-C
   A[0] = J[0][0]; A[1] = J[0][1]; A[2] = J[1][0]; A[3] = J[1][1];
   ierr = MatSetValues(B,2,idx,2,idx,A,INSERT_VALUES);CHKERRQ(ierr);
 
-  ierr = PetscFree(J);CHKERRQ(ierr); 			// Free Allocated memory
-  ierr = PetscFree(row0);CHKERRQ(ierr);			// TODO: how to do this more generally?
-  ierr = PetscFree(row1);CHKERRQ(ierr); 		// TODO: ------------"-----------------
+  myfree2(J); 						// Free Allocated memory
   /*
      Restore vector
   */
