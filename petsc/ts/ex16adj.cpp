@@ -53,6 +53,7 @@ Input parameters include:\n\
 #include <petscts.h>
 #include <petscmat.h>
 #include <adolc/adolc.h>	// Include ADOL-C
+#include "subjacobian.c"
 
 typedef struct _n_User *User;
 struct _n_User {
@@ -68,7 +69,7 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
-  const PetscReal   mu   = user->mu;
+  const PetscScalar mu   = user->mu;
   PetscScalar       *f;
   const PetscScalar *x;
  
@@ -85,7 +86,7 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
   f_a[0] = x_a[1];
   f_a[1] = mu_a*(1.-x_a[0]*x_a[0])*x_a[1]-x_a[0];
   f_a[0] >>= f[0]; f_a[1] >>= f[1];			// Mark dependence
-  trace_off(1);						// End of active section
+  trace_off();						// End of active section
 
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);  	// Restore passive indep. variable array
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);      	// Give values to passive dep. varible array
@@ -96,7 +97,7 @@ static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscIn
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
-  const PetscReal   mu   = user->mu;
+  const PetscScalar mu   = user->mu;
   PetscInt          i,j;
   PetscScalar       J[m][s],**Jx;
   const PetscScalar *x;
@@ -108,17 +109,17 @@ static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscIn
   const PetscScalar *ptr_to_indep = indep_vars;		// TODO: how to do this more generally?
 
   Jx = myalloc2(m,n);					// Contiguous ADOL-C matrix memory allocation
-  jacobian(1,m,n,ptr_to_indep,Jx);			// Calculate Jacobian using ADOL-C
+  subjacobian(1,m,n,s,indep_cols,ptr_to_indep,Jx);	// Calculate Jacobian using ADOL-C
   for(i=0; i<m; i++){
     for(j=0; j<s; j++){
-      J[i][j] = Jx[i][indep_cols[j]];
+      J[i][j] = Jx[i][j];
     }
   }
   for(i=0; i<s; i++)					// Shift column index subset
     indep_cols[i] = i;
   ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
 
-  myfree2(Jx);						// Free memory
+  myfree2(Jx);						// Free allocated memory
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (A != B) {
