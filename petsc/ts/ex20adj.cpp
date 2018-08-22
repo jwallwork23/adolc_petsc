@@ -78,7 +78,7 @@ static PetscErrorCode IFunction(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx
   PetscScalar       *f;
 
   adouble           f_a[2];				// adouble for dependent variables
-  adouble           x_a[2],xdot_a[2],mu_a;		// adouble for independent variables
+  adouble           x_a[2],mu_a;			// adouble for independent variables
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
@@ -86,10 +86,10 @@ static PetscErrorCode IFunction(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);
 
   trace_on(1);						// Start of active section
-  x_a[0] <<= x[0]; x_a[1] <<= x[1]; xdot_a[0] <<= xdot[0]; xdot_a[1] <<= xdot[1]; mu_a <<= mu;
-  f_a[0] = xdot_a[0] - x_a[1];
-  f_a[1] = c21*(xdot_a[0]-x_a[1]) + xdot_a[1] - mu_a*((1.0-x_a[0]*x_a[0])*x_a[1] - x_a[0]);
-  f_a[0] >>= f[0]; f_a[1] >>= f[1];
+  x_a[0] <<= x[0]; x_a[1] <<= x[1]; mu_a <<= mu;	// Declare independence
+  f_a[0] = xdot[0] - x_a[1];
+  f_a[1] = c21*(xdot[0]-x_a[1]) + xdot[1] - mu_a*((1.0-x_a[0]*x_a[0])*x_a[1] - x_a[0]);
+  f_a[0] >>= f[0]; f_a[1] >>= f[1];			// Declare dependence
   trace_off();						// End of active section
 
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
@@ -97,21 +97,20 @@ static PetscErrorCode IFunction(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
-/*
-static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Vec dot,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],void *ctx)
+
+static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
   const PetscScalar mu   = user->mu;
-  PetscInt          i,j;
+  PetscInt          i;
   PetscScalar       **J;
-  const PetscScalar *x,*xdot;
+  const PetscScalar *x;
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(Xdot,&xdot);CHKERRQ(ierr);
 
-  const PetscScalar indep_vars[] = {x[0],x[1],xdot[0],xdot[1],mu};  // Concatenate independent vars
+  const PetscScalar indep_vars[] = {x[0],x[1],mu};  	// Concatenate independent vars
   const PetscScalar *ptr_to_indep = indep_vars;         // TODO: how to do this more generally?
 
   J = myalloc2(m,s);                                    // Contiguous ADOL-C matrix memory allocation
@@ -128,10 +127,9 @@ static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Vec dot,Mat A,Mat B,Pe
     ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   }
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(Xdot,&xdot);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
-*/
+
 static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode    ierr;
@@ -148,15 +146,21 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   For this Jacobian we may use the rule that
      G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
   where a = d(xdot)/dx is a constant.
+
+  TODO: Assemble df/dx submatrix as a Mat using SubJacobian, along with a*M matrix. Then use
+               MatAXPY(Mat Y,PetscScalar a,Mat X,MatStructure s)   <==>   Y += a*X,
+        where s is in this case DIFFERENT_NONZERO_PATTERN.
 */
 
-  // a*M part
+  // a*M part TODO: assign these values to A
   J[0][0] = c11*a;
   J[0][1] = c12*a;
   J[1][0] = c21*a;
   J[1][1] = c22*a;
 
-  // df/dx part
+  // TODO: Call SubJacobian to get df/dx
+
+  // df/dx part TODO: do MatAXPY
   J[0][0] += 0.;
   J[0][1] += -1.0;
   J[1][0] += mu*(1.0 + 2.0*x[0]*x[1]);
@@ -177,19 +181,12 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
 static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
 {
   PetscErrorCode    ierr;
-  PetscInt          row[] = {0,1},col[]={0};
-  PetscScalar       J[2][1];
-  const PetscScalar *x;
+  PetscInt          row[] = {0,1},m = 2;
+  PetscInt          col[] = {0,1,2},n = 3;
+  PetscInt          indep_cols[]={2},s = 1;
 
   PetscFunctionBeginUser;
-  ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
-
-  J[0][0] = 0;
-  J[1][0] = (1.-x[0]*x[0])*x[1]-x[0];
-  ierr    = MatSetValues(A,2,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
-
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = SubJacobian(ts,t,X,A,A,m,row,n,col,s,indep_cols,ctx);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
