@@ -74,8 +74,7 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
   const PetscScalar *x;
  
   adouble           f_a[2];   				// adouble for dependent variables
-  adouble           x_a[2];   				// adouble for independent variables
-  adouble           mu_a;				// adouble for mu parameter
+  adouble           x_a[2],mu_a;			// adouble for independent variables
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);      	// Get values for passive indep variables
@@ -108,7 +107,7 @@ static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscIn
   const PetscScalar indep_vars[] = {x[0],x[1],mu};	// Concatenate independent vars
   const PetscScalar *ptr_to_indep = indep_vars;		// TODO: how to do this more generally?
 
-  Jx = myalloc2(m,n);					// Contiguous ADOL-C matrix memory allocation
+  Jx = myalloc2(m,s);					// Contiguous ADOL-C matrix memory allocation
   subjacobian(1,m,n,s,indep_cols,ptr_to_indep,Jx);	// Calculate Jacobian using ADOL-C
   for(i=0; i<m; i++){
     for(j=0; j<s; j++){

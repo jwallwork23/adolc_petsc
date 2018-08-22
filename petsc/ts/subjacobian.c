@@ -2,13 +2,13 @@
 
 /*--------------------------------------------------------------------------*/
 /*                                                                 jacobian */
-/* subjacobian(tag, m, n, s, var_select[s], x[n], J[m][n])                  */
+/* subjacobian(tag, m, n, s, var_select[s], x[n], J[m][s])                  */
 
 int subjacobian(short tag,
                 int depen,
                 int indep,
-                int r_sub,
-                int *var_select,
+                int subs,			// number of independent variables to consider
+                int *subset,			// subset of independent variables
                 const double *argument,
                 double **jacobian) {
     int rc,i,j;
@@ -20,14 +20,14 @@ int subjacobian(short tag,
   Jacobian), we postmultiply by an m x s submatrix thereof, where s<=n. That is, we may compute the
   Jacobian w.r.t. a subset of the independent variables.
 */
-    I = myalloc2(indep,r_sub);
+    I = myalloc2(indep,subs);
     for(i=0; i<indep; i++){
-        for(j=0; j<r_sub; j++){
-            if(i == var_select[j])
+        for(j=0; j<subs; j++){
+            if(i == subset[j])
                 I[i][j] = 1.;
         }
     }
-    rc = fov_forward(tag,depen,indep,indep,argument,I,result,jacobian);
+    rc = fov_forward(tag,depen,indep,subs,argument,I,result,jacobian);
     myfree2(I);
 
 /* 

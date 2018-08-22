@@ -51,6 +51,7 @@ static char help[] = "Performs adjoint sensitivity analysis for the van der Pol 
 #include <petscts.h>
 #include <petsctao.h>
 #include <adolc/adolc.h>		// Include ADOL-C
+#include "subjacobian.c"
 
 typedef struct _n_User *User;
 struct _n_User {
@@ -72,18 +73,65 @@ static PetscErrorCode IFunction(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
+  const PetscScalar mu   = user->mu;
   const PetscScalar *x,*xdot;
   PetscScalar       *f;
+
+  adouble           f_a[2];				// adouble for dependent variables
+  adouble           x_a[2],xdot_a[2],mu_a;		// adouble for independent variables
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecGetArrayRead(Xdot,&xdot);CHKERRQ(ierr);
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);
-  f[0] = xdot[0] - x[1];	// When using ADOL-C, how to enforce that d(xdot)/dx = a?
-  f[1] = c21*(xdot[0]-x[1]) + xdot[1] - user->mu*((1.0-x[0]*x[0])*x[1] - x[0]) ;
+
+  trace_on(1);						// Start of active section
+  x_a[0] <<= x[0]; x_a[1] <<= x[1]; xdot_a[0] <<= xdot[0]; xdot_a[1] <<= xdot[1]; mu_a <<= mu;
+  f_a[0] = xdot_a[0] - x_a[1];
+  f_a[1] = c21*(xdot_a[0]-x_a[1]) + xdot_a[1] - mu_a*((1.0-x_a[0]*x_a[0])*x_a[1] - x_a[0]);
+  f_a[0] >>= f[0]; f_a[1] >>= f[1];			// End of active section
+  trace_off();
+
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(Xdot,&xdot);CHKERRQ(ierr);
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],void *ctx)
+{
+  PetscErrorCode    ierr;
+  User              user = (User)ctx;
+  const PetscScalar mu   = user->mu;
+  PetscInt          i,j;
+  PetscScalar       J[m][s],**Jx;
+  const PetscScalar *x;
+
+  PetscFunctionBeginUser;
+  ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
+
+  const PetscScalar indep_vars[] = {x[0],x[1],xdot[0],xdot[1],mu};  // Concatenate independent vars
+  const PetscScalar *ptr_to_indep = indep_vars;         // TODO: how to do this more generally?
+
+  Jx = myalloc2(m,n);                                   // Contiguous ADOL-C matrix memory allocation
+  subjacobian(1,m,n,s,indep_cols,ptr_to_indep,Jx);      // Calculate Jacobian using ADOL-C
+  for(i=0; i<m; i++){
+    for(j=0; j<s; j++){
+      J[i][j] = Jx[i][j];
+    }
+  }
+  for(i=0; i<s; i++)                                    // Shift column index subset
+    indep_cols[i] = i;
+  ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
+
+  myfree2(Jx);                                          // Free allocated memory
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  if (A != B) {
+    ierr = MatAssemblyBegin(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+    ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  }
+  ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -91,6 +139,7 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
 {
   PetscErrorCode    ierr;
   User              user     = (User)ctx;
+  const PetscScalar mu       = user->mu;
   PetscInt          rowcol[] = {0,1};
   PetscScalar       J[2][2];
   const PetscScalar *x;
@@ -99,7 +148,7 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   ierr    = VecGetArrayRead(X,&x);CHKERRQ(ierr);
 
   J[0][0] = a;     J[0][1] =  -1.0;
-  J[1][0] = c21*a + user->mu*(1.0 + 2.0*x[0]*x[1]);   J[1][1] = -c21 + a - user->mu*(1.0-x[0]*x[0]);
+  J[1][0] = c21*a + mu*(1.0 + 2.0*x[0]*x[1]);   J[1][1] = -c21 + a - mu*(1.0-x[0]*x[0]);
 
   ierr    = MatSetValues(B,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
   ierr    = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
