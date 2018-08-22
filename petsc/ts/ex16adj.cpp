@@ -92,7 +92,7 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],void *ctx)
+static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
@@ -135,7 +135,7 @@ static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
         meaning we become unable to determine their length.
 */
   PetscFunctionBeginUser;
-  ierr = RHSSubJacobian(ts,t,X,A,B,m,row,n,col,s,indep_cols,ctx);CHKERRQ(ierr);
+  ierr = SubJacobian(ts,t,X,A,B,m,row,n,col,s,indep_cols,ctx);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -150,7 +150,7 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
         meaning we become unable to determine their length.
 */
   PetscFunctionBeginUser;
-  ierr = RHSSubJacobian(ts,t,X,A,A,m,row,n,col,s,indep_cols,ctx);CHKERRQ(ierr);
+  ierr = SubJacobian(ts,t,X,A,A,m,row,n,col,s,indep_cols,ctx);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 

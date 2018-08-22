@@ -97,29 +97,30 @@ static PetscErrorCode IFunction(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
-
-static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],void *ctx)
+/*
+static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Vec dot,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
   const PetscScalar mu   = user->mu;
   PetscInt          i,j;
-  PetscScalar       J[m][s],**Jx;
-  const PetscScalar *x;
+  PetscScalar       **J;
+  const PetscScalar *x,*xdot;
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(Xdot,&xdot);CHKERRQ(ierr);
 
   const PetscScalar indep_vars[] = {x[0],x[1],xdot[0],xdot[1],mu};  // Concatenate independent vars
   const PetscScalar *ptr_to_indep = indep_vars;         // TODO: how to do this more generally?
 
-  Jx = myalloc2(m,s);                                   // Contiguous ADOL-C matrix memory allocation
-  subjacobian(1,m,n,s,indep_cols,ptr_to_indep,Jx);      // Calculate Jacobian using ADOL-C
+  J = myalloc2(m,s);                                    // Contiguous ADOL-C matrix memory allocation
+  subjacobian(1,m,n,s,indep_cols,ptr_to_indep,J);       // Calculate Jacobian using ADOL-C
   for(i=0; i<s; i++)
     indep_cols[i] = i;					// Shift column index subset
   ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
 
-  myfree2(Jx);                                          // Free allocated memory
+  myfree2(J);                                           // Free allocated memory
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (A != B) {
@@ -127,9 +128,10 @@ static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m
     ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   }
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(Xdot,&xdot);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
-
+*/
 static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode    ierr;
@@ -142,8 +144,23 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   PetscFunctionBeginUser;
   ierr    = VecGetArrayRead(X,&x);CHKERRQ(ierr);
 
-  J[0][0] = a;     J[0][1] =  -1.0;
-  J[1][0] = c21*a + mu*(1.0 + 2.0*x[0]*x[1]);   J[1][1] = -c21 + a - mu*(1.0-x[0]*x[0]);
+/*
+  For this Jacobian we may use the rule that
+     G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
+  where a = d(xdot)/dx is a constant.
+*/
+
+  // a*M part
+  J[0][0] = c11*a;
+  J[0][1] = c12*a;
+  J[1][0] = c21*a;
+  J[1][1] = c22*a;
+
+  // df/dx part
+  J[0][0] += 0.;
+  J[0][1] += -1.0;
+  J[1][0] += mu*(1.0 + 2.0*x[0]*x[1]);
+  J[1][1] += -c21 - mu*(1.0-x[0]*x[0]);
 
   ierr    = MatSetValues(B,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
   ierr    = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
