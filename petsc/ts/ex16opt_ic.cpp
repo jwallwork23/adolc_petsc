@@ -66,9 +66,7 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode    ierr;
-  PetscInt          row[] = {0,1},col[] = {0,1},i,j;
-  PetscInt          m = sizeof(row)/sizeof(row[0]);     // Number of dependent variables
-  PetscInt          n = sizeof(col)/sizeof(col[0]);     // Number of independent variables
+  PetscInt          row[] = {0,1},m = 2,col[] = {0,1},n = 2,i,j;
   PetscScalar       J[m][n],**Jx,*row0,*row1;		// TODO: how to do this more generally?
   const PetscScalar *x;
 

@@ -98,16 +98,14 @@ static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscIn
   User              user = (User)ctx;
   const PetscReal   mu   = user->mu;
   PetscInt          i,j;
-  PetscScalar       J[m][s];
-  PetscScalar       **Jx;
-  PetscScalar       *row0,*row1;			// TODO: how to do this more generally?
+  PetscScalar       J[m][s],**Jx,*row0,*row1;		// TODO: how to do this more generally?
   const PetscScalar *x;
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
 
   const PetscScalar indep_vars[] = {x[0],x[1],mu};	// Concatenate independent vars
-  const PetscScalar *ptr_to_indep = indep_vars;		// Give a pointer
+  const PetscScalar *ptr_to_indep = indep_vars;		// TODO: how to do this more generally?
 
   ierr = PetscMalloc1(m,&Jx);CHKERRQ(ierr);		// Allocate memory for Jacobian
   ierr = PetscMalloc1(n,&row0);CHKERRQ(ierr);		// TODO: how to do this more generally?
