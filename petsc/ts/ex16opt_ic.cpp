@@ -66,26 +66,29 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode    ierr;
-  User              user = (User)ctx;
-  PetscInt          rowcol[] = {0,1};
-  PetscScalar       J[2][2];
+  PetscInt          row[] = {0,1},col[] = {0,1},i,j;
+  PetscInt          m = sizeof(row)/sizeof(row[0]);     // Number of dependent variables
+  PetscInt          n = sizeof(col)/sizeof(col[0]);     // Number of independent variables
+  PetscScalar       J[m][n],**Jx,*row0,*row1;		// TODO: how to do this more generally?
   const PetscScalar *x;
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
 
-  // ##### Evaluate Jacobian using ADOL-C #####
-  PetscScalar** Jx = (PetscScalar**) malloc(2*sizeof(PetscScalar*));	// TODO: use PetscMalloc1
-  Jx[0] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
-  Jx[1] = (PetscScalar*)malloc(2*sizeof(PetscScalar));
-  jacobian(1,2,2,x,Jx);
-  J[0][0] = Jx[0][0];
-  J[0][1] = Jx[0][1];
-  J[1][0] = Jx[1][0];
-  J[1][1] = Jx[1][1];
-  free(Jx);								// TODO: Use PetscFree
-
-  ierr = MatSetValues(A,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
+  ierr = PetscMalloc1(m,&Jx);CHKERRQ(ierr);             // Allocate memory for Jacobian
+  ierr = PetscMalloc1(n,&row0);CHKERRQ(ierr);           // TODO: how to do this more generally?
+  ierr = PetscMalloc1(n,&row1);CHKERRQ(ierr);           // TODO: ------------"-----------------
+  Jx[0] = row0; Jx[1] = row1;                           // TODO: ------------"-----------------
+  jacobian(1,m,n,x,Jx);
+  for(i=0; i<m; i++){
+    for(j=0; j<n; j++){
+      J[i][j] = Jx[i][j];
+    }
+  }
+  ierr = PetscFree(Jx);CHKERRQ(ierr);
+  ierr = PetscFree(row0);CHKERRQ(ierr);			// TODO: how to do this more generally?
+  ierr = PetscFree(row1);CHKERRQ(ierr);			// TODO: ------------"-----------------
+  ierr = MatSetValues(A,m,row,n,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (A != B) {

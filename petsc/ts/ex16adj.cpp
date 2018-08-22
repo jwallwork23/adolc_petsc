@@ -92,15 +92,12 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt indep_cols[],void *ctx)
+static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
   const PetscReal   mu   = user->mu;
-  PetscInt          row[] = {0,1},col[] = {0,1,2},i,j;
-  PetscInt          m = sizeof(row)/sizeof(row[0]);	// Number of dependent variables
-  PetscInt          n = sizeof(col)/sizeof(col[0]);	// Number of independent variables
-  PetscInt          s = sizeof(indep_cols)/sizeof(indep_cols[0]);
+  PetscInt          i,j;
   PetscScalar       J[m][s];
   PetscScalar       **Jx;
   PetscScalar       *row0,*row1;			// TODO: how to do this more generally?
@@ -109,7 +106,7 @@ static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscIn
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
 
-  const PetscScalar indep_vars[3] = {x[0],x[1],mu};	// Concatenate independent vars
+  const PetscScalar indep_vars[] = {x[0],x[1],mu};	// Concatenate independent vars
   const PetscScalar *ptr_to_indep = indep_vars;		// Give a pointer
 
   ierr = PetscMalloc1(m,&Jx);CHKERRQ(ierr);		// Allocate memory for Jacobian
@@ -142,107 +139,31 @@ static PetscErrorCode RHSSubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscIn
 static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode    ierr;
-  PetscInt          indep_cols[] = {0,1};		// Choose relevant independent variables
-
-  PetscFunctionBeginUser;
-  ierr = RHSSubJacobian(ts,t,X,A,B,indep_cols,ctx);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
+  PetscInt          row[] = {0,1},m = 2;		// Dependent variables
+  PetscInt          col[] = {0,1,2},n = 3;		// Independent variables
+  PetscInt          indep_cols[] = {0,1},s = 2;		// Relevant independent variables
 /*
-  User              user = (User)ctx;
-  const PetscReal   mu   = user->mu;
-  PetscInt          row[] = {0,1},col[] = {0,1,2},i,j;
-  PetscInt          m = sizeof(row)/sizeof(row[0]);	// Number of dependent variables
-  PetscInt          n = sizeof(col)/sizeof(col[0]);	// Number of independent variables
-  PetscInt          s = sizeof(indep_cols)/sizeof(indep_cols[0]);
-  PetscScalar       J[m][s];
-  PetscScalar       **Jx;
-  PetscScalar       *row0,*row1;			// TODO: how to do this more generally?
-  const PetscScalar *x;
-
-  PetscFunctionBeginUser;
-  ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
-
-  const PetscScalar indep_vars[3] = {x[0],x[1],mu};	// Concatenate independent vars
-  const PetscScalar *ptr_to_indep = indep_vars;		// Give a pointer
-
-  ierr = PetscMalloc1(m,&Jx);CHKERRQ(ierr);		// Allocate memory for Jacobian
-  ierr = PetscMalloc1(n,&row0);CHKERRQ(ierr);		// TODO: how to do this more generally?
-  ierr = PetscMalloc1(n,&row1);CHKERRQ(ierr);		// TODO: ------------"-----------------
-  Jx[0] = row0; Jx[1] = row1;				// TODO: ------------"-----------------
-  jacobian(1,m,n,ptr_to_indep,Jx);			// Calculate Jacobian using ADOL-C
-  for(i=0; i<m; i++){
-    for(j=0; j<s; j++){
-      J[i][j] = Jx[i][indep_cols[j]];
-    }
-  }
-  for(i=0; i<s; i++)					// Shift column index subset
-    indep_cols[i] = i;
-  ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
-
-  ierr = PetscFree(Jx);CHKERRQ(ierr);
-  ierr = PetscFree(row0);CHKERRQ(ierr);			// TODO: how to do this more generally?
-  ierr = PetscFree(row1);CHKERRQ(ierr);			// TODO: ------------"-----------------
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  if (A != B) {
-    ierr = MatAssemblyBegin(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-    ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  }
-  ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);  
-  PetscFunctionReturn(0);
+  Note: Array dimensions must be specified, because arrays decay to pointers inside the function,
+        meaning we become unable to determine their length.
 */
+  PetscFunctionBeginUser;
+  ierr = RHSSubJacobian(ts,t,X,A,B,m,row,n,col,s,indep_cols,ctx);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
 }
 
 static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
 {
-
   PetscErrorCode    ierr;
-  PetscInt          indep_cols[] = {2};
+  PetscInt          row[] = {0,1},m = 2;		// Dependent variables
+  PetscInt          col[] = {0,1,2},n = 3;		// Independent variables
+  PetscInt          indep_cols[] = {2},s = 1;		// Relevant independent variables
 /*
-  PetscFunctionBeginUser;				// TODO: why does this version not work?
-  ierr = RHSSubJacobian(ts,t,X,A,A,indep_cols,ctx);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
+  Note: Array dimensions must be specified, because arrays decay to pointers inside the function,
+        meaning we become unable to determine their length.
 */
-
-  User              user = (User)ctx;
-  PetscReal         mu   = user->mu;
-  PetscInt          row[] = {0,1},col[] = {0,1,2},i,j;
-  PetscInt          m = sizeof(row)/sizeof(row[0]);	// Number of dependent variables
-  PetscInt          n = sizeof(col)/sizeof(col[0]);	// Number of independent variables
-  PetscInt          s = sizeof(indep_cols)/sizeof(indep_cols[0]);
-  PetscScalar       J[m][s];
-  PetscScalar       **Jp;
-  PetscScalar       *row0,*row1;
-  const PetscScalar *x;
-
   PetscFunctionBeginUser;
-  ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
-
-  const PetscScalar indep_vars[3] = {x[0],x[1],mu};	// Concatenate independent vars
-  const PetscScalar *ptr_to_indep = indep_vars;		// Give a pointer
-
-  ierr = PetscMalloc1(m,&Jp);CHKERRQ(ierr);		// Allocate memory for Jacobian
-  ierr = PetscMalloc1(n,&row0);CHKERRQ(ierr);
-  ierr = PetscMalloc1(n,&row1);CHKERRQ(ierr);
-  Jp[0] = row0; Jp[1] = row1;
-  jacobian(1,m,n,ptr_to_indep,Jp);			// Calculate Jacobian using ADOL-C
-  for(i=0; i<m; i++){
-    for(j=0; j<s; j++){
-      J[i][j] = Jp[i][indep_cols[j]];
-    }
-  }
-  for(i=0; i<s; i++)					// Shift column index subset
-    indep_cols[i] = i;
-  ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
-
-  ierr = PetscFree(Jp);CHKERRQ(ierr);			// Free allocated memory
-  ierr = PetscFree(row0);CHKERRQ(ierr);
-  ierr = PetscFree(row1);CHKERRQ(ierr);
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
+  ierr = RHSSubJacobian(ts,t,X,A,A,m,row,n,col,s,indep_cols,ctx);CHKERRQ(ierr);
   PetscFunctionReturn(0);
-
 }
 
 /* Monitor timesteps and use interpolation to output at integer multiples of 0.1 */
