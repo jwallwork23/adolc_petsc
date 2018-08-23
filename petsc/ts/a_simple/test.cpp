@@ -11,7 +11,7 @@ void RHSFunction(double f[2],const double x[3])
   f_a[0] = x_a[1];
   f_a[1] = x_a[2]*(1.-x_a[0]*x_a[0])*x_a[1]-x_a[0];
   f_a[0] >>= f[0]; f_a[1] >>= f[1];
-  trace_off(1);
+  trace_off();
 
 }
 
