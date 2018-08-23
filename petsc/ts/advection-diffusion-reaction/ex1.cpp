@@ -140,21 +140,13 @@ PetscErrorCode IJacobian(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat 
 
   PetscFunctionBegin;
   ierr    = VecGetArrayRead(U,&u);CHKERRQ(ierr);
-  //ierr    = VecGetArrayRead(Udot,&udot);CHKERRQ(ierr);
 
-  J = myalloc2(3,3);
-  jacobian(1,3,3,u,J); // Implicit part
-/*
-  J[0][0] = a + ctx->k*u[1];   J[0][1] = ctx->k*u[0];       J[0][2] = 0.0;
-  J[1][0] = ctx->k*u[1];       J[1][1] = a + ctx->k*u[0];   J[1][2] = 0.0;
-  J[2][0] = -ctx->k*u[1];      J[2][1] = -ctx->k*u[0];      J[2][2] = a;
-*/
+  J = myalloc2(3,3);	// Contiguous ADOL-C matrix memory allocation
+  jacobian(1,3,3,u,J);	// Implicit part
   ierr    = MatSetValues(B,3,rowcol,3,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
   myfree2(J);
 
   ierr    = VecRestoreArrayRead(U,&u);CHKERRQ(ierr);
-  //ierr    = VecRestoreArrayRead(Udot,&udot);CHKERRQ(ierr);
-
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (A != B) {
@@ -170,9 +162,10 @@ PetscErrorCode IJacobian(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat 
   ierr = MatSetSizes(M,PETSC_DECIDE,PETSC_DECIDE,3,3);CHKERRQ(ierr);
   ierr = MatSetFromOptions(M);CHKERRQ(ierr);
   ierr = MatSetUp(M);CHKERRQ(ierr);
-  C = myallocI2(3);	// Contiguous ADOL-C allocation for identity matrix
+  C = myalloc2(3,3);	// Contiguous ADOL-C allocation for identity matrix
+  C[0][0] = 1.;C[1][1] = 1.;C[2][2] = 1.;
   ierr = MatSetValues(M,3,rowcol,3,rowcol,&C[0][0],INSERT_VALUES);CHKERRQ(ierr);
-  myfreeI2(3,C);	// Free allocated memory
+  myfree2(C);		// Free allocated memory
   ierr = MatAssemblyBegin(M,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(M,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAXPY(B,a,M,DIFFERENT_NONZERO_PATTERN);
