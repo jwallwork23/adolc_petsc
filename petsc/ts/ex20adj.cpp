@@ -98,7 +98,7 @@ static PetscErrorCode IFunction(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],void *ctx)
+static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],PetscBool rhs,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
@@ -117,9 +117,13 @@ static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m
   subjacobian(1,m,n,s,indep_cols,ptr_to_indep,J);       // Calculate Jacobian using ADOL-C
   for(i=0; i<s; i++)
     indep_cols[i] = i;					// Shift column index subset
-  ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
-
+  if (rhs == PETSC_TRUE){
+    ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
+  } else {
+    ierr = MatSetValues(B,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
+  }
   myfree2(J);                                           // Free allocated memory
+
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (A != B) {
@@ -133,48 +137,30 @@ static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m
 static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode    ierr;
-  User              user     = (User)ctx;
-  const PetscScalar mu       = user->mu;
-  PetscInt          rowcol[] = {0,1};
-  PetscScalar       J[2][2];
-  const PetscScalar *x;
+  PetscInt          row[]        = {0,1},m = 2;		// Dependent variables
+  PetscInt          col[]        = {0,1,2},n = 3;	// Independent variables
+  PetscInt          indep_cols[] = {0,1},s = 2;		// Relevant independent variables
+  PetscScalar       C[2][2];
+  Mat               M;					// Mass matrix
 
   PetscFunctionBeginUser;
-  ierr    = VecGetArrayRead(X,&x);CHKERRQ(ierr);
-
+  ierr = SubJacobian(ts,t,X,A,B,m,row,n,col,s,indep_cols,PETSC_FALSE,ctx);CHKERRQ(ierr);
 /*
   For this Jacobian we may use the rule that
      G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
   where a = d(xdot)/dx is a constant.
-
-  TODO: Assemble df/dx submatrix as a Mat using SubJacobian, along with a*M matrix. Then use
-               MatAXPY(Mat Y,PetscScalar a,Mat X,MatStructure s)   <==>   Y += a*X,
-        where s is in this case DIFFERENT_NONZERO_PATTERN.
 */
+  ierr = MatCreate(PETSC_COMM_WORLD,&M);CHKERRQ(ierr);
+  ierr = MatSetSizes(M,PETSC_DECIDE,PETSC_DECIDE,2,2);CHKERRQ(ierr);
+  ierr = MatSetFromOptions(M);CHKERRQ(ierr);
+  ierr = MatSetUp(M);CHKERRQ(ierr);
+  C[0][0] = c11;C[0][1] = c12;C[1][0] = c21;C[1][1] = c22;
+  ierr = MatSetValues(M,m,row,s,indep_cols,&C[0][0],INSERT_VALUES);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(M,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(M,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAXPY(A,a,M,DIFFERENT_NONZERO_PATTERN);
+  ierr = MatDestroy(&M);
 
-  // a*M part TODO: assign these values to A
-  J[0][0] = c11*a;
-  J[0][1] = c12*a;
-  J[1][0] = c21*a;
-  J[1][1] = c22*a;
-
-  // TODO: Call SubJacobian to get df/dx
-
-  // df/dx part TODO: do MatAXPY
-  J[0][0] += 0.;
-  J[0][1] += -1.0;
-  J[1][0] += mu*(1.0 + 2.0*x[0]*x[1]);
-  J[1][1] += -c21 - mu*(1.0-x[0]*x[0]);
-
-  ierr    = MatSetValues(B,2,rowcol,2,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
-  ierr    = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
-
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  if (A != B) {
-    ierr = MatAssemblyBegin(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-    ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  }
   PetscFunctionReturn(0);
 }
 
@@ -186,7 +172,7 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
   PetscInt          indep_cols[]={2},s = 1;
 
   PetscFunctionBeginUser;
-  ierr = SubJacobian(ts,t,X,A,A,m,row,n,col,s,indep_cols,ctx);CHKERRQ(ierr);
+  ierr = SubJacobian(ts,t,X,A,A,m,row,n,col,s,indep_cols,PETSC_TRUE,ctx);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 

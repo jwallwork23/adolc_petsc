@@ -92,7 +92,7 @@ static PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],void *ctx)
+static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],PetscBool rhs,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
@@ -111,9 +111,13 @@ static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m
   subjacobian(1,m,n,s,indep_cols,ptr_to_indep,J);	// Calculate Jacobian using ADOL-C
   for(i=0; i<s; i++)
     indep_cols[i] = i;					// Shift column index subset
-  ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
-
+  if (rhs == PETSC_TRUE) {
+    ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
+  } else {
+    ierr = MatSetValues(B,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
+  }
   myfree2(J);						// Free allocated memory
+
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (A != B) {
@@ -127,30 +131,30 @@ static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m
 static PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode    ierr;
-  PetscInt          row[] = {0,1},m = 2;		// Dependent variables
-  PetscInt          col[] = {0,1,2},n = 3;		// Independent variables
+  PetscInt          row[]        = {0,1},m = 2;		// Dependent variables
+  PetscInt          col[]        = {0,1,2},n = 3;	// Independent variables
   PetscInt          indep_cols[] = {0,1},s = 2;		// Relevant independent variables
 /*
   Note: Array dimensions must be specified, because arrays decay to pointers inside the function,
         meaning we become unable to determine their length.
 */
   PetscFunctionBeginUser;
-  ierr = SubJacobian(ts,t,X,A,B,m,row,n,col,s,indep_cols,ctx);CHKERRQ(ierr);
+  ierr = SubJacobian(ts,t,X,A,B,m,row,n,col,s,indep_cols,PETSC_TRUE,ctx);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
 static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
 {
   PetscErrorCode    ierr;
-  PetscInt          row[] = {0,1},m = 2;		// Dependent variables
-  PetscInt          col[] = {0,1,2},n = 3;		// Independent variables
+  PetscInt          row[]        = {0,1},m = 2;		// Dependent variables
+  PetscInt          col[]        = {0,1,2},n = 3;	// Independent variables
   PetscInt          indep_cols[] = {2},s = 1;		// Relevant independent variables
 /*
   Note: Array dimensions must be specified, because arrays decay to pointers inside the function,
         meaning we become unable to determine their length.
 */
   PetscFunctionBeginUser;
-  ierr = SubJacobian(ts,t,X,A,A,m,row,n,col,s,indep_cols,ctx);CHKERRQ(ierr);
+  ierr = SubJacobian(ts,t,X,A,A,m,row,n,col,s,indep_cols,PETSC_TRUE,ctx);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
