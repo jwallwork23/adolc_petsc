@@ -156,10 +156,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   Field          **u,**f;
   Vec            localU;
 
-  aField         **u_a;				// Independent variables
-  aField         **f_a;				// Dependent variables
-  adouble        uc,uxx,uyy,vc,vxx,vyy;		// Intermediaries
-
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
@@ -188,14 +184,21 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
-  /*
-     Compute function over the locally owned part of the grid
-  */
-  trace_on(1);
+  aField         u_a[xs+xm][ys+ym];		// Independent variables
+  aField         f_a[xs+xm][ys+ym];		// Dependent variables
+  adouble        uc,uxx,uyy,vc,vxx,vyy;		// Intermediaries
+
+  trace_on(1);	// --------------------------------------------- Start of active section
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
       u_a[j][i].u <<= u[j][i].u; u_a[j][i].v <<= u[j][i].v;	// Declare independence
+    }
+  }
+  
+  // Compute function over the locally owned part of the grid
 
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
       uc          = u_a[j][i].u;
       uxx         = (-2.0*uc + u_a[j][i-1].u + u_a[j][i+1].u)*sx;
       uyy         = (-2.0*uc + u_a[j-1][i].u + u_a[j+1][i].u)*sy;
@@ -204,11 +207,14 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
       vyy         = (-2.0*vc + u_a[j-1][i].v + u_a[j+1][i].v)*sy;
       f_a[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
       f_a[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
-
-      f_a[j][i].u >>= f[j][i].u; f_a[j][i].v >>= f[j][i].v;
     }
   }
-  trace_off();
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      f_a[j][i].u >>= f[j][i].u; f_a[j][i].v >>= f[j][i].v;	// Declare dependence
+    }
+  }
+  trace_off();	// ----------------------------------------------- End of active section
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
 
   /*
