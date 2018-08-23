@@ -3,10 +3,14 @@ CFLAGS		= ${ADOLC_HOME}/build/include
 FFLAGS		=
 CPPFLAGS	=
 FPPFLAGS	=
-CLEANFILES	= ex5 ex5adj *.tap
+CLEANFILES	= ex1 ex5 ex5adj binaryoutput *.tap *.info
 
 include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules
+
+ex1: ex1.o
+	g++ -std=c++11 -o $@ $^ ${PETSC_TS_LIB} -L${ADOLC_HOME}/build -ladolc
+	${RM} $^
 
 ex5: ex5.o
 	g++ -std=c++11 -o $@ $^ ${PETSC_TS_LIB} -L${ADOLC_HOME}/build -ladolc

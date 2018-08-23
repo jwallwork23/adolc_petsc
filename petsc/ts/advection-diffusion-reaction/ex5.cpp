@@ -156,8 +156,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   Field          **u,**f;
   Vec            localU;
 
-  aField         u_a[xm-xs][ym-ys];		// Independent variables
-  aField         f_a[xm-xs][ym-ys];		// Dependent variables
+  aField         **u_a;				// Independent variables
+  aField         **f_a;				// Dependent variables
   adouble        uc,uxx,uyy,vc,vxx,vyy;		// Intermediaries
 
   PetscFunctionBegin;
