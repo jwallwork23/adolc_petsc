@@ -39,7 +39,7 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>	// Include ADOL-C
-#include "modulo.c"		// For modular arithmetic
+#include "utils.c"		// For modular arithmetic and coordinate mappings
 
 typedef struct {
   PetscScalar u,v;
@@ -194,14 +194,20 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
     for (i=xs; i<xs+xm; i++) {
       u_a[j][i].u <<= u[j][i].u; u_a[j][i].v <<= u[j][i].v;	// Declare independence
     }
-    //printf("u_{%d,%d} = [%.4f, %.4f]\n",i,j,u_a[j+1][i].u.value(),u_a[j+1][i].v.value());
   }
   
   // Compute function over the locally owned part of the grid
 
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
-
+/*
+  FIXME: Perhaps we shouldn't let ADOL-C know about the layout of the struct data.
+         We need a mapping from struct coordinates
+               { u[0][0].u   ...  u[0][64].u }     { u[0][0].v   ...  u[0][64].v }
+               { u[64][0].u  ...  u[64][64].u}     { u[64][0].v  ...  u[64][64].v}
+         to Vec coordinates
+                           { u[0] v[0] u[1] v[1] ... u[65*65-1] v[65*65-1]}
+*/
       uc          = u_a[j][i].u;
       uxx         = (-2.0*uc + u_a[j][modulo(i-1,64)].u + u_a[j][modulo(i+1,64)].u)*sx;
       uyy         = (-2.0*uc + u_a[modulo(j-1,64)][i].u + u_a[modulo(j+1,64)][i].u)*sy;
@@ -287,6 +293,10 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   Vec            localU;
   MatStencil     stencil[6],rowstencil;
   PetscScalar    entries[6];
+
+  /*
+    In applying ADOL-C to this setup... TODO
+  */
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
