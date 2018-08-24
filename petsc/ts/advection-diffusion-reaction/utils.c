@@ -18,3 +18,13 @@ int coord_map(int i,int j,int dof,int n,int dofs){
 
   return k;
 }
+
+/*
+  Do coordinate mapping with modular arithmetic
+*/
+int m_map(int i,int j,int dof,int n,int dofs){
+
+  int k = coord_map(modulo(i,n),modulo(j,n),dof,n,dofs);
+
+  return k;
+}

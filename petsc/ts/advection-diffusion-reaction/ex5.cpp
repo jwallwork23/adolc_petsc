@@ -45,11 +45,6 @@ typedef struct {
   PetscScalar u,v;
 } Field;
 
-// Define corresponding active struct to Field
-typedef struct {
-  adouble u,v;
-} aField;
-
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
 } AppCtx;
@@ -153,7 +148,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   PetscErrorCode ierr;
   PetscInt       i,j,Mx,My,xs,ys,xm,ym;
   PetscReal      hx,hy,sx,sy;
-  //PetscScalar    uc,uxx,uyy,vc,vxx,vyy;
   Field          **u,**f;
   Vec            localU;
 
@@ -185,12 +179,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
-//  aField   u_a[ys+ym][xs+xm];		// Independent variables
-//  aField   f_a[ys+ym][xs+xm];		// Dependent variables
-  adouble  uc,uxx,uyy,vc,vxx,vyy;		// Intermediaries
-
-  adouble  u_a[2*(xs+xm)*(ys+ym)];
-  adouble  f_a[2*(xs+xm)*(ys+ym)];
+  adouble  u_a[2*(xs+xm)*(ys+ym)];	// dependent variables, as a 1-array
+  adouble  f_a[2*(xs+xm)*(ys+ym)];	// independent variables, as a 1-array
+  adouble  uc,uxx,uyy,vc,vxx,vyy;	// Intermediaries
 
   int      N = 65;			// Total extent in j-direction
   int      D = 2;			// Degrees of freedom at each point
@@ -198,7 +189,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   trace_on(1);	// --------------------------------------------- Start of active section
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
-//      u_a[j][i].u <<= u[j][i].u; u_a[j][i].v <<= u[j][i].v;	// Declare independence
       u_a[coord_map(i,j,0,N,D)] <<= u[j][i].u;
       u_a[coord_map(i,j,1,N,D)] <<= u[j][i].v;
     }
@@ -208,20 +198,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
-/*
-      uc          = u_a[j][i].u;
-      uxx         = (-2.0*uc + u_a[j][modulo(i-1,65)].u + u_a[j][modulo(i+1,65)].u)*sx;
-      uyy         = (-2.0*uc + u_a[modulo(j-1,65)][i].u + u_a[modulo(j+1,65)][i].u)*sy;
-      vc          = u_a[j][i].v;
-      vxx         = (-2.0*vc + u_a[j][modulo(i-1,65)].v + u_a[j][modulo(i+1,65)].v)*sx;
-      vyy         = (-2.0*vc + u_a[modulo(j-1,65)][i].v + u_a[modulo(j+1,65)][i].v)*sy;
-*/
+
       uc          = u_a[coord_map(i,j,0,N,D)];
-      uxx         = (-2.0*uc + u_a[coord_map(modulo(i-1,N),j,0,N,D)] + u_a[coord_map(modulo(i+1,N),j,0,N,D)])*sx;
-      uyy         = (-2.0*uc + u_a[coord_map(i,modulo(j-1,N),0,N,D)] + u_a[coord_map(i,modulo(j+1,N),0,N,D)])*sy;
+      uxx         = (-2.0*uc + u_a[m_map(i-1,j,0,N,D)] + u_a[m_map(i+1,j,0,N,D)])*sx;
+      uyy         = (-2.0*uc + u_a[m_map(i,j-1,0,N,D)] + u_a[m_map(i,j+1,0,N,D)])*sy;
       vc          = u_a[coord_map(i,j,1,N,D)];
-      vxx         = (-2.0*vc + u_a[coord_map(modulo(i-1,N),j,1,N,D)] + u_a[coord_map(modulo(i+1,N),j,1,N,D)])*sx;
-      vyy         = (-2.0*vc + u_a[coord_map(i,modulo(j-1,N),1,N,D)] + u_a[coord_map(i,modulo(j+1,N),1,N,D)])*sy;
+      vxx         = (-2.0*vc + u_a[m_map(i-1,j,1,N,D)] + u_a[m_map(i+1,j,1,N,D)])*sx;
+      vyy         = (-2.0*vc + u_a[m_map(i,j-1,1,N,D)] + u_a[m_map(i,j+1,1,N,D)])*sy;
 
       f_a[coord_map(i,j,0,N,D)] = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
       f_a[coord_map(i,j,1,N,D)] = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
