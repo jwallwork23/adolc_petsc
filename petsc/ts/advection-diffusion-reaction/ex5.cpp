@@ -15,6 +15,7 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
       Helpful runtime monitor options:
            -ts_monitor_draw_solution
            -draw_save -draw_save_movie
+           -da_grid_x 15 -da_grid_y 15
 
       Helpful runtime linear solver options:
            -pc_type mg -pc_mg_galerkin pmat -da_refine 1 -snes_monitor -ksp_monitor -ts_view  (note that these Jacobians are so well-conditioned multigrid may not be the best solver)
@@ -76,7 +77,7 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = DMDACreate2d(PETSC_COMM_WORLD,DM_BOUNDARY_PERIODIC,DM_BOUNDARY_PERIODIC,DMDA_STENCIL_STAR,15,15,PETSC_DECIDE,PETSC_DECIDE,2,1,NULL,NULL,&da);CHKERRQ(ierr);
+  ierr = DMDACreate2d(PETSC_COMM_WORLD,DM_BOUNDARY_PERIODIC,DM_BOUNDARY_PERIODIC,DMDA_STENCIL_STAR,65,65,PETSC_DECIDE,PETSC_DECIDE,2,1,NULL,NULL,&da);CHKERRQ(ierr);
   ierr = DMSetFromOptions(da);CHKERRQ(ierr);
   ierr = DMSetUp(da);CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,0,"u");CHKERRQ(ierr);
@@ -316,7 +317,6 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   */
   PetscInt     N = 2*(xs+xm)*(ys+ym);	// Total degrees of freedom on this process
   PetscScalar  uu[N];			// Independent variables
-  PetscInt     rowcol[N];
 
   // FIXME: this is vastly inefficient given that matrix is sparse
   for (j=ys; j<ys+ym; j++) {
@@ -325,10 +325,7 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
       uu[coord_map(i,j,1,My,dofs)] = u[j][i].v;
     }
   }
-  // FIXME: this probably won't work in parallel
-  for (i=0; i<N; i++)
-    rowcol[i] = i;
-
+/*
 // ------------------------------------------------------------------------------------------------
 
   stencil[0].k = 0;
@@ -384,16 +381,28 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     }
   }
 // ------------------------------------------------------------------------------------------------
-
+*/
 
   // FIXME: this probably won't work in parallel
-  // TODO:  use sparse jacobian
   PetscScalar  **J;
+  PetscInt     row[1],col[1],nnz=0;
 
   J = myalloc2(N,N);
-  jacobian(1,N,N,uu,J);
-  ierr = MatSetValues(A,N,rowcol,N,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
+  jacobian(1,N,N,uu,J); // TODO:  use sparse jacobian
+  // TODO: Can generate sparsity pattern using `jac_pat`
+
+  // Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil
+  for(i=0;i<N;i++){
+    for(j=0;j<N;j++){
+      if(fabs(J[i][j])!=0.){
+        nnz++;
+        row[0] = i; col[0] = j;
+        ierr = MatSetValues(A,1,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
+      }
+    }
+  }
   myfree2(J);
+  printf("nnz = %d / %d\n",nnz,N*N);
 
   /*
      Restore vectors
