@@ -39,6 +39,7 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>	// Include ADOL-C
+#include "modulo.c"		// For modular arithmetic
 
 typedef struct {
   PetscScalar u,v;
@@ -184,8 +185,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
-  aField         u_a[xs+xm][ys+ym];		// Independent variables
-  aField         f_a[xs+xm][ys+ym];		// Dependent variables
+  aField         u_a[ys+ym][xs+xm];		// Independent variables
+  aField         f_a[ys+ym][xs+xm];		// Dependent variables
   adouble        uc,uxx,uyy,vc,vxx,vyy;		// Intermediaries
 
   trace_on(1);	// --------------------------------------------- Start of active section
@@ -193,18 +194,21 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
     for (i=xs; i<xs+xm; i++) {
       u_a[j][i].u <<= u[j][i].u; u_a[j][i].v <<= u[j][i].v;	// Declare independence
     }
+    //printf("u_{%d,%d} = [%.4f, %.4f]\n",i,j,u_a[j+1][i].u.value(),u_a[j+1][i].v.value());
   }
   
   // Compute function over the locally owned part of the grid
 
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
+
       uc          = u_a[j][i].u;
-      uxx         = (-2.0*uc + u_a[j][i-1].u + u_a[j][i+1].u)*sx;
-      uyy         = (-2.0*uc + u_a[j-1][i].u + u_a[j+1][i].u)*sy;
+      uxx         = (-2.0*uc + u_a[j][modulo(i-1,64)].u + u_a[j][modulo(i+1,64)].u)*sx;
+      uyy         = (-2.0*uc + u_a[modulo(j-1,64)][i].u + u_a[modulo(j+1,64)][i].u)*sy;
       vc          = u_a[j][i].v;
-      vxx         = (-2.0*vc + u_a[j][i-1].v + u_a[j][i+1].v)*sx;
-      vyy         = (-2.0*vc + u_a[j-1][i].v + u_a[j+1][i].v)*sy;
+      vxx         = (-2.0*vc + u_a[j][modulo(i-1,64)].v + u_a[j][modulo(i+1,64)].v)*sx;
+      vyy         = (-2.0*vc + u_a[modulo(j-1,64)][i].v + u_a[modulo(j+1,64)][i].v)*sy;
+
       f_a[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
       f_a[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
     }
