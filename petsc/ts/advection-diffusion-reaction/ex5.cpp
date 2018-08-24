@@ -185,14 +185,22 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
-  aField         u_a[ys+ym][xs+xm];		// Independent variables
-  aField         f_a[ys+ym][xs+xm];		// Dependent variables
-  adouble        uc,uxx,uyy,vc,vxx,vyy;		// Intermediaries
+//  aField   u_a[ys+ym][xs+xm];		// Independent variables
+//  aField   f_a[ys+ym][xs+xm];		// Dependent variables
+  adouble  uc,uxx,uyy,vc,vxx,vyy;		// Intermediaries
+
+  adouble  u_a[2*(xs+xm)*(ys+ym)];
+  adouble  f_a[2*(xs+xm)*(ys+ym)];
+
+  int      N = 65;			// Total extent in j-direction
+  int      D = 2;			// Degrees of freedom at each point
 
   trace_on(1);	// --------------------------------------------- Start of active section
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
-      u_a[j][i].u <<= u[j][i].u; u_a[j][i].v <<= u[j][i].v;	// Declare independence
+//      u_a[j][i].u <<= u[j][i].u; u_a[j][i].v <<= u[j][i].v;	// Declare independence
+      u_a[coord_map(i,j,0,N,D)] <<= u[j][i].u;
+      u_a[coord_map(i,j,1,N,D)] <<= u[j][i].v;
     }
   }
   
@@ -201,27 +209,29 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
 /*
-  FIXME: Perhaps we shouldn't let ADOL-C know about the layout of the struct data.
-         We need a mapping from struct coordinates
-               { u[0][0].u   ...  u[0][64].u }     { u[0][0].v   ...  u[0][64].v }
-               { u[64][0].u  ...  u[64][64].u}     { u[64][0].v  ...  u[64][64].v}
-         to Vec coordinates
-                           { u[0] v[0] u[1] v[1] ... u[65*65-1] v[65*65-1]}
-*/
       uc          = u_a[j][i].u;
-      uxx         = (-2.0*uc + u_a[j][modulo(i-1,64)].u + u_a[j][modulo(i+1,64)].u)*sx;
-      uyy         = (-2.0*uc + u_a[modulo(j-1,64)][i].u + u_a[modulo(j+1,64)][i].u)*sy;
+      uxx         = (-2.0*uc + u_a[j][modulo(i-1,65)].u + u_a[j][modulo(i+1,65)].u)*sx;
+      uyy         = (-2.0*uc + u_a[modulo(j-1,65)][i].u + u_a[modulo(j+1,65)][i].u)*sy;
       vc          = u_a[j][i].v;
-      vxx         = (-2.0*vc + u_a[j][modulo(i-1,64)].v + u_a[j][modulo(i+1,64)].v)*sx;
-      vyy         = (-2.0*vc + u_a[modulo(j-1,64)][i].v + u_a[modulo(j+1,64)][i].v)*sy;
+      vxx         = (-2.0*vc + u_a[j][modulo(i-1,65)].v + u_a[j][modulo(i+1,65)].v)*sx;
+      vyy         = (-2.0*vc + u_a[modulo(j-1,65)][i].v + u_a[modulo(j+1,65)][i].v)*sy;
+*/
+      uc          = u_a[coord_map(i,j,0,N,D)];
+      uxx         = (-2.0*uc + u_a[coord_map(modulo(i-1,N),j,0,N,D)] + u_a[coord_map(modulo(i+1,N),j,0,N,D)])*sx;
+      uyy         = (-2.0*uc + u_a[coord_map(i,modulo(j-1,N),0,N,D)] + u_a[coord_map(i,modulo(j+1,N),0,N,D)])*sy;
+      vc          = u_a[coord_map(i,j,1,N,D)];
+      vxx         = (-2.0*vc + u_a[coord_map(modulo(i-1,N),j,1,N,D)] + u_a[coord_map(modulo(i+1,N),j,1,N,D)])*sx;
+      vyy         = (-2.0*vc + u_a[coord_map(i,modulo(j-1,N),1,N,D)] + u_a[coord_map(i,modulo(j+1,N),1,N,D)])*sy;
 
-      f_a[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
-      f_a[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
+      f_a[coord_map(i,j,0,N,D)] = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
+      f_a[coord_map(i,j,1,N,D)] = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
     }
   }
+  // Declare dependence
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
-      f_a[j][i].u >>= f[j][i].u; f_a[j][i].v >>= f[j][i].v;	// Declare dependence
+      f_a[coord_map(i,j,0,N,D)] >>= f[j][i].u;
+      f_a[coord_map(i,j,1,N,D)] >>= f[j][i].v;
     }
   }
   trace_off();	// ----------------------------------------------- End of active section
