@@ -47,6 +47,10 @@ typedef struct {
 } Field;
 
 typedef struct {
+  adouble u,v;
+} aField;
+
+typedef struct {
   PetscReal D1,D2,gamma,kappa;
 } AppCtx;
 
@@ -180,42 +184,42 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
-  adouble  u_a[2*(xs+xm)*(ys+ym)];	// Independent variables, as a 1-array
-  adouble  f_a[2*(xs+xm)*(ys+ym)];	// Dependent variables, as a 1-array
+  aField  u_a[ys+ym][xs+xm];	// Independent variables, as an array of structs
+  aField  f_a[ys+ym][xs+xm];	// Dependent variables, as an array of structs
   adouble  uc,uxx,uyy,vc,vxx,vyy;	// Intermediaries
 
   trace_on(1);	// --------------------------------------------- Start of active section
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
-      u_a[coord_map(i,j,0,My,dofs)] <<= u[j][i].u;
-      u_a[coord_map(i,j,1,My,dofs)] <<= u[j][i].v;
+      u_a[j][i].u <<= u[j][i].u;
+      u_a[j][i].v <<= u[j][i].v;
     }
   }
   
   // Compute function over the locally owned part of the grid
-
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
-
-      uc          = u_a[coord_map(i,j,0,My,dofs)];
-      uxx         = (-2.0*uc + u_a[m_map(i-1,j,0,My,dofs)] + u_a[m_map(i+1,j,0,My,dofs)])*sx;
-      uyy         = (-2.0*uc + u_a[m_map(i,j-1,0,My,dofs)] + u_a[m_map(i,j+1,0,My,dofs)])*sy;
-      vc          = u_a[coord_map(i,j,1,My,dofs)];
-      vxx         = (-2.0*vc + u_a[m_map(i-1,j,1,My,dofs)] + u_a[m_map(i+1,j,1,My,dofs)])*sx;
-      vyy         = (-2.0*vc + u_a[m_map(i,j-1,1,My,dofs)] + u_a[m_map(i,j+1,1,My,dofs)])*sy;
-
-      f_a[coord_map(i,j,0,My,dofs)] = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
-      f_a[coord_map(i,j,1,My,dofs)] = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
+      uc        = u_a[j][i].u;
+      uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
+      uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
+      vc        = u_a[j][i].v;
+      vxx       = (-2.0*vc + u[j][i-1].v + u[j][i+1].v)*sx;
+      vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*sy;
+      f_a[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
+      f_a[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
     }
   }
+
   // Declare dependence		TODO: in parallel case, may need to do some fiddling here
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
-      f_a[coord_map(i,j,0,My,dofs)] >>= f[j][i].u;
-      f_a[coord_map(i,j,1,My,dofs)] >>= f[j][i].v;
+      f_a[j][i].u >>= f[j][i].u;
+      f_a[j][i].v >>= f[j][i].v;
     }
   }
-  trace_off();	// ----------------------------------------------- End of active section
+  trace_off();
+
+
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
 
   /*
