@@ -1,9 +1,13 @@
 #include "ex5.h"
 
-void rhs(double *f,const double *x,int xs,int xm,int ys,int ym,void *ptr){
+void RHSLocal(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal hx,PetscReal hy,void *ptr){
 
   AppCtx   *appctx = (AppCtx*)ptr;
-  int      i,j;
+  int      i,j,sx,sy;
+  double   uc,uxx,uyy,vc,vxx,vyy;
+
+  sx = 1.0/(hx*hx);
+  sy = 1.0/(hy*hy);
 
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
