@@ -313,11 +313,11 @@ PetscErrorCode RHSFunctionAlt(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 
       // Compute function over the locally owned part of the grid
       uc          = u_a[coord_map(i,j,0,My,dofs)];
-      uxx         = (-2.0*uc + u_a[m_map(i-1,j,0,My,dofs)] + u_a[m_map(i+1,j,0,My,dofs)])*sx;
-      uyy         = (-2.0*uc + u_a[m_map(i,j-1,0,My,dofs)] + u_a[m_map(i,j+1,0,My,dofs)])*sy;
+      uxx         = (-2.0*uc + u_a[m_map(i-1,j,0,Mx,My,dofs)] + u_a[m_map(i+1,j,0,Mx,My,dofs)])*sx;
+      uyy         = (-2.0*uc + u_a[m_map(i,j-1,0,Mx,My,dofs)] + u_a[m_map(i,j+1,0,Mx,My,dofs)])*sy;
       vc          = u_a[coord_map(i,j,1,My,dofs)];
-      vxx         = (-2.0*vc + u_a[m_map(i-1,j,1,My,dofs)] + u_a[m_map(i+1,j,1,My,dofs)])*sx;
-      vyy         = (-2.0*vc + u_a[m_map(i,j-1,1,My,dofs)] + u_a[m_map(i,j+1,1,My,dofs)])*sy;
+      vxx         = (-2.0*vc + u_a[m_map(i-1,j,1,Mx,My,dofs)] + u_a[m_map(i+1,j,1,Mx,My,dofs)])*sx;
+      vyy         = (-2.0*vc + u_a[m_map(i,j-1,1,Mx,My,dofs)] + u_a[m_map(i,j+1,1,Mx,My,dofs)])*sy;
       f_a[coord_map(i,j,0,My,dofs)] = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
       f_a[coord_map(i,j,1,My,dofs)] = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
 
