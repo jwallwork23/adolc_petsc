@@ -384,25 +384,35 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 */
 
   // FIXME: this probably won't work in parallel
-  PetscScalar  **J;
-  PetscInt     row[1],col[1],nnz=0;
+  PetscScalar        **J;
+  PetscInt           row[1],col[1];
 
   J = myalloc2(N,N);
   jacobian(1,N,N,uu,J); // TODO:  use sparse jacobian
   // TODO: Can generate sparsity pattern using `jac_pat`
 
   // Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil
-  for(i=0;i<N;i++){
-    for(j=0;j<N;j++){
-      if(fabs(J[i][j])!=0.){
-        nnz++;
-        row[0] = i; col[0] = j;
+  //printf("J_{adolc} =\n");
+  for(j=0;j<N;j++){
+    //printf("[");
+    for(i=0;i<N;i++){
+      if(fabs(J[j][i])!=0.){
+        //printf("%.4e, ",J[j][i]);
+        row[0] = j; col[0] = i;
         ierr = MatSetValues(A,1,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
       }
     }
+    //printf("]\n");
   }
+  //printf("\n");
+
+  // Check how many nonzeros are added this iteration
+  PetscObjectState   nnz;
+  ierr = MatGetNonzeroState(A,&nnz);CHKERRQ(ierr);
+  printf("Nonzeros = %.d\n",nnz);
+
   myfree2(J);
-  printf("nnz = %d / %d\n",nnz,N*N);
+  //printf("nnz = %d / %d\n",nnz,N*N);
 
   /*
      Restore vectors
