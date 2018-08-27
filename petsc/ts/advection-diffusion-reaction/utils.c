@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <math.h>
 
 /*
@@ -30,23 +29,4 @@ int m_map(int i,int j,int dof,int n,int dofs){
   int k = coord_map(modulo(i,n),modulo(j,n),dof,n,dofs);
 
   return k;
-}
-
-/*
-  Simple printing of mxn matrix nonzeros
-*/
-void printnz(double **M,int m,int n){
-
-  int i,j;
-
-  printf("\nMatrix =\n");
-  for(i=0;i<m;i++){
-    printf("[");
-    for(j=0;j<n;j++){
-      if(fabs(M[i][j]) > 1.e-8)
-        printf("%f, ",M[i][j]);
-    }
-    printf("]\n");
-  }
-  printf("\n");
 }
