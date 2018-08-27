@@ -226,11 +226,11 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 
       // Compute function over the locally owned part of the grid
       uc        = u_a[j][i].u;
-      uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
-      uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
+      uxx       = (-2.0*uc + u_a[j][modulo(i-1,Mx)].u + u_a[j][modulo(i+1,Mx)].u)*sx;
+      uyy       = (-2.0*uc + u_a[modulo(j-1,My)][i].u + u_a[modulo(j+1,My)][i].u)*sy;
       vc        = u_a[j][i].v;
-      vxx       = (-2.0*vc + u[j][i-1].v + u[j][i+1].v)*sx;
-      vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*sy;
+      vxx       = (-2.0*vc + u_a[j][modulo(i-1,Mx)].v + u_a[j][modulo(i+1,Mx)].v)*sx;
+      vyy       = (-2.0*vc + u_a[modulo(j-1,My)][i].v + u_a[modulo(j+1,My)][i].v)*sy;
       f_a[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
       f_a[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
 
