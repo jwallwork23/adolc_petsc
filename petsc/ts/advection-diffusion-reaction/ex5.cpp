@@ -73,7 +73,7 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
-  PetscBool      analytic=PETSC_FALSE,alt=PETSC_FALSE;
+  PetscBool      analytic=PETSC_FALSE,alt=PETSC_FALSE,no_annotations=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
@@ -82,6 +82,7 @@ int main(int argc,char **argv)
   PetscFunctionBeginUser;
   ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-alt",&alt,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotations",&no_annotations,NULL);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
   appctx.gamma = .024;
@@ -110,15 +111,18 @@ int main(int argc,char **argv)
   ierr = TSARKIMEXSetFullyImplicit(ts,PETSC_TRUE);CHKERRQ(ierr);
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
-  if (!analytic) {
+  if (!no_annotations) {
     if (!alt) {
-    ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
+      ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
     } else {
-    ierr = TSSetRHSFunction(ts,NULL,RHSFunctionAlt,&appctx);CHKERRQ(ierr);
+      ierr = TSSetRHSFunction(ts,NULL,RHSFunctionAlt,&appctx);CHKERRQ(ierr);
     }
-    ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobian,&appctx);CHKERRQ(ierr);
   } else {
     ierr = TSSetRHSFunction(ts,NULL,RHSFunctionNoAnnotation,&appctx);CHKERRQ(ierr);
+  }
+  if (!analytic) {
+    ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobian,&appctx);CHKERRQ(ierr);
+  } else {
     ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianByHand,&appctx);CHKERRQ(ierr);
   }
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -151,9 +155,11 @@ int main(int argc,char **argv)
   ierr = PetscFinalize();
   return ierr;
 }
+
 /* ------------------------------------------------------------------- */
 /*
-   RHSFunction - Evaluates nonlinear function, F(x).
+   RHSFunction - Evaluates nonlinear function, F(x). Includes ADOL-C
+                 annotations using an `aField` struct.
 
    Input Parameters:
 .  ts - the TS context
@@ -201,11 +207,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
-  aField  u_a[ys+ym][xs+xm];    // Independent variables, as an array of structs
-  aField  f_a[ys+ym][xs+xm];    // Dependent variables, as an array of structs
+  aField   u_a[ys+ym][xs+xm];		// Independent variables, as an array of structs
+  aField   f_a[ys+ym][xs+xm];		// Dependent variables, as an array of structs
   adouble  uc,uxx,uyy,vc,vxx,vyy;       // Intermediaries
 
   trace_on(1);  // --------------------------------------------- Start of active section
+
+  // Declare independence
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
       u_a[j][i].u <<= u[j][i].u;
@@ -213,9 +221,10 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
     }
   }
 
-  // Compute function over the locally owned part of the grid
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
+
+      // Compute function over the locally owned part of the grid
       uc        = u_a[j][i].u;
       uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
       uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
@@ -224,18 +233,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
       vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*sy;
       f_a[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
       f_a[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
-    }
-  }
 
-  // Declare dependence         TODO: in parallel case, may need to do some fiddling here
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
+      // Declare dependence
       f_a[j][i].u >>= f[j][i].u;
       f_a[j][i].v >>= f[j][i].v;
     }
   }
   trace_off();	// ----------------------------------------------- End of active section
-
 
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
 
@@ -248,6 +252,10 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   PetscFunctionReturn(0);
 }
 
+/* ------------------------------------------------------------------- */
+/*
+  Alternative strategy for annotation, avoiding the use of structs.
+*/
 PetscErrorCode RHSFunctionAlt(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 {
   AppCtx         *appctx = (AppCtx*)ptr;
@@ -291,6 +299,8 @@ PetscErrorCode RHSFunctionAlt(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   adouble  uc,uxx,uyy,vc,vxx,vyy;	// Intermediaries
 
   trace_on(1);	// --------------------------------------------- Start of active section
+
+  // Declare independence
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
       u_a[coord_map(i,j,0,My,dofs)] <<= u[j][i].u;
@@ -298,11 +308,10 @@ PetscErrorCode RHSFunctionAlt(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
     }
   }
   
-  // Compute function over the locally owned part of the grid
-
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
 
+      // Compute function over the locally owned part of the grid
       uc          = u_a[coord_map(i,j,0,My,dofs)];
       uxx         = (-2.0*uc + u_a[m_map(i-1,j,0,My,dofs)] + u_a[m_map(i+1,j,0,My,dofs)])*sx;
       uyy         = (-2.0*uc + u_a[m_map(i,j-1,0,My,dofs)] + u_a[m_map(i,j+1,0,My,dofs)])*sy;
@@ -312,16 +321,15 @@ PetscErrorCode RHSFunctionAlt(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 
       f_a[coord_map(i,j,0,My,dofs)] = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
       f_a[coord_map(i,j,1,My,dofs)] = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
-    }
-  }
-  // Declare dependence			TODO: in parallel case, may need to do some fiddling here
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
+
+      // Declare dependence
       f_a[coord_map(i,j,0,My,dofs)] >>= f[j][i].u;
       f_a[coord_map(i,j,1,My,dofs)] >>= f[j][i].v;
     }
   }
+
   trace_off();	// ----------------------------------------------- End of active section
+
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
 
   /*
@@ -333,6 +341,10 @@ PetscErrorCode RHSFunctionAlt(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   PetscFunctionReturn(0);
 }
 
+/* ------------------------------------------------------------------- */
+/*
+  Original version, with no annotations.
+*/
 PetscErrorCode RHSFunctionNoAnnotation(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 {
   AppCtx         *appctx = (AppCtx*)ptr;
@@ -479,9 +491,10 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     Convert array of structs to a 1-array, so this can be read by ADOL-C
   */
   PetscInt     N = 2*(xs+xm)*(ys+ym);	// Total degrees of freedom on this process
-  PetscScalar  uu[N];			// Independent variables
+  PetscScalar  uu[N],**J;		// Independent variables, Jacobian
+  PetscInt     row[1],col[1];
 
-  // FIXME: this is vastly inefficient given that matrix is sparse
+  // Convert array of structs to a single 1-array, for ADOL-C to read
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
       uu[coord_map(i,j,0,My,dofs)] = u[j][i].u;
@@ -489,24 +502,22 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     }
   }
 
-  // FIXME: this probably won't work in parallel
-  PetscScalar        **J;
-  PetscInt           row[1],col[1];
 
   J = myalloc2(N,N);
-  jacobian(1,N,N,uu,J); // TODO:  use sparse jacobian
-  // TODO: Can generate sparsity pattern using `jac_pat`
+  jacobian(1,N,N,uu,J); // TODO: Use sparse jacobian. Can generate sparsity pattern using `jac_pat`
+  			// FIXME: this probably won't work in parallel
 
-  // Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil
+  // Insert entries one-by-one
   for(j=0;j<N;j++){
     for(i=0;i<N;i++){
       if(fabs(J[j][i])!=0.){
-        row[0] = j; col[0] = i;
+        row[0] = j; col[0] = i; // TODO: better to insert row-by-row, similarly as with the stencil
         ierr = MatSetValues(A,1,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
       }
     }
   }
   myfree2(J);
+
 /*
   // Check how many nonzeros are added this iteration
   PetscObjectState   nnz;
