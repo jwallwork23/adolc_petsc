@@ -278,24 +278,16 @@ PetscErrorCode InitialConditions(DM da,Vec U)
 
 PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 {
-  AppCtx         *appctx = (AppCtx*)ctx;     /* user-defined application context */
   DM             da;
   PetscErrorCode ierr;
   PetscInt       i,j,Mx,My,xs,ys,xm,ym,dofs;
-  PetscReal      hx,hy,sx,sy;
-  PetscScalar    uc,vc;
   Field          **u;
   Vec            localU;
-  MatStencil     stencil[6],rowstencil;
-  PetscScalar    entries[6];
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
   ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dofs,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
-
-  hx = 2.50/(PetscReal)(Mx); sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)(My); sy = 1.0/(hy*hy);
 
   /*
      Scatter ghost points to local vector,using the 2-step process
@@ -339,19 +331,16 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   // TODO: Can generate sparsity pattern using `jac_pat`
 
   // Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil
-  //printf("J_{adolc} =\n");
   for(j=0;j<N;j++){
-    //printf("[");
     for(i=0;i<N;i++){
       if(fabs(J[j][i])!=0.){
-        //printf("%.4e, ",J[j][i]);
         row[0] = j; col[0] = i;
         ierr = MatSetValues(A,1,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
       }
     }
-    //printf("]\n");
   }
-  //printf("\n");
+  //printf("J_{adolc} =\n");
+  //printnz(J,N,N);
   myfree2(J);
 
   // Check how many nonzeros are added this iteration
