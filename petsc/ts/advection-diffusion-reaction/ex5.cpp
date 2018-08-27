@@ -73,7 +73,7 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
-  PetscBool      analytic=PETSC_FALSE,alt=PETSC_FALSE;
+  PetscBool      analytic=PETSC_FALSE,alt=PETSC_FALSE,no_annotations=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
@@ -82,6 +82,7 @@ int main(int argc,char **argv)
   PetscFunctionBeginUser;
   ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-alt",&alt,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotations",&no_annotations,NULL);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
   appctx.gamma = .024;
@@ -110,15 +111,18 @@ int main(int argc,char **argv)
   ierr = TSARKIMEXSetFullyImplicit(ts,PETSC_TRUE);CHKERRQ(ierr);
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
-  if (!analytic) {
+  if (!no_annotations) {
     if (!alt) {
-    ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
+      ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
     } else {
-    ierr = TSSetRHSFunction(ts,NULL,RHSFunctionAlt,&appctx);CHKERRQ(ierr);
+      ierr = TSSetRHSFunction(ts,NULL,RHSFunctionAlt,&appctx);CHKERRQ(ierr);
     }
-    ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobian,&appctx);CHKERRQ(ierr);
   } else {
     ierr = TSSetRHSFunction(ts,NULL,RHSFunctionNoAnnotation,&appctx);CHKERRQ(ierr);
+  }
+  if (!analytic) {
+    ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobian,&appctx);CHKERRQ(ierr);
+  } else {
     ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianByHand,&appctx);CHKERRQ(ierr);
   }
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -246,6 +250,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
+
 
 /* ------------------------------------------------------------------- */
 /*
@@ -485,9 +490,10 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     Convert array of structs to a 1-array, so this can be read by ADOL-C
   */
   PetscInt     N = 2*(xs+xm)*(ys+ym);	// Total degrees of freedom on this process
-  PetscScalar  uu[N];			// Independent variables
+  PetscInt     row[1],col[1];		// For element insertion
+  PetscScalar  uu[N],**J;		// Independent variables, Jacobian
 
-  // FIXME: this is vastly inefficient given that matrix is sparse
+  // Convert array of structs to a single 1-array, for ADOL-C to read
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
       uu[coord_map(i,j,0,My,dofs)] = u[j][i].u;
@@ -495,24 +501,22 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     }
   }
 
-  // FIXME: this probably won't work in parallel
-  PetscScalar        **J;
-  PetscInt           row[1],col[1];
-
+  // Calculate Jacobian using ADOL-C
   J = myalloc2(N,N);
-  jacobian(1,N,N,uu,J); // TODO:  use sparse jacobian
-  // TODO: Can generate sparsity pattern using `jac_pat`
+  jacobian(1,N,N,uu,J); // TODO:  use sparse jacobian. Can generate sparsity pattern with `jac_pat`
+  			// FIXME: this probably won't work in parallel
 
-  // Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil
+  // Insert entries one-by-one
   for(j=0;j<N;j++){
     for(i=0;i<N;i++){
       if(fabs(J[j][i])!=0.){
-        row[0] = j; col[0] = i;
+        row[0] = j; col[0] = i;	// TODO: better to insert row-by-row, similarly as with the stencil
         ierr = MatSetValues(A,1,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
       }
     }
   }
   myfree2(J);
+
 /*
   // Check how many nonzeros are added this iteration
   PetscObjectState   nnz;
