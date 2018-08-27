@@ -207,13 +207,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
-<<<<<<< HEAD
-  aField   u_a[ys+ym][xs+xm];    	// Independent variables, as an array of structs
-  aField   f_a[ys+ym][xs+xm];    	// Dependent variables, as an array of structs
-=======
   aField   u_a[ys+ym][xs+xm];		// Independent variables, as an array of structs
   aField   f_a[ys+ym][xs+xm];		// Dependent variables, as an array of structs
->>>>>>> working
   adouble  uc,uxx,uyy,vc,vxx,vyy;       // Intermediaries
 
   trace_on(1);  // --------------------------------------------- Start of active section
@@ -229,15 +224,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
 
-<<<<<<< HEAD
-      // Compute function over the locally owned part of the grid, on _active_ variables
-      uc        = u_a[j][i].u;
-      uxx       = (-2.0*uc + u_a[j][i-1].u + u_a[j][i+1].u)*sx;
-      uyy       = (-2.0*uc + u_a[j-1][i].u + u_a[j+1][i].u)*sy;
-      vc        = u_a[j][i].v;
-      vxx       = (-2.0*vc + u_a[j][i-1].v + u_a[j][i+1].v)*sx;
-      vyy       = (-2.0*vc + u_a[j-1][i].v + u_a[j+1][i].v)*sy;
-=======
       // Compute function over the locally owned part of the grid
       uc        = u_a[j][i].u;
       uxx       = (-2.0*uc + u_a[j][modulo(i-1,Mx)].u + u_a[j][modulo(i+1,Mx)].u)*sx;
@@ -245,7 +231,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
       vc        = u_a[j][i].v;
       vxx       = (-2.0*vc + u_a[j][modulo(i-1,Mx)].v + u_a[j][modulo(i+1,Mx)].v)*sx;
       vyy       = (-2.0*vc + u_a[modulo(j-1,My)][i].v + u_a[modulo(j+1,My)][i].v)*sy;
->>>>>>> working
       f_a[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
       f_a[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
 
@@ -267,10 +252,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   PetscFunctionReturn(0);
 }
 
-<<<<<<< HEAD
-
-=======
->>>>>>> working
 /* ------------------------------------------------------------------- */
 /*
   Alternative strategy for annotation, avoiding the use of structs.
