@@ -11,8 +11,10 @@ include ${PETSC_DIR}/lib/petsc/conf/rules
 diff: RHSLocal.o
 	gcc -c -o $^ RHSLocal.o
 	tapenade -tangent -head "RHSLocal ()\()" RHSLocal.c
+	gcc -c -o RHSLocal_d.o RHSLocal_d.c
+	gcc -c -o Jacobian.o Jacobian.c
 
-ex5: ex5.o RHSLocal.o
+ex5: ex5.o RHSLocal.o RHSLocal_d.o Jacobian.o
 	-${CLINKER} -o $@ $^ ${PETSC_TS_LIB}
 	${RM} *.o
 

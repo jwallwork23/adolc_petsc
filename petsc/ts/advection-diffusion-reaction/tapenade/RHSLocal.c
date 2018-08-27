@@ -1,7 +1,7 @@
 #include "ex5.h"
 
-void RHSLocal(Field **f,Field **u,int xs,int xm,int ys,int ym,double hx,double hy,void *ptr){
-
+void RHSLocal(Field **f,Field **u,int xs,int xm,int ys,int ym,double hx,double hy,void *ptr)
+{
   AppCtx   *appctx = (AppCtx*)ptr;
   int      i,j,sx,sy;
   double   uc,uxx,uyy,vc,vxx,vyy;

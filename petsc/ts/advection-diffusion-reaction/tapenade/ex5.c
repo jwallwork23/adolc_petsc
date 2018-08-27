@@ -40,11 +40,18 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
 #include <petscts.h>
 #include "ex5.h"
 
+// TODO: use this (or similar) throughout
+typedef struct {
+  PetscScalar D1,D2,gamma,kappa;
+  Vec F;
+}; AppCtxPetsc;
+
 /*
    User-defined routines
 */
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
 extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
+extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
 
 int main(int argc,char **argv)
 {
@@ -53,12 +60,15 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
+  //struct _n_User user;
+  PetscBool      analytic=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   PetscFunctionBeginUser;
+  ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
   appctx.gamma = .024;
@@ -79,6 +89,8 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
 
+  //user.F = x;		// TODO: Store solution vec
+
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -88,7 +100,12 @@ int main(int argc,char **argv)
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
   ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
-  ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobian,&appctx);CHKERRQ(ierr);
+  if (!analytic) {
+    //ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobian,&user);CHKERRQ(ierr);
+    ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobian,&appctx);CHKERRQ(ierr);
+  } else {
+    ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianByHand,&appctx);CHKERRQ(ierr);
+  }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set initial conditions
@@ -230,7 +247,75 @@ PetscErrorCode InitialConditions(DM da,Vec U)
   PetscFunctionReturn(0);
 }
 
+/* ------------------------------------------------------------------- */
+/*
+  Calculate Jacobian using Tapenade.
+*/
 PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
+{
+  // TODO: Need to include Vec F somehow, possibly with another context as attempted above.
+
+  AppCtx         *appctx = (AppCtx*)ctx; /* user-defined application context */
+  DM             da;
+  PetscErrorCode ierr;
+  PetscInt       Mx,My,xs,ys,xm,ym;
+  PetscScalar    hx,hy,**J;
+  Field          **u;
+  //Field          **f;
+  Vec            localU;
+  //Vec            localF;
+
+  PetscFunctionBegin;
+  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
+  //ierr = DMGetLocalVector(da,&localF);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+
+  hx = 2.50/(PetscReal)(Mx);
+  hy = 2.50/(PetscReal)(My);
+  /*
+     Scatter ghost points to local vector,using the 2-step process
+        DMGlobalToLocalBegin(),DMGlobalToLocalEnd().
+     By placing code between these two statements, computations can be
+     done while messages are in transition.
+  */
+  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  //ierr = DMGlobalToLocalBegin(da,user->F,INSERT_VALUES,localF);CHKERRQ(ierr);
+  //ierr = DMGlobalToLocalEnd(da,user->F,INSERT_VALUES,localF);CHKERRQ(ierr);
+
+  /*
+     Get pointers to vector data
+  */
+  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
+  //ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);
+
+  /*
+     Get local grid boundaries
+  */
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+
+  // ComputeJacobian(f,u,xs,xm,ys,ym,hx,hy,appctx,J); TODO: Need Vec F
+
+  /*
+     Restore vectors
+  */
+  ierr = PetscLogFlops(19*xm*ym);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
+  //ierr = DMDAVecRestoreArray(da,localF,&f);CHKERRQ(ierr);
+  //ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/* ------------------------------------------------------------------- */
+/*
+  Original implementation of Jacobian, by hand.
+*/
+PetscErrorCode RHSJacobianByHand(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 {
   AppCtx         *appctx = (AppCtx*)ctx;     /* user-defined application context */
   DM             da;
