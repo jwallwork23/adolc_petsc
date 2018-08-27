@@ -20,10 +20,6 @@ ex16adj: ex16adj.o rhs.o rhs_d.o rhsp_d.o jacobian.o
 	-${CLINKER} -o $@ $^  ${PETSC_TS_LIB}
 	${RM} *.o
 
-# ex16adj: ex16adj.o rhs.o rhs_d.o rhsp_d.o jacobian.o chkopts
-	# -${CLINKER} -o $@ ex16adj.o rhs.o rhs_d.o rhsp_d.o jacobian.o  ${PETSC_TS_LIB}
-	# ${RM} *.o
-
 ex16opt_p: ex16opt_p.o rhs.o rhs_d.o rhsp_d.o jacobian.o
 	-${CLINKER} -o $@ $^  ${PETSC_TS_LIB}
 	${RM} *.o
