@@ -1,4 +1,5 @@
 #include "ex5.h"
+#include <stdio.h>
 
 void RHSLocal(Field **f,Field **u,int xs,int xm,int ys,int ym,double hx,double hy,void *ptr)
 {
@@ -8,6 +9,8 @@ void RHSLocal(Field **f,Field **u,int xs,int xm,int ys,int ym,double hx,double h
 
   sx = 1.0/(hx*hx);
   sy = 1.0/(hy*hy);
+
+  printf("D1 = %.4e\n",appctx->D1);
 
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {

@@ -10,6 +10,6 @@ typedef struct {
 } AppCtx;
 
 void RHSLocal(Field **f,Field **u,int xs,int xm,int ys,int ym,double hx,double hy,void *ptr);
-void ComputeJacobian(Field **f,Field **u,int xs,int xm,int ys,int ym,double hx,double hy,void *ptr,double **J);
+void ComputeJacobian(Field **f,Field **u,int xs,int xm,int ys,int ym,double hx,double hy,int My,void *ptr,double J[2*(xs+xm)*(ys+ym)][2*(xs+xm)*(ys+ym)]);
 
 #endif

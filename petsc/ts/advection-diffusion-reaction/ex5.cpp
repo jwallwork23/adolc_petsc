@@ -4,7 +4,7 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
 /*
      Page 21, Pattern Formation with Reaction-Diffusion Equations
 
-        u_t = D1 (u_xx + u_yy)  - u*v^2 + gama(1 -u)
+        u_t = D1 (u_xx + u_yy)  - u*v^2 + gamma(1 -u)
         v_t = D2 (v_xx + v_yy)  + u*v^2 - (gamma + kappa)v
 
     Unlike in the book this uses periodic boundary conditions instead of Neumann
@@ -51,7 +51,6 @@ typedef struct {
 typedef struct {
   adouble u,v;
 } aField;
-
 
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
@@ -389,9 +388,9 @@ PetscErrorCode RHSFunctionNoAnnotation(TS ts,PetscReal ftime,Vec U,Vec F,void *p
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
       uc        = u[j][i].u;
-      uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
-      uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
-      vc        = u[j][i].v;
+      uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;	/* TODO: Surely some of */
+      uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;	/*   these indices are  */
+      vc        = u[j][i].v;					/*   out of range...    */
       vxx       = (-2.0*vc + u[j][i-1].v + u[j][i+1].v)*sx;
       vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*sy;
       f[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);

@@ -1,11 +1,10 @@
 #include "ex5_d.h"
 #include "../utils.c"	// TODO: Replace all relative paths with absolute ones
 
-/*
-  Note: input and output must be provided as 1-arrays, as they are stored in a PETSc Vec.
-*/
-void ComputeJacobian(Field **f,Field **u,int xs,int xm,int ys,int ym,double hx,double hy,void *ptr,double **J){
-  int    My = ys+ym,N = 2*(xs+xm)*My,i,j,l,k;
+
+void ComputeJacobian(Field **f,Field **u,int xs,int xm,int ys,int ym,double hx,double hy,int My,void *ptr,double J[2*(xs+xm)*(ys+ym)][2*(xs+xm)*(ys+ym)]){
+
+  int    N = 2*(xs+xm)*(ys+ym),i,j,l,k;
   Field  **fd,**seed;
 
   for (j=ys; j<ym; j++) {
