@@ -60,7 +60,6 @@ typedef struct {
    User-defined routines
 */
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
-extern PetscErrorCode RHSFunctionAlt(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
 extern PetscErrorCode RHSFunctionNoAnnotation(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
 extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
@@ -72,7 +71,7 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
-  PetscBool      analytic=PETSC_FALSE,alt=PETSC_FALSE,no_annotations=PETSC_FALSE;
+  PetscBool      analytic=PETSC_FALSE,no_annotations=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
@@ -80,7 +79,6 @@ int main(int argc,char **argv)
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   PetscFunctionBeginUser;
   ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-alt",&alt,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotations",&no_annotations,NULL);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
@@ -111,11 +109,7 @@ int main(int argc,char **argv)
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
   if (!no_annotations) {
-    if (!alt) {
-      ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
-    } else {
-      ierr = TSSetRHSFunction(ts,NULL,RHSFunctionAlt,&appctx);CHKERRQ(ierr);
-    }
+    ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
   } else {
     ierr = TSSetRHSFunction(ts,NULL,RHSFunctionNoAnnotation,&appctx);CHKERRQ(ierr);
   }
@@ -251,93 +245,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 
 /* ------------------------------------------------------------------- */
 /*
-  Alternative strategy for annotation, avoiding the use of structs.
-*/
-PetscErrorCode RHSFunctionAlt(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
-{
-  AppCtx         *appctx = (AppCtx*)ptr;
-  DM             da;
-  PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,Mx,My,xs,ys,xm,ym,dofs;
-  PetscReal      hx,hy,sx,sy;
-  Field          **u,**f;
-  Vec            localU;
-
-  PetscFunctionBegin;
-  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
-  ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dofs,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
-
-  hx = 2.50/(PetscReal)(Mx); sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)(My); sy = 1.0/(hy*hy);
-
-  /*
-     Scatter ghost points to local vector,using the 2-step process
-        DMGlobalToLocalBegin(),DMGlobalToLocalEnd().
-     By placing code between these two statements, computations can be
-     done while messages are in transition.
-  */
-  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
-
-  /*
-     Get pointers to vector data
-  */
-  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da,F,&f);CHKERRQ(ierr);
-
-  /*
-     Get local grid boundaries
-  */
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-
-  adouble  u_a[2*(xs+xm)*(ys+ym)];	// Independent variables, as a 1-array
-  adouble  f_a[2*(xs+xm)*(ys+ym)];	// Dependent variables, as a 1-array
-  adouble  uc,uxx,uyy,vc,vxx,vyy;	// Intermediaries
-
-  trace_on(1);	// --------------------------------------------- Start of active section
-
-  // Mark independence
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      u_a[k++] <<= u[j][i].u;u_a[k++] <<= u[j][i].v;
-    }
-  }
-  
-  k = 0;
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-
-      // Compute function over the locally owned part of the grid
-      uc          = u_a[k++];
-      uxx         = (-2.0*uc + u_a[m_map(i-1,j,0,Mx,My,dofs)] + u_a[m_map(i+1,j,0,Mx,My,dofs)])*sx;
-      uyy         = (-2.0*uc + u_a[m_map(i,j-1,0,Mx,My,dofs)] + u_a[m_map(i,j+1,0,Mx,My,dofs)])*sy;
-      vc          = u_a[k--];
-      vxx         = (-2.0*vc + u_a[m_map(i-1,j,1,Mx,My,dofs)] + u_a[m_map(i+1,j,1,Mx,My,dofs)])*sx;
-      vyy         = (-2.0*vc + u_a[m_map(i,j-1,1,Mx,My,dofs)] + u_a[m_map(i,j+1,1,Mx,My,dofs)])*sy;
-      f_a[k++] = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
-      f_a[k--] = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
-
-      // Mark dependence
-      f_a[k++] >>= f[j][i].u;f_a[k++] >>= f[j][i].v;
-    }
-  }
-
-  trace_off();	// ----------------------------------------------- End of active section
-
-  ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
-
-  /*
-     Restore vectors
-  */
-  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArray(da,F,&f);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-/* ------------------------------------------------------------------- */
-/*
   Original version, with no annotations.
 */
 PetscErrorCode RHSFunctionNoAnnotation(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
@@ -400,18 +307,8 @@ PetscErrorCode RHSFunctionNoAnnotation(TS ts,PetscReal ftime,Vec U,Vec F,void *p
      Restore vectors
   */
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
-
-  PetscScalar norm;
-  ierr = VecNorm(localU,NORM_2,&norm);CHKERRQ(ierr);
-  printf("||u||_2 = %.4e\n",norm);	// Check l2-norm of solution
-
   ierr = DMDAVecRestoreArray(da,F,&f);CHKERRQ(ierr);
-
-  ierr = VecNorm(F,NORM_2,&norm);CHKERRQ(ierr);
-  printf("||f||_2 = %.4e\n",norm);	// Check l2-norm of RHS
-
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
-
   PetscFunctionReturn(0);
 }
 
@@ -492,44 +389,24 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
      Get local grid boundaries and total degrees of freedom on this process
   */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-  N = 2*(xs+xm)*(ys+ym);
 
   /*
     Convert array of structs to a 1-array, so this can be read by ADOL-C
   */
+  N = 2*(xs+xm)*(ys+ym);
   ierr = PetscMalloc1(N,&u_vec);CHKERRQ(ierr);
-  PetscScalar   norm = 0.;
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
-      u_vec[k++] = u[j][i].u;
-      norm += u_vec[k-1]*u_vec[k-1];
-      u_vec[k++] = u[j][i].v;
-      norm += u_vec[k-1]*u_vec[k-1];
+      u_vec[k++] = u[j][i].u;u_vec[k++] = u[j][i].v;
     }
   }
-  /*
-     Check l2-norm of solution and RHS
-  */
-  printf("||u_vec||_2 = %.4e\n",sqrt(norm));
-  norm = 0.;
-  PetscScalar  *ff;
-  ierr = PetscMalloc1(N,&ff);CHKERRQ(ierr);
-  zos_forward(1,N,N,0,u_vec,ff);
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      for (k=0; k<N; k++) {
-        norm += ff[k]*ff[k];
-        k++;
-      }
-    }
-  }
-  //printf("||f||_2 = %.4e\n",sqrt(norm));
-  ierr = PetscFree(ff);CHKERRQ(ierr);
 
-  // Calculate Jacobian using ADOL-C
+  /*
+    Calculate Jacobian using ADOL-C
+  */
   J = myalloc2(N,N);
-  jacobian(1,N,N,u_vec,J); 	// TODO: Use sparse jacobian. Can generate sparsity pattern using `jac_pat`
-				// FIXME: this probably won't work in parallel
+  jacobian(1,N,N,u_vec,J); 	// TODO: Use sparse jacobian. Generate sparsity pattern with `jac_pat`
+  // FIXME: this probably won't work in parallel
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   // Insert entries one-by-one
@@ -542,26 +419,16 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     }
   }
   myfree2(J);
-/*
-  // Check how many nonzeros are added this iteration
-  PetscObjectState   nnz;
-  ierr = MatGetNonzeroState(A,&nnz);CHKERRQ(ierr);
-  printf("Nonzeros = %.d\n",nnz);
-*/
+
   /*
      Restore vectors
   */
   ierr = PetscLogFlops(19*xm*ym);CHKERRQ(ierr);
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
-
-  ierr = VecNorm(localU,NORM_2,&norm);CHKERRQ(ierr);
-  printf("||Vec u||_2 = %.4e\n",norm);	// Check l2-norm of solution
-
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
-
   PetscFunctionReturn(0);
 }
 
@@ -604,16 +471,6 @@ PetscErrorCode RHSJacobianByHand(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
      Get local grid boundaries
   */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-/*
-  printf("u =\n\n");
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      printf("   [%.4e]\n",u[j][i].u);
-      printf("    [%.4e]\n",u[j][i].v);
-    }
-  }
-  printf("\n");
-*/
   stencil[0].k = 0;
   stencil[1].k = 0;
   stencil[2].k = 0;
@@ -677,12 +534,6 @@ PetscErrorCode RHSJacobianByHand(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
-/*
-  // Check how many nonzeros are added this iteration
-  PetscObjectState nnz;
-  ierr = MatGetNonzeroState(A,&nnz);CHKERRQ(ierr);
-  printf("Nonzeros = %.d\n",nnz);
-*/
   PetscFunctionReturn(0);
 }
 
