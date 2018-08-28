@@ -225,12 +225,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
     for (i=xs; i<xs+xm; i++) {
 
       // Compute function over the locally owned part of the grid
-      uc        = u_a[j][i].u;
-      uxx       = (-2.0*uc + u_a[j][modulo(i-1,Mx)].u + u_a[j][modulo(i+1,Mx)].u)*sx;
-      uyy       = (-2.0*uc + u_a[modulo(j-1,My)][i].u + u_a[modulo(j+1,My)][i].u)*sy;
-      vc        = u_a[j][i].v;
-      vxx       = (-2.0*vc + u_a[j][modulo(i-1,Mx)].v + u_a[j][modulo(i+1,Mx)].v)*sx;
-      vyy       = (-2.0*vc + u_a[modulo(j-1,My)][i].v + u_a[modulo(j+1,My)][i].v)*sy;
+      uc          = u_a[j][i].u;
+      uxx         = (-2.0*uc + u_a[j][modulo(i-1,Mx)].u + u_a[j][modulo(i+1,Mx)].u)*sx;
+      uyy         = (-2.0*uc + u_a[modulo(j-1,My)][i].u + u_a[modulo(j+1,My)][i].u)*sy;
+      vc          = u_a[j][i].v;
+      vxx         = (-2.0*vc + u_a[j][modulo(i-1,Mx)].v + u_a[j][modulo(i+1,Mx)].v)*sx;
+      vyy         = (-2.0*vc + u_a[modulo(j-1,My)][i].v + u_a[modulo(j+1,My)][i].v)*sy;
       f_a[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
       f_a[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
 
@@ -490,21 +490,21 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     Convert array of structs to a 1-array, so this can be read by ADOL-C
   */
   PetscInt     N = 2*(xs+xm)*(ys+ym);	// Total degrees of freedom on this process
-  PetscScalar  uu[N],**J;		// Independent variables, Jacobian
+  PetscScalar  u_vec[N],**J;		// Independent variables, Jacobian
   PetscInt     row[1],col[1];
 
   // Convert array of structs to a single 1-array, for ADOL-C to read
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
-      uu[coord_map(i,j,0,My,dofs)] = u[j][i].u;
-      uu[coord_map(i,j,1,My,dofs)] = u[j][i].v;
+      u_vec[coord_map(i,j,0,My,dofs)] = u[j][i].u;
+      u_vec[coord_map(i,j,1,My,dofs)] = u[j][i].v;
     }
   }
 
   // Calculate Jacobian using ADOL-C
   J = myalloc2(N,N);
-  jacobian(1,N,N,uu,J); // TODO: Use sparse jacobian. Can generate sparsity pattern using `jac_pat`
-  			// FIXME: this probably won't work in parallel
+  jacobian(1,N,N,u_vec,J); 	// TODO: Use sparse jacobian. Can generate sparsity pattern using `jac_pat`
+				// FIXME: this probably won't work in parallel
 
   // Insert entries one-by-one
   for(j=0;j<N;j++){
