@@ -54,6 +54,7 @@ typedef struct {
 
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
+  PetscBool zos;
 } AppCtx;
 
 /*
@@ -71,7 +72,7 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
-  PetscBool      analytic=PETSC_FALSE,no_annotations=PETSC_FALSE;
+  PetscBool      analytic=PETSC_FALSE,no_annotations=PETSC_FALSE,print_zos=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
@@ -80,10 +81,12 @@ int main(int argc,char **argv)
   PetscFunctionBeginUser;
   ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotations",&no_annotations,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-print_zos",&print_zos,NULL);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
   appctx.gamma = .024;
   appctx.kappa = .06;
+  appctx.zos   = print_zos;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
@@ -359,10 +362,11 @@ PetscErrorCode InitialConditions(DM da,Vec U)
 
 PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 {
+  AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,Mx,My,xs,ys,xm,ym,N,dofs,row[1],col[1];
-  PetscScalar    *u_vec,**J;
+  PetscScalar    *u_vec,**J,norm=0;
   Field          **u;
   Vec            localU;
 
@@ -399,6 +403,23 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     for (i=xs; i<xs+xm; i++) {
       u_vec[k++] = u[j][i].u;u_vec[k++] = u[j][i].v;
     }
+  }
+
+  /*
+    Print norm of zeroth order scalar value
+  */
+  if (appctx->zos) {
+    k = 0;
+    PetscScalar *fz;
+    ierr = PetscMalloc1(N,&fz);CHKERRQ(ierr);
+    zos_forward(1,N,N,0,u_vec,fz);
+    for (j=ys; j<ys+ym; j++) {
+      for (i=xs; i<xs+xm; i++) {
+        norm += fz[k]*fz[k];k++;
+        norm += fz[k]*fz[k];k++;
+      }
+    }
+    PetscPrintf(MPI_COMM_WORLD,"  ||F(x)_zos||_2 = %.4e\n",sqrt(norm));
   }
 
   /*
