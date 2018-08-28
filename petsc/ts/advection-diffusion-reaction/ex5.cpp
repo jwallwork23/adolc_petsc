@@ -64,6 +64,7 @@ extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(
 extern PetscErrorCode RHSFunctionNoAnnotation(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
 extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
+extern PetscErrorCode RHSLocal(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal hx,PetscReal hy,void *ptr);
 
 int main(int argc,char **argv)
 {
@@ -150,6 +151,30 @@ int main(int argc,char **argv)
 
   ierr = PetscFinalize();
   return ierr;
+}
+
+PetscErrorCode RHSLocal(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal hx,PetscReal hy,void *ptr)
+{
+  AppCtx        *appctx = (AppCtx*)ptr;
+  PetscInt      i,j,sx,sy;
+  PetscScalar   uc,uxx,uyy,vc,vxx,vyy;
+
+  PetscFunctionBeginUser;
+  sx = 1.0/(hx*hx);
+  sy = 1.0/(hy*hy);
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      uc        = u[j][i].u;
+      uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
+      uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
+      vc        = u[j][i].v;
+      vxx       = (-2.0*vc + u[j][i-1].v + u[j][i+1].v)*sx;
+      vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*sy;
+      f[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
+      f[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
+    }
+  }
+  PetscFunctionReturn(0);
 }
 
 /* ------------------------------------------------------------------- */
@@ -248,16 +273,15 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 
 /* ------------------------------------------------------------------- */
 /*
-  Original version, with no annotations.
+  RHSFunction version with no annotations.
 */
 PetscErrorCode RHSFunctionNoAnnotation(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 {
   AppCtx         *appctx = (AppCtx*)ptr;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,Mx,My,xs,ys,xm,ym;
-  PetscReal      hx,hy,sx,sy;
-  PetscScalar    uc,uxx,uyy,vc,vxx,vyy;
+  PetscInt       Mx,My,xs,ys,xm,ym;
+  PetscReal      hx,hy;
   Field          **u,**f;
   Vec            localU;
 
@@ -266,8 +290,7 @@ PetscErrorCode RHSFunctionNoAnnotation(TS ts,PetscReal ftime,Vec U,Vec F,void *p
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
   ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
 
-  hx = 2.50/(PetscReal)(Mx); sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)(My); sy = 1.0/(hy*hy);
+  hx = 2.50/(PetscReal)(Mx);hy = 2.50/(PetscReal)(My);
 
   /*
      Scatter ghost points to local vector,using the 2-step process
@@ -292,18 +315,7 @@ PetscErrorCode RHSFunctionNoAnnotation(TS ts,PetscReal ftime,Vec U,Vec F,void *p
   /*
      Compute function over the locally owned part of the grid
   */
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      uc        = u[j][i].u;
-      uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;	/* TODO: Surely some of */
-      uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;	/*   these indices are  */
-      vc        = u[j][i].v;					/*   out of range...    */
-      vxx       = (-2.0*vc + u[j][i-1].v + u[j][i+1].v)*sx;
-      vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*sy;
-      f[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
-      f[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
-    }
-  }
+  RHSLocal(f,u,xs,xm,ys,ym,hx,hy,appctx);
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
 
   /*
@@ -419,6 +431,11 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
         norm += fz[k]*fz[k];k++;
       }
     }
+
+    // TODO: Check against this function evaluation
+    //Field **frhs;
+    //RHSLocal(frhs,u,xs,xm,ys,ym,hx,hy,appctx);
+
     PetscPrintf(MPI_COMM_WORLD,"  ||F(x)_zos||_2 = %.4e\n",sqrt(norm));
   }
 
