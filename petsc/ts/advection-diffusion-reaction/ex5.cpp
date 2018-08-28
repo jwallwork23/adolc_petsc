@@ -609,6 +609,7 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
       norm += frhs[k]*frhs[k];k++;
     }
   }
+  //ierr = VecNorm(FF,NORM_2,&norm);
   ierr = DMDAVecRestoreArray(da,FF,&frhs);CHKERRQ(ierr);
   printf("RHS evaluation = %.4e\n",sqrt(norm));
   /* ######################################################################################## */
