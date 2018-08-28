@@ -51,9 +51,14 @@ typedef struct {
 typedef struct {
   adouble u,v;
 } aField;
-
+/*
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
+} AppCtx;
+*/
+typedef struct {
+  PetscReal D1,D2,gamma,kappa;
+  Vec sol;
 } AppCtx;
 
 /*
@@ -101,6 +106,8 @@ int main(int argc,char **argv)
      vectors that are the same types
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
+
+  appctx.sol = x;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
@@ -395,20 +402,29 @@ PetscErrorCode RHSFunctionNoAnnotation(TS ts,PetscReal ftime,Vec U,Vec F,void *p
     }
   }
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
-
+/*
+  PetscScalar norm;
+  norm = 0.;
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      norm += f[j][i].u*f[j][i].u;
+      norm += f[j][i].v*f[j][i].v;
+    }
+  }
+  printf("||f||_2 = %.4e\n",sqrt(norm));
+*/
   /*
      Restore vectors
   */
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
 
-  PetscScalar norm;
-  ierr = VecNorm(localU,NORM_2,&norm);CHKERRQ(ierr);
-  printf("||u||_2 = %.4e\n",norm);	// Check l2-norm of solution
+  //ierr = VecNorm(localU,NORM_2,&norm);CHKERRQ(ierr);
+  //printf("||u||_2 = %.4e\n",norm);	// Check l2-norm of solution
 
   ierr = DMDAVecRestoreArray(da,F,&f);CHKERRQ(ierr);
 
-  ierr = VecNorm(F,NORM_2,&norm);CHKERRQ(ierr);
-  printf("||f||_2 = %.4e\n",norm);	// Check l2-norm of RHS
+  //ierr = VecNorm(F,NORM_2,&norm);CHKERRQ(ierr);
+  //printf("||f||_2 = %.4e\n",norm);	// Check l2-norm of RHS
 
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
 
@@ -462,9 +478,10 @@ PetscErrorCode InitialConditions(DM da,Vec U)
 
 PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 {
+  AppCtx         *appctx = (AppCtx*)ctx;	// TODO: Temp, for debugging
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,Mx,My,xs,ys,xm,ym,N,dofs,row[1],col[1];
+  PetscInt       i,j,k = 0,l,Mx,My,xs,ys,xm,ym,N,dofs,row[1],col[1];
   PetscScalar    *u_vec,**J;
   Field          **u;
   Vec            localU;
@@ -498,33 +515,57 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     Convert array of structs to a 1-array, so this can be read by ADOL-C
   */
   ierr = PetscMalloc1(N,&u_vec);CHKERRQ(ierr);
-  PetscScalar   norm = 0.;
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
       u_vec[k++] = u[j][i].u;
-      norm += u_vec[k-1]*u_vec[k-1];
       u_vec[k++] = u[j][i].v;
-      norm += u_vec[k-1]*u_vec[k-1];
     }
   }
-  /*
-     Check l2-norm of solution and RHS
-  */
-  printf("||u_vec||_2 = %.4e\n",sqrt(norm));
-  norm = 0.;
-  PetscScalar  *ff;
-  ierr = PetscMalloc1(N,&ff);CHKERRQ(ierr);
-  zos_forward(1,N,N,0,u_vec,ff);
+
+  /* ######################################################################################## */
+  // TODO TEMP: Check relative error in u_vec
+  const PetscScalar *f1;
+  PetscScalar   norm = 0.,diff = 0.;
+  ierr = VecGetArrayRead(appctx->sol,&f1);CHKERRQ(ierr);
+  norm = 0.;k = 0;
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
-      for (k=0; k<N; k++) {
-        norm += ff[k]*ff[k];
+      for (l=0; l<2; l++) {
+        diff += (u_vec[k]-f1[k])*(u_vec[k]-f1[k]);
+        norm += f1[k]*f1[k]; // Equivalent to VecNorm(appctx->sol,NORM_2,&norm);
         k++;
       }
     }
   }
-  //printf("||f||_2 = %.4e\n",sqrt(norm));
-  ierr = PetscFree(ff);CHKERRQ(ierr);
+  printf("\nRel. error against inital value = %.4e\n",sqrt(diff/norm));
+  printf("Norm of Vec = %.4e, vs. ",sqrt(norm));
+  ierr = VecRestoreArrayRead(appctx->sol,&f1);CHKERRQ(ierr);
+  const Field **uda;
+  ierr = DMDAVecGetArrayRead(da,appctx->sol,&uda);CHKERRQ(ierr);
+  norm = 0.;
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      norm += uda[j][i].v*uda[j][i].u;
+      norm += uda[j][i].v*uda[j][i].v;
+    }
+  }
+  printf("Norm of DMDAVec = %.4e\n",sqrt(norm));
+  ierr = DMDAVecRestoreArrayRead(da,appctx->sol,&uda);CHKERRQ(ierr);
+
+  // TODO TEMP: Compare against ADOL-C zero order scalar output
+  norm = 0.;k = 0;
+  PetscScalar *fz;
+  ierr = PetscMalloc1(N,&fz);CHKERRQ(ierr);
+  zos_forward(1,N,N,0,u_vec,fz);
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      norm += fz[k]*fz[k];k++;
+      norm += fz[k]*fz[k];k++;
+    }
+  }
+  printf("Zero order scalar = %.4e, vs. ",sqrt(norm));
+  ierr = PetscFree(fz);CHKERRQ(ierr);
+  /* ######################################################################################## */
 
   // Calculate Jacobian using ADOL-C
   J = myalloc2(N,N);
@@ -554,8 +595,23 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   ierr = PetscLogFlops(19*xm*ym);CHKERRQ(ierr);
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
 
-  ierr = VecNorm(localU,NORM_2,&norm);CHKERRQ(ierr);
-  printf("||Vec u||_2 = %.4e\n",norm);	// Check l2-norm of solution
+  /* ######################################################################################## */
+  // TODO TEMP: Check zero order mode against RHS function evaluation
+  Vec FF;
+  PetscScalar *frhs;
+  ierr = VecDuplicate(localU,&FF);CHKERRQ(ierr);
+  ierr = RHSFunctionNoAnnotation(ts,t,U,FF,appctx);
+  ierr = DMDAVecGetArray(da,FF,&frhs);CHKERRQ(ierr);
+  norm = 0.;k = 0;
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      norm += frhs[k]*frhs[k];k++;
+      norm += frhs[k]*frhs[k];k++;
+    }
+  }
+  ierr = DMDAVecRestoreArray(da,FF,&frhs);CHKERRQ(ierr);
+  printf("RHS evaluation = %.4e\n",sqrt(norm));
+  /* ######################################################################################## */
 
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
