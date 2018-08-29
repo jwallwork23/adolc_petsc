@@ -111,28 +111,6 @@ int main(int argc,char **argv)
 
   // TODO: Create aFields out here for efficiency
 
-  adouble         *temp;
-  aField           **test;
-
-  ierr = PetscMalloc1(2,&test);
-  ierr = PetscMalloc1(2,&test[0]);
-  ierr = PetscMalloc1(2,&test[1]);
-  ierr = PetscNew(&temp);CHKERRQ(ierr);
-
-  PetscInt i,j;
-  for(j=0;j<2;j++){
-    for(i=0;i<2;i++){
-//      test[j][i].u = 2*j+i;
-//      test[j][i].v = -(2*j+i);
-      //ierr = PetscNew(&test[j][i]);CHKERRQ(ierr);
-    }
-  }
-  //printf("[%f,%f]\n[%f,%f]\n",test[0][0].u,test[0][1].u,test[1][0].u,test[1][1].u);
-  //printf("[%f,%f]\n[%f,%f]\n",test[0][0].v,test[0][1].v,test[1][0].v,test[1][1].v);
-
-  ierr = PetscFree(temp);CHKERRQ(ierr);
-  ierr = PetscFree(test);
-
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -177,10 +155,10 @@ int main(int argc,char **argv)
   ierr = PetscFinalize();
   return ierr;
 }
-
+/*
 PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal Mx,PetscReal My,void *ptr)
 {
-  PetscErrorCode  ierr;
+  //PetscErrorCode  ierr;
   AppCtx          *appctx = (AppCtx*)ptr;
   PetscInt        i,j,sx,sy;
   PetscReal       hx,hy;
@@ -229,7 +207,54 @@ PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscI
 
   PetscFunctionReturn(0);
 }
+*/
+PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal Mx,PetscReal My,void *ptr)
+{
+  //PetscErrorCode  ierr;
+  AppCtx          *appctx = (AppCtx*)ptr;
+  PetscInt        i,j,k = 0,sx,sy;
+  PetscReal       hx,hy;
+  adouble         uc,uxx,uyy,vc,vxx,vyy;
+  adouble         *u_a = new adouble[2*(xs+xm)*(ys+ym)];
+  adouble         *f_a = new adouble[2*(xs+xm)*(ys+ym)];
 
+  PetscFunctionBeginUser;
+  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
+
+  trace_on(1);  // ----------------------------------------------- Start of active section
+
+  // Mark independence
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      u_a[k++] <<= u[j][i].u;u_a[k++] <<= u[j][i].v;
+    }
+  }
+  k = 0;
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+
+      // Compute function over the locally owned part of the grid
+      uc          = u_a[k++];
+      uxx         = (-2.0*uc + u_a[m_map(i-1,j,0,Mx,My,2)] + u_a[m_map(i+1,j,0,Mx,My,2)])*sx;
+      uyy         = (-2.0*uc + u_a[m_map(i,j-1,0,Mx,My,2)] + u_a[m_map(i,j+1,0,Mx,My,2)])*sy;
+      vc          = u_a[k--];
+      vxx         = (-2.0*vc + u_a[m_map(i-1,j,1,Mx,My,2)] + u_a[m_map(i+1,j,1,Mx,My,2)])*sx;
+      vyy         = (-2.0*vc + u_a[m_map(i,j-1,1,Mx,My,2)] + u_a[m_map(i,j+1,1,Mx,My,2)])*sy;
+      f_a[k++] = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
+      f_a[k--] = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
+
+      // Mark dependence
+      f_a[k++] >>= f[j][i].u;f_a[k++] >>= f[j][i].v;
+    }
+  }
+  trace_off();  // ----------------------------------------------- End of active section
+
+  delete[] f_a;
+  delete[] u_a;
+
+  PetscFunctionReturn(0);
+}
 PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal Mx,PetscReal My,void *ptr)
 {
   AppCtx        *appctx = (AppCtx*)ptr;
@@ -415,7 +440,7 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   }
 
   /*
-    Print norm of zeroth order scalar value
+    Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive
   */
   if (appctx->zos) {
     k = 0;
@@ -425,7 +450,7 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     ierr = PetscMalloc1(N,&fz);CHKERRQ(ierr);
     zos_forward(1,N,N,0,u_vec,fz);
 
-    ierr = PetscMalloc1(N,&frhs);CHKERRQ(ierr);
+    ierr = PetscMalloc1(N,&frhs);CHKERRQ(ierr);		// FIXME: Memory is not contiguous
     for (j=ys; j<ys+ym; j++) {
       ierr = PetscMalloc1(N,&frhs[j]);CHKERRQ(ierr);
     }
