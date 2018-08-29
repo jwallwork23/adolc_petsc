@@ -55,6 +55,7 @@ typedef struct {
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
   PetscBool zos,no_an;
+  aField    u_a,f_a;
 } AppCtx;
 
 /*
@@ -105,6 +106,30 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
 
+  // TODO: Create aFields out here for efficiency
+
+  adouble         *temp;
+  aField           **test;
+
+  ierr = PetscMalloc1(2,&test);
+  ierr = PetscMalloc1(2,&test[0]);
+  ierr = PetscMalloc1(2,&test[1]);
+  ierr = PetscNew(&temp);CHKERRQ(ierr);
+
+  PetscInt i,j;
+  for(j=0;j<2;j++){
+    for(i=0;i<2;i++){
+//      test[j][i].u = 2*j+i;
+//      test[j][i].v = -(2*j+i);
+      //ierr = PetscNew(&test[j][i]);CHKERRQ(ierr);
+    }
+  }
+  //printf("[%f,%f]\n[%f,%f]\n",test[0][0].u,test[0][1].u,test[1][0].u,test[1][1].u);
+  //printf("[%f,%f]\n[%f,%f]\n",test[0][0].v,test[0][1].v,test[1][0].v,test[1][1].v);
+
+  ierr = PetscFree(temp);CHKERRQ(ierr);
+  ierr = PetscFree(test);
+
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -152,14 +177,20 @@ int main(int argc,char **argv)
 
 PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal Mx,PetscReal My,void *ptr)
 {
-  AppCtx        *appctx = (AppCtx*)ptr;
-  PetscInt      i,j,sx,sy;
-  PetscReal     hx,hy;
-  aField        u_a[ys+ym][xs+xm];           // Independent variables, as an array of structs
-  aField        f_a[ys+ym][xs+xm];           // Dependent variables, as an array of structs
-  adouble       uc,uxx,uyy,vc,vxx,vyy;
+  PetscErrorCode  ierr;
+  AppCtx          *appctx = (AppCtx*)ptr;
+  PetscInt        i,j,sx,sy;
+  PetscReal       hx,hy;
+  adouble         uc,uxx,uyy,vc,vxx,vyy;
+  aField          u_a[ys+ym][xs+xm];           // Independent variables, as an array of structs
+  aField          f_a[ys+ym][xs+xm];           // Dependent variables, as an array of structs
+  //aField          **u_a,**f_a;
 
   PetscFunctionBeginUser;
+
+  //ierr = PetscNew(&u_a);CHKERRQ(ierr);
+  //ierr = PetscNew(&f_a);CHKERRQ(ierr);
+
   hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
   hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
 
@@ -189,6 +220,9 @@ PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscI
     }
   }
   trace_off();  // ----------------------------------------------- End of active section
+
+  //ierr = PetscFree(u_a);CHKERRQ(ierr);
+  //ierr = PetscFree(f_a);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
@@ -383,22 +417,26 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   if (appctx->zos) {
     k = 0;
     PetscScalar *fz;
-    Field **frhs;
+    Field       **frhs;
 
     ierr = PetscMalloc1(N,&fz);CHKERRQ(ierr);
     zos_forward(1,N,N,0,u_vec,fz);
 
-    memcpy(&frhs, &u, sizeof(u));
-    //RHSLocalPassive(frhs,u,xs,xm,ys,ym,Mx,My,appctx);
+    ierr = PetscMalloc1(N,&frhs);CHKERRQ(ierr);
+    for (j=ys; j<ys+ym; j++) {
+      ierr = PetscMalloc1(N,&frhs[j]);CHKERRQ(ierr);
+    }
+    RHSLocalPassive(frhs,u,xs,xm,ys,ym,Mx,My,appctx);
 
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
         norm1 += fz[k]*fz[k];k++;
         norm1 += fz[k]*fz[k];k++;
-        norm2 += frhs[j][i].u + frhs[j][i].v;
+        norm2 += frhs[j][i].u*frhs[j][i].u + frhs[j][i].v*frhs[j][i].v;
       }
     }
     ierr = PetscFree(fz);CHKERRQ(ierr);
+    ierr = PetscFree(frhs);CHKERRQ(ierr);
 
     PetscPrintf(MPI_COMM_WORLD,"  ||F(x)_zos||_2 = %.4e\n",sqrt(norm1));
     PetscPrintf(MPI_COMM_WORLD,"  ||F(x)_rhs||_2 = %.4e\n",sqrt(norm2));
