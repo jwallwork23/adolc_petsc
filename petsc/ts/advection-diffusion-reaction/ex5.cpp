@@ -22,6 +22,9 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
       Helpful runtime linear solver options:
            -pc_type mg -pc_mg_galerkin pmat -da_refine 1 -snes_monitor -ksp_monitor -ts_view  (note that these Jacobians are so well-conditioned multigrid may not be the best solver)
 
+      Helpful ADOL-C related options:
+           -adolc_test_zos (test Zero Order Scalar evaluation)
+
       Point your browser to localhost:8080 to monitor the simulation
            ./ex5  -ts_view_pre saws  -stack_view saws -draw_save -draw_save_single_file -x_virtual -ts_monitor_draw_solution -saws_root .
 
@@ -74,7 +77,7 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
-  PetscBool      analytic=PETSC_FALSE,no_annotations=PETSC_FALSE,print_zos=PETSC_FALSE;
+  PetscBool      analytic=PETSC_FALSE,no_annotations=PETSC_FALSE,adolc_test_zos=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
@@ -83,12 +86,12 @@ int main(int argc,char **argv)
   PetscFunctionBeginUser;
   ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotations",&no_annotations,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-print_zos",&print_zos,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&adolc_test_zos,NULL);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
   appctx.gamma = .024;
   appctx.kappa = .06;
-  appctx.zos   = print_zos;
+  appctx.zos   = adolc_test_zos;
   appctx.no_an = no_annotations;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -372,7 +375,7 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   DM             da;
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,Mx,My,xs,ys,xm,ym,N,dofs,row[1],col[1];
-  PetscScalar    *u_vec,**J,norm1=0.,norm2=0.;
+  PetscScalar    *u_vec,**J,norm=0.,diff=0.;
   Field          **u;
   Vec            localU;
 
@@ -430,16 +433,15 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
-        norm1 += fz[k]*fz[k];k++;
-        norm1 += fz[k]*fz[k];k++;
-        norm2 += frhs[j][i].u*frhs[j][i].u + frhs[j][i].v*frhs[j][i].v;
+        diff += (frhs[j][i].u-fz[k])*(frhs[j][i].u-fz[k]);k++;
+        diff += (frhs[j][i].v-fz[k])*(frhs[j][i].v-fz[k]);k++;
+        norm += frhs[j][i].u*frhs[j][i].u + frhs[j][i].v*frhs[j][i].v;
       }
     }
     ierr = PetscFree(fz);CHKERRQ(ierr);
     ierr = PetscFree(frhs);CHKERRQ(ierr);
-
-    PetscPrintf(MPI_COMM_WORLD,"  ||F(x)_zos||_2 = %.4e\n",sqrt(norm1));
-    PetscPrintf(MPI_COMM_WORLD,"  ||F(x)_rhs||_2 = %.4e\n",sqrt(norm2));
+    PetscPrintf(MPI_COMM_WORLD,"    ----- Testing Zero Order evaluation -----\n    If ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 is O(1.e-8), ADOL-C function evaluation\n      is probably correct.\n");
+    PetscPrintf(MPI_COMM_WORLD,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",sqrt(diff/norm));
   }
 
   /*
