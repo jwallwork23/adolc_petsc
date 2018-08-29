@@ -54,17 +54,17 @@ typedef struct {
 
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
-  PetscBool zos;
+  PetscBool zos,no_an;
 } AppCtx;
 
 /*
    User-defined routines
 */
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
-extern PetscErrorCode RHSFunctionNoAnnotation(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
 extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
-extern PetscErrorCode RHSLocal(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal hx,PetscReal hy,void *ptr);
+extern PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal hx,PetscReal hy,void *ptr);
+extern PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal hx,PetscReal hy,void *ptr);
 
 int main(int argc,char **argv)
 {
@@ -88,6 +88,7 @@ int main(int argc,char **argv)
   appctx.gamma = .024;
   appctx.kappa = .06;
   appctx.zos   = print_zos;
+  appctx.no_an = no_annotations;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
@@ -112,11 +113,7 @@ int main(int argc,char **argv)
   ierr = TSARKIMEXSetFullyImplicit(ts,PETSC_TRUE);CHKERRQ(ierr);
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
-  if (!no_annotations) {
-    ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
-  } else {
-    ierr = TSSetRHSFunction(ts,NULL,RHSFunctionNoAnnotation,&appctx);CHKERRQ(ierr);
-  }
+  ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
   if (!analytic) {
     ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobian,&appctx);CHKERRQ(ierr);
   } else {
@@ -153,86 +150,20 @@ int main(int argc,char **argv)
   return ierr;
 }
 
-PetscErrorCode RHSLocal(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal hx,PetscReal hy,void *ptr)
+PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal Mx,PetscReal My,void *ptr)
 {
   AppCtx        *appctx = (AppCtx*)ptr;
   PetscInt      i,j,sx,sy;
-  PetscScalar   uc,uxx,uyy,vc,vxx,vyy;
+  PetscReal     hx,hy;
+  aField        u_a[ys+ym][xs+xm];           // Independent variables, as an array of structs
+  aField        f_a[ys+ym][xs+xm];           // Dependent variables, as an array of structs
+  adouble       uc,uxx,uyy,vc,vxx,vyy;
 
   PetscFunctionBeginUser;
-  sx = 1.0/(hx*hx);
-  sy = 1.0/(hy*hy);
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      uc        = u[j][i].u;
-      uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
-      uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
-      vc        = u[j][i].v;
-      vxx       = (-2.0*vc + u[j][i-1].v + u[j][i+1].v)*sx;
-      vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*sy;
-      f[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
-      f[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
-    }
-  }
-  PetscFunctionReturn(0);
-}
+  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
 
-/* ------------------------------------------------------------------- */
-/*
-   RHSFunction - Evaluates nonlinear function, F(x). Includes ADOL-C
-                 annotations using an `aField` struct.
-
-   Input Parameters:
-.  ts - the TS context
-.  X - input vector
-.  ptr - optional user-defined context, as set by TSSetRHSFunction()
-
-   Output Parameter:
-.  F - function vector
- */
-PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
-{
-  AppCtx         *appctx = (AppCtx*)ptr;
-  DM             da;
-  PetscErrorCode ierr;
-  PetscInt       i,j,Mx,My,xs,ys,xm,ym,dofs;
-  PetscReal      hx,hy,sx,sy;
-  Field          **u,**f;
-  Vec            localU;
-
-  PetscFunctionBegin;
-  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
-  ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dofs,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
-
-  hx = 2.50/(PetscReal)(Mx); sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)(My); sy = 1.0/(hy*hy);
-
-  /*
-     Scatter ghost points to local vector,using the 2-step process
-        DMGlobalToLocalBegin(),DMGlobalToLocalEnd().
-     By placing code between these two statements, computations can be
-     done while messages are in transition.
-  */
-  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
-
-  /*
-     Get pointers to vector data
-  */
-  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da,F,&f);CHKERRQ(ierr);
-
-  /*
-     Get local grid boundaries
-  */
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-
-  aField   u_a[ys+ym][xs+xm];		// Independent variables, as an array of structs
-  aField   f_a[ys+ym][xs+xm];		// Dependent variables, as an array of structs
-  adouble  uc,uxx,uyy,vc,vxx,vyy;       // Intermediaries
-
-  trace_on(1);  // --------------------------------------------- Start of active section
+  trace_on(1);  // ----------------------------------------------- Start of active section
 
   // Mark independence
   for (j=ys; j<ys+ym; j++) {
@@ -240,7 +171,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
       u_a[j][i].u <<= u[j][i].u;u_a[j][i].v <<= u[j][i].v;
     }
   }
-
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
 
@@ -258,39 +188,65 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
       f_a[j][i].u >>= f[j][i].u;f_a[j][i].v >>= f[j][i].v;
     }
   }
-  trace_off();	// ----------------------------------------------- End of active section
+  trace_off();  // ----------------------------------------------- End of active section
 
-  ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
 
-  /*
-     Restore vectors
-  */
-  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArray(da,F,&f);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
+PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal Mx,PetscReal My,void *ptr)
+{
+  AppCtx        *appctx = (AppCtx*)ptr;
+  PetscInt      i,j,sx,sy;
+  PetscReal     hx,hy;
+  PetscScalar   uc,uxx,uyy,vc,vxx,vyy;
+
+  PetscFunctionBeginUser;
+  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      uc        = u[j][i].u;
+      uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
+      uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
+      vc        = u[j][i].v;
+      vxx       = (-2.0*vc + u[j][i-1].v + u[j][i+1].v)*sx;
+      vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*sy;
+      f[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
+      f[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
+    }
+  }
   PetscFunctionReturn(0);
 }
 
 /* ------------------------------------------------------------------- */
 /*
-  RHSFunction version with no annotations.
-*/
-PetscErrorCode RHSFunctionNoAnnotation(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
+   RHSFunction - Evaluates nonlinear function, F(x).
+
+                 If the -no_annotations option is not invoked then
+                 annotations are made for ADOL-C automatic
+                 differentiation using an `aField` struct.
+
+   Input Parameters:
+.  ts - the TS context
+.  X - input vector
+.  ptr - optional user-defined context, as set by TSSetRHSFunction()
+
+   Output Parameter:
+.  F - function vector
+ */
+PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 {
   AppCtx         *appctx = (AppCtx*)ptr;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       Mx,My,xs,ys,xm,ym;
-  PetscReal      hx,hy;
+  PetscInt       Mx,My,xs,ys,xm,ym,dofs;
   Field          **u,**f;
   Vec            localU;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
-
-  hx = 2.50/(PetscReal)(Mx);hy = 2.50/(PetscReal)(My);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dofs,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
 
   /*
      Scatter ghost points to local vector,using the 2-step process
@@ -315,7 +271,11 @@ PetscErrorCode RHSFunctionNoAnnotation(TS ts,PetscReal ftime,Vec U,Vec F,void *p
   /*
      Compute function over the locally owned part of the grid
   */
-  RHSLocal(f,u,xs,xm,ys,ym,hx,hy,appctx);
+  if (!appctx->no_an) {
+    RHSLocalActive(f,u,xs,xm,ys,ym,Mx,My,appctx);
+  } else {
+    RHSLocalPassive(f,u,xs,xm,ys,ym,Mx,My,appctx);
+  }
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
 
   /*
@@ -432,9 +392,9 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
       }
     }
 
-    // TODO: Check against this function evaluation
+    // TODO: Check against passive function evaluation
     //Field **frhs;
-    //RHSLocal(frhs,u,xs,xm,ys,ym,hx,hy,appctx);
+    //RHSLocalPassive(frhs,u,xs,xm,ys,ym,hx,hy,appctx);
 
     PetscPrintf(MPI_COMM_WORLD,"  ||F(x)_zos||_2 = %.4e\n",sqrt(norm));
   }
