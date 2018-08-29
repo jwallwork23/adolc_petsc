@@ -338,7 +338,7 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   DM             da;
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,Mx,My,xs,ys,xm,ym,N,dofs,row[1],col[1];
-  PetscScalar    *u_vec,**J,norm=0;
+  PetscScalar    *u_vec,**J,norm1=0.,norm2=0.;
   Field          **u;
   Vec            localU;
 
@@ -383,20 +383,25 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   if (appctx->zos) {
     k = 0;
     PetscScalar *fz;
+    Field **frhs;
+
     ierr = PetscMalloc1(N,&fz);CHKERRQ(ierr);
     zos_forward(1,N,N,0,u_vec,fz);
+
+    memcpy(&frhs, &u, sizeof(u));
+    //RHSLocalPassive(frhs,u,xs,xm,ys,ym,Mx,My,appctx);
+
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
-        norm += fz[k]*fz[k];k++;
-        norm += fz[k]*fz[k];k++;
+        norm1 += fz[k]*fz[k];k++;
+        norm1 += fz[k]*fz[k];k++;
+        norm2 += frhs[j][i].u + frhs[j][i].v;
       }
     }
+    ierr = PetscFree(fz);CHKERRQ(ierr);
 
-    // TODO: Check against passive function evaluation
-    //Field **frhs;
-    //RHSLocalPassive(frhs,u,xs,xm,ys,ym,hx,hy,appctx);
-
-    PetscPrintf(MPI_COMM_WORLD,"  ||F(x)_zos||_2 = %.4e\n",sqrt(norm));
+    PetscPrintf(MPI_COMM_WORLD,"  ||F(x)_zos||_2 = %.4e\n",sqrt(norm1));
+    PetscPrintf(MPI_COMM_WORLD,"  ||F(x)_rhs||_2 = %.4e\n",sqrt(norm2));
   }
 
   /*
