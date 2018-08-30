@@ -10,47 +10,70 @@ typedef struct {
   adouble u,v;
 } aField;
 
+PetscErrorCode VecSetMemory(PetscScalar *aa,PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,PetscScalar **a[])
+{
+  PetscErrorCode ierr;
+  PetscInt       i;
+
+  PetscFunctionBegin;
+  ierr = PetscMalloc1(ym,a);CHKERRQ(ierr);
+  for (i=0; i<ym; i++) (*a)[i] = aa + i*xm - xs;
+  *a -= ys;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode VecFreeMemory(PetscScalar *aa,PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,PetscScalar **a[])
+{
+  PetscErrorCode ierr;
+  void           *dummy;
+
+  PetscFunctionBegin;
+  dummy = (void*)(*a+ys);
+  ierr = PetscFree(dummy);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode DMDASetMemory(PetscScalar *aa,PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,PetscInt dof,void *array)
+{
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  ierr = VecSetMemory(aa,xs*dof,ys,xm*dof,ym,(PetscScalar***)array);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode DMDAFreeMemory(PetscScalar *aa,PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,PetscInt dof,void *array)
+{
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  ierr = VecFreeMemory(aa,xs*dof,ys,xm*dof,ym,(PetscScalar***)array);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
 int main(int argc,char **argv)
 {
   PetscErrorCode  ierr;
-  Field           **input,**output;
-  adouble         *input_a = new adouble[8];
-  adouble         *output_a = new adouble[8];
-  PetscInt        i,j,k=0;
+  Field           **a;
+  PetscInt        i,j;
+  PetscScalar     *aa;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,NULL);if (ierr) return ierr;
   PetscFunctionBeginUser;
 
-  // Allocate memory for Fields and set some values
-  ierr = PetscMalloc1(2,&input);
-  ierr = PetscMalloc1(2,&output);
-  for(j=0;j<2;j++){
-    ierr = PetscMalloc1(2,&input[j]);
-    ierr = PetscMalloc1(2,&output[j]);
-    for(i=0;i<2;i++){
-      input[j][i].u = 2*j+i+1;
-      input[j][i].v = -(2*j+i+1);
+  ierr = PetscMalloc1(8,&aa);
+  for(i=0;i<8;i++){
+    aa[i]=i;
+  }
+  ierr = DMDASetMemory(aa,0,0,2,2,2,&a);CHKERRQ(ierr);
+
+  for (j=0; j<2; j++){
+    for (i=0; i<2; i++){
+      printf("%f, %f\n",a[j][i].u,a[j][i].v);
     }
   }
 
-  trace_on(1);
-
-  for(j=0;j<2;j++){
-    for(i=0;i<2;i++){
-      input_a[k]    <<= input[j][i].u;
-      output_a[k]   =   input_a[k];
-      output_a[k++] >>= output[j][i].u;
-    }
-  }
-  trace_off();
-
-  // Free memory
-  ierr = PetscFree(input);CHKERRQ(ierr);
-  ierr = PetscFree(output);CHKERRQ(ierr);
-
-  delete[] input_a;
-  delete[] output_a;
-
+  ierr = DMDAFreeMemory(aa,0,0,2,2,2,&a);CHKERRQ(ierr);
   ierr = PetscFinalize();
   return ierr;
 }
