@@ -5,7 +5,7 @@ CPPFLAGS		=
 FPPFLAGS		=
 CLEANFILES		= ex1 ex4 ex5 ex5adj test binaryoutput *.tap *.info
 
-# Flags for ColPack
+# Flags for ColPack TODO: link this properly - the below is currently ineffective
 COLPACK_INSTALL_PATH 	= ${COLPACK_HOME}/libs/libColPack.so
 LDFLAGS 		= -Wall -fopenmp -O3 -std=c++11 -ldl ${COLPACK_INSTALL_PATH}
 
