@@ -165,12 +165,12 @@ PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscI
   adouble         uc,uxx,uyy,vc,vxx,vyy;
   aField          u_a[ys+ym][xs+xm];           // Independent variables, as an array of structs
   aField          f_a[ys+ym][xs+xm];           // Dependent variables, as an array of structs
-  //aField          **u_a,**f_a;
+  
+  //aField          **u_a=NULL,**f_a=NULL;
+  //u_a = new aField[ys+ym][xs+xm];
+  //f_a = new aField[ys+ym][xs+xm];
 
   PetscFunctionBeginUser;
-
-  //ierr = PetscNew(&u_a);CHKERRQ(ierr);
-  //ierr = PetscNew(&f_a);CHKERRQ(ierr);
 
   hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
   hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
@@ -205,12 +205,14 @@ PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscI
   //ierr = PetscFree(u_a);CHKERRQ(ierr);
   //ierr = PetscFree(f_a);CHKERRQ(ierr);
 
+  //delete[] u_a;
+  //delete[] f_a;
+
   PetscFunctionReturn(0);
 }
 */
 PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal Mx,PetscReal My,void *ptr)
 {
-  //PetscErrorCode  ierr;
   AppCtx          *appctx = (AppCtx*)ptr;
   PetscInt        i,j,k = 0,sx,sy;
   PetscReal       hx,hy;
@@ -255,6 +257,7 @@ PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscI
 
   PetscFunctionReturn(0);
 }
+
 PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal Mx,PetscReal My,void *ptr)
 {
   AppCtx        *appctx = (AppCtx*)ptr;
@@ -482,7 +485,7 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     for(i=0;i<N;i++){
       if(fabs(J[j][i])!=0.){
         row[0] = j; col[0] = i; // TODO: better to insert row-by-row, similarly as with the stencil
-        ierr = MatSetValues(A,1,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
+        ierr = MatSetValues(A,1,row,1,col,&J[j][i],INSERT_VALUES);CHKERRQ(ierr);
       }
     }
   }

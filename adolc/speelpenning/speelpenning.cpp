@@ -45,11 +45,14 @@ int main() {
         xp[i] = (i+1.0)/(2.0+i);         // some initialization
 
     trace_on(1);                         // tag = 1, keep = 0 by default
+    cout << "x = [";
     for(i=0; i<n; i++) {
 	// declare x as an _independent_ variable
         x[i] <<= xp[i];                  // or  x <<= xp outside the loop
         y *= x[i];
+        cout << x[i].value() << ", ";
     } // end for
+    cout << "]" << endl;
     y >>= yp;                            // declare y as a _dependent_ variable
     delete[] x;                          // desirable to delete indep. variables after use
     trace_off(1);
