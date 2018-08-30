@@ -1,4 +1,3 @@
-
 static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equations.\n";
 
 /*
@@ -45,6 +44,7 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>	// Include ADOL-C
+#include <adolc/sparse/sparsedrivers.h>
 #include "utils.c"		// For modular arithmetic and coordinate mappings
 
 typedef struct {
@@ -57,7 +57,7 @@ typedef struct {
 
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
-  PetscBool zos,no_an;
+  PetscBool zos,no_an,sparse;
   aField    u_a,f_a;
 } AppCtx;
 
@@ -77,22 +77,24 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
-  PetscBool      analytic=PETSC_FALSE,no_annotations=PETSC_FALSE,adolc_test_zos=PETSC_FALSE;
+  PetscBool      analytic=PETSC_FALSE,no_annotations=PETSC_FALSE,adolc_test_zos=PETSC_FALSE,sparse=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   PetscFunctionBeginUser;
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&adolc_test_zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotations",&no_annotations,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&adolc_test_zos,NULL);CHKERRQ(ierr);
-  appctx.D1    = 8.0e-5;
-  appctx.D2    = 4.0e-5;
-  appctx.gamma = .024;
-  appctx.kappa = .06;
-  appctx.zos   = adolc_test_zos;
-  appctx.no_an = no_annotations;
+  ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&sparse,NULL);CHKERRQ(ierr);
+  appctx.D1     = 8.0e-5;
+  appctx.D2     = 4.0e-5;
+  appctx.gamma  = .024;
+  appctx.kappa  = .06;
+  appctx.zos    = adolc_test_zos;
+  appctx.no_an  = no_annotations;
+  appctx.sparse = sparse;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
@@ -336,20 +338,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
      Compute function over the locally owned part of the grid
   */
   if (!appctx->no_an) {
-/*
-    aField         **u_a,**f_a;					// TODO: experimental
-    Vec            localU_a,F_a;				// TODO: experimental
-
-    ierr = VecDuplicate(localU,&localU_a);CHKERRQ(ierr);	// TODO: experimental
-    ierr = VecDuplicate(F,&F_a);CHKERRQ(ierr);			// TODO: experimental
-    ierr = DMDAVecGetArray(da,localU,&u_a);CHKERRQ(ierr);	// TODO: experimental
-    ierr = DMDAVecGetArray(da,F_a,&f_a);CHKERRQ(ierr);		// TODO: experimental
-*/
     RHSLocalActive(f,u,lbox,gbox,Mx,My,appctx);
-/*
-    ierr = DMDAVecRestoreArray(da,localU_a,&u_a);CHKERRQ(ierr);	// TODO: experimental
-    ierr = DMDAVecRestoreArray(da,F_a,&f_a);CHKERRQ(ierr);	// TODO: experimental
-*/
   } else {
     RHSLocalPassive(f,u,lbox,Mx,My,appctx);
   }
@@ -459,9 +448,9 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   */
   if (appctx->zos) {
     k = 0;
-    PetscScalar *fz;
-    Field       **frhs;
-    PetscInt    lbox[4] = {xs,ys,xm,ym};
+    PetscScalar  *fz;
+    Field        **frhs;
+    PetscInt     lbox[4] = {xs,ys,xm,ym};
 
     ierr = PetscMalloc1(N,&fz);CHKERRQ(ierr);
     zos_forward(1,N,N,0,u_vec,fz);
@@ -488,21 +477,40 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   /*
     Calculate Jacobian using ADOL-C
   */
-  J = myalloc2(N,N);
-  jacobian(1,N,N,u_vec,J); 	// TODO: Use sparse jacobian. Generate sparsity pattern with `jac_pat`
-  // FIXME: this probably won't work in parallel
-  ierr = PetscFree(u_vec);CHKERRQ(ierr);
+  if (appctx->sparse) {		// TODO. Generate sparsity pattern with jac_pat and then repeat=1
+    PetscInt      nnz,*options;
+    unsigned int  *rind,*cind;
+    PetscScalar   *values;
 
-  // Insert entries one-by-one
-  for(j=0;j<N;j++){
-    for(i=0;i<N;i++){
-      if(fabs(J[j][i])!=0.){
-        col[0] = i; // TODO: better to insert row-by-row, similarly as with the stencil
-        ierr = MatSetValues(A,1,&j,1,col,&J[j][i],INSERT_VALUES);CHKERRQ(ierr);
+    nnz = 10*N;
+    ierr = PetscMalloc1(2,&options);CHKERRQ(ierr);
+    options[0] = 0;options[1] = 0;
+    ierr = PetscMalloc1(nnz,&rind);CHKERRQ(ierr);
+    ierr = PetscMalloc1(nnz,&cind);CHKERRQ(ierr);
+    ierr = PetscMalloc1(nnz,&values);CHKERRQ(ierr);
+    sparse_jac(1,N,N,0,u_vec,&nnz,&rind,&cind,&values,options);
+    ierr = PetscFree(values);CHKERRQ(ierr);
+    ierr = PetscFree(rind);CHKERRQ(ierr);
+    ierr = PetscFree(cind);CHKERRQ(ierr);
+    ierr = PetscFree(options);CHKERRQ(ierr);
+
+  } else {
+
+    J = myalloc2(N,N);
+    jacobian(1,N,N,u_vec,J);
+    ierr = PetscFree(u_vec);CHKERRQ(ierr);
+
+    // Insert entries one-by-one
+    for(j=0;j<N;j++){
+      for(i=0;i<N;i++){
+        if(fabs(J[j][i])!=0.){
+            col[0] = i; // TODO: better to insert row-by-row, similarly as with the stencil
+            ierr = MatSetValues(A,1,&j,1,col,&J[j][i],INSERT_VALUES);CHKERRQ(ierr);
+        }
       }
     }
+    myfree2(J);
   }
-  myfree2(J);
 
   /*
      Restore vectors
