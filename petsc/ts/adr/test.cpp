@@ -1,6 +1,5 @@
 #include <petscts.h>
 #include <adolc/adolc.h>
-#include "utils.c"
 
 typedef struct {
   PetscScalar u,v;
