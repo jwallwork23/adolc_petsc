@@ -124,6 +124,10 @@ int main(int argc,char **argv)
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Allocate memory for active fields and store references in context 
+
+     NOTE: Memory for ADOL-C active variables (such as adouble and aField)
+           cannot be allocated using PetscMalloc, as this does not call the
+           relevant class constructor. Instead, we use the C++ keyword `new`.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   u_a = new aField*[lbox[1]+lbox[3]];
   f_a = new aField*[lbox[1]+lbox[3]];
