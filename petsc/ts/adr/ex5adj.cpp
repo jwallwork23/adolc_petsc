@@ -41,12 +41,15 @@ typedef struct {
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
 extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
-extern PetscErrorCode RHSLocalActive(Field **f,Field **u,aField **f_a,aField **u_a,PetscInt *lbox,void *ptr);
+extern PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt *lbox,void *ptr);
 extern PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,void *ptr);
-
 
 extern PetscErrorCode IFunction(TS,PetscReal,Vec,Vec,Vec,void*);
 extern PetscErrorCode IJacobian(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
+extern PetscErrorCode IJacobianByHand(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
+extern PetscErrorCode ILocalActive(Field **f,Field **u,Field **udot,PetscInt *lbox,void *ptr);
+extern PetscErrorCode ILocalPassive(Field **f,Field **u,Field **udot,PetscInt *lbox,void *ptr);
+// TODO: IJacobian
 
 PetscErrorCode InitializeLambda(DM da,Vec lambda,PetscReal x,PetscReal y)
 {
@@ -161,11 +164,19 @@ int main(int argc,char **argv)
       ierr = DMCreateMatrix(da,&A);CHKERRQ(ierr);
       ierr = MatConvert(A,MATAIJ,MAT_INITIAL_MATRIX,&B);CHKERRQ(ierr);
       /* FIXME do we need to change viewer to display matrix in natural ordering as DMCreateMatrix_DA does? */
-      ierr = TSSetIJacobian(ts,A,B,IJacobian,&appctx);CHKERRQ(ierr);
+      if (!analytic) {
+        ierr = TSSetIJacobian(ts,A,B,IJacobian,&appctx);CHKERRQ(ierr);
+      } else {
+        ierr = TSSetIJacobian(ts,A,B,IJacobianByHand,&appctx);CHKERRQ(ierr);
+      }
       ierr = MatDestroy(&A);CHKERRQ(ierr);
       ierr = MatDestroy(&B);CHKERRQ(ierr);
     } else {
-      ierr = TSSetIJacobian(ts,NULL,NULL,IJacobian,&appctx);CHKERRQ(ierr);
+      if (!analytic) {
+        ierr = TSSetIJacobian(ts,NULL,NULL,IJacobian,&appctx);CHKERRQ(ierr);
+      } else {
+        ierr = TSSetIJacobian(ts,NULL,NULL,IJacobianByHand,&appctx);CHKERRQ(ierr);
+      }
     }
   }
 
@@ -221,9 +232,10 @@ int main(int argc,char **argv)
   return ierr;
 }
 
-PetscErrorCode RHSLocalActive(Field **f,Field **u,aField **f_a,aField **u_a,PetscInt *lbox,void *ptr)
+PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt *lbox,void *ptr)
 {
   AppCtx          *appctx = (AppCtx*)ptr;
+  aField          **f_a = appctx->f_a,**u_a = appctx->u_a;
   PetscInt        i,j,sx,sy,Mx = appctx->Mx,My = appctx->My;
   PetscInt        xl = lbox[0]+lbox[2],yl = lbox[1]+lbox[3];
   PetscReal       hx,hy;
@@ -264,6 +276,50 @@ PetscErrorCode RHSLocalActive(Field **f,Field **u,aField **f_a,aField **u_a,Pets
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode ILocalActive(Field **f,Field **u,Field **udot,PetscInt *lbox,void *ptr)
+{
+  AppCtx          *appctx = (AppCtx*)ptr;
+  aField          **f_a = appctx->f_a,**u_a = appctx->u_a;
+  PetscInt        i,j,sx,sy,Mx = appctx->Mx,My = appctx->My;
+  PetscInt        xl = lbox[0]+lbox[2],yl = lbox[1]+lbox[3];
+  PetscReal       hx,hy;
+  adouble         uc,uxx,uyy,vc,vxx,vyy;
+
+  PetscFunctionBeginUser;
+
+  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
+
+  trace_on(1);  // ----------------------------------------------- Start of active section
+
+  // Mark independence
+  for (j=lbox[1]; j<yl; j++) {
+    for (i=lbox[0]; i<xl; i++) {
+      u_a[j][i].u <<= u[j][i].u;u_a[j][i].v <<= u[j][i].v;
+    }
+  }
+  for (j=lbox[1]; j<yl; j++) {
+    for (i=lbox[0]; i<xl; i++) {
+
+      // Compute function over the locally owned part of the grid
+      uc          = u_a[j][i].u;
+      uxx         = (-2.0*uc + u_a[j][modulo(i-1,Mx)].u + u_a[j][modulo(i+1,Mx)].u)*sx;
+      uyy         = (-2.0*uc + u_a[modulo(j-1,My)][i].u + u_a[modulo(j+1,My)][i].u)*sy;
+      vc          = u_a[j][i].v;
+      vxx         = (-2.0*vc + u_a[j][modulo(i-1,Mx)].v + u_a[j][modulo(i+1,Mx)].v)*sx;
+      vyy         = (-2.0*vc + u_a[modulo(j-1,My)][i].v + u_a[modulo(j+1,My)][i].v)*sy;
+      f_a[j][i].u = udot[j][i].u - ( appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc) );
+      f_a[j][i].v = udot[j][i].v - ( appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc );
+
+      // Mark dependence
+      f_a[j][i].u >>= f[j][i].u;f_a[j][i].v >>= f[j][i].v;
+    }
+  }
+  trace_off();  // ----------------------------------------------- End of active section
+
+  PetscFunctionReturn(0);
+}
+
 PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,void *ptr)
 {
   AppCtx        *appctx = (AppCtx*)ptr;
@@ -289,6 +345,30 @@ PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,void *ptr)
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode ILocalPassive(Field **f,Field **u,Field **udot,PetscInt *lbox,void *ptr)
+{
+  AppCtx        *appctx = (AppCtx*)ptr;
+  PetscInt      i,j,sx,sy,Mx = appctx->Mx,My = appctx->My;
+  PetscReal     hx,hy;
+  PetscScalar   uc,uxx,uyy,vc,vxx,vyy;
+
+  PetscFunctionBeginUser;
+  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
+  for (j=lbox[1]; j<lbox[1]+lbox[3]; j++) {
+    for (i=lbox[0]; i<lbox[0]+lbox[2]; i++) {
+      uc        = u[j][i].u;
+      uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
+      uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
+      vc        = u[j][i].v;
+      vxx       = (-2.0*vc + u[j][i-1].v + u[j][i+1].v)*sx;
+      vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*sy;
+      f[j][i].u = udot[j][i].u - ( appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc) );
+      f[j][i].v = udot[j][i].v - ( appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc );
+    }
+  }
+  PetscFunctionReturn(0);
+}
 
 /* ------------------------------------------------------------------- */
 /*
@@ -343,7 +423,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
      Compute function over the locally owned part of the grid
   */
   if (!appctx->no_an) {
-    RHSLocalActive(f,u,appctx->f_a,appctx->u_a,lbox,appctx);
+    RHSLocalActive(f,u,lbox,appctx);
   } else {
     RHSLocalPassive(f,u,lbox,appctx);
   }
@@ -417,8 +497,6 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
   ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dofs,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
-
-  printf("HI!");
 
   /*
      Scatter ghost points to local vector,using the 2-step process
@@ -634,18 +712,13 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   AppCtx         *appctx = (AppCtx*)ptr;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,Mx,My,xs,ys,xm,ym;
-  PetscReal      hx,hy,sx,sy;
-  PetscScalar    uc,uxx,uyy,vc,vxx,vyy;
+  PetscInt       lbox[4];
   Field          **u,**f,**udot;
   Vec            localU;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
-  hx = 2.50/(PetscReal)Mx; sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)My; sy = 1.0/(hy*hy);
 
   /*
      Scatter ghost points to local vector,using the 2-step process
@@ -666,24 +739,17 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   /*
      Get local grid boundaries
   */
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetCorners(da,&lbox[0],&lbox[1],NULL,&lbox[2],&lbox[3],NULL);CHKERRQ(ierr);
 
   /*
      Compute function over the locally owned part of the grid
   */
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      uc        = u[j][i].u;
-      uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
-      uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
-      vc        = u[j][i].v;
-      vxx       = (-2.0*vc + u[j][i-1].v + u[j][i+1].v)*sx;
-      vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*sy;
-      f[j][i].u = udot[j][i].u - ( appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc) );
-      f[j][i].v = udot[j][i].v - ( appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc );
-    }
+  if (!appctx->no_an) {
+    ILocalActive(f,u,udot,lbox,appctx);
+  } else {
+    ILocalPassive(f,u,udot,lbox,appctx);
   }
-  ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
+  ierr = PetscLogFlops(16*lbox[2]*lbox[3]);CHKERRQ(ierr);
 
   /*
      Restore vectors
@@ -695,7 +761,116 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   PetscFunctionReturn(0);
 }
 
+// TODO!!
+
 PetscErrorCode IJacobian(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat BB,void *ctx)
+{
+  AppCtx         *appctx = (AppCtx*)ctx;
+  DM             da;
+  PetscErrorCode ierr;
+  PetscInt       i,j,k = 0,Mx,My,xs,ys,xm,ym,N,dofs,col[1];
+  PetscScalar    *u_vec,**J;
+  Field          **u;
+  Vec            localU,D;
+
+  PetscFunctionBegin;
+  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dofs,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+
+  /*
+     Scatter ghost points to local vector,using the 2-step process
+        DMGlobalToLocalBegin(),DMGlobalToLocalEnd().
+     By placing code between these two statements, computations can be
+     done while messages are in transition.
+  */
+  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+
+  /*
+     Get pointers to vector data
+  */
+  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
+
+  /*
+     Get local grid boundaries and total degrees of freedom on this process
+  */
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+
+  /*
+    Convert array of structs to a 1-array, so this can be read by ADOL-C
+  */
+  N = 2*(xs+xm)*(ys+ym);
+  ierr = PetscMalloc1(N,&u_vec);CHKERRQ(ierr);
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      u_vec[k++] = u[j][i].u;u_vec[k++] = u[j][i].v;
+    }
+  }
+
+  /*
+    For an implicit Jacobian we may use the rule that
+       G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
+    where a = d(xdot)/dx is a constant.
+  */
+  /*
+    First, calculate the -df/dx part using ADOL-C
+  */
+  if (appctx->sparse) {         // TODO. Generate sparsity pattern with jac_pat and then repeat=1
+    PetscInt      nnz,*options;
+    unsigned int  *rind,*cind;
+    PetscScalar   *values;
+
+    nnz = 10*N;
+    ierr = PetscMalloc1(2,&options);CHKERRQ(ierr);
+    options[0] = 0;options[1] = 0;
+    ierr = PetscMalloc1(nnz,&rind);CHKERRQ(ierr);
+    ierr = PetscMalloc1(nnz,&cind);CHKERRQ(ierr);
+    ierr = PetscMalloc1(nnz,&values);CHKERRQ(ierr);
+    sparse_jac(1,N,N,0,u_vec,&nnz,&rind,&cind,&values,options);
+    ierr = PetscFree(values);CHKERRQ(ierr);
+    ierr = PetscFree(rind);CHKERRQ(ierr);
+    ierr = PetscFree(cind);CHKERRQ(ierr);
+    ierr = PetscFree(options);CHKERRQ(ierr);
+
+  } else {
+
+    J = myalloc2(N,N);
+    jacobian(1,N,N,u_vec,J);
+    ierr = PetscFree(u_vec);CHKERRQ(ierr);
+
+    // Insert entries one-by-one
+    for(j=0;j<N;j++){
+      for(i=0;i<N;i++){
+        if(fabs(J[j][i])!=0.){
+            col[0] = i; // TODO: better to insert row-by-row, similarly as with the stencil
+            ierr = MatSetValues(A,1,&j,1,col,&J[j][i],INSERT_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+    myfree2(J);
+  }
+  /*
+    Next, assemble a*M
+  */
+  ierr = VecDuplicate(U,&D);CHKERRQ(ierr);
+  ierr = VecSet(D,a);CHKERRQ(ierr);
+
+  /*
+     Restore vectors
+  */
+  ierr = PetscLogFlops(19*xm*ym);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatDiagonalSet(A,D,ADD_VALUES);     /* Combine a*M and -df/dx parts */
+  ierr = VecDestroy(&D);CHKERRQ(ierr);
+  ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode IJacobianByHand(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat BB,void *ctx)
 {
   AppCtx         *appctx = (AppCtx*)ctx;     /* user-defined application context */
   DM             da;

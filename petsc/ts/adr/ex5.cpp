@@ -68,7 +68,7 @@ typedef struct {
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
 extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
-extern PetscErrorCode RHSLocalActive(Field **f,Field **u,aField **f_a,aField **u_a,PetscInt *lbox,void *ptr);
+extern PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt *lbox,void *ptr);
 extern PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,void *ptr);
 
 int main(int argc,char **argv)
@@ -184,9 +184,10 @@ int main(int argc,char **argv)
   return ierr;
 }
 
-PetscErrorCode RHSLocalActive(Field **f,Field **u,aField **f_a,aField **u_a,PetscInt *lbox,void *ptr)
+PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt *lbox,void *ptr)
 {
   AppCtx          *appctx = (AppCtx*)ptr;
+  aField          **f_a = appctx->f_a,**u_a = appctx->u_a;
   PetscInt        i,j,sx,sy,Mx = appctx->Mx,My = appctx->My;
   PetscInt        xl = lbox[0]+lbox[2],yl = lbox[1]+lbox[3];
   PetscReal       hx,hy;
@@ -305,7 +306,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
      Compute function over the locally owned part of the grid
   */
   if (!appctx->no_an) {
-    RHSLocalActive(f,u,appctx->f_a,appctx->u_a,lbox,appctx);
+    RHSLocalActive(f,u,lbox,appctx);
   } else {
     RHSLocalPassive(f,u,lbox,appctx);
   }
