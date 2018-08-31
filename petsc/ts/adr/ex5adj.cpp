@@ -1,15 +1,17 @@
 static char help[] = "Demonstrates adjoint sensitivity analysis for Reaction-Diffusion Equations.\n";
 
 /*
-  See ex5.c for details on the equation.
-  This code demonestrates the TSAdjoint interface to a system of time-dependent partial differential equations.
-  It computes the sensitivity of a component in the final solution, which locates in the center of the 2D domain, w.r.t. the initial conditions.
-  The user does not need to provide any additional functions. The required functions in the original simultion are resued in the adjoint run.
+      See ex5.c for details on the equations.
+      This code applies the operator overloading automatic differentiation techniques provided by ADOL-C to automatically generate Jacobians for nonlinear partial differential equations (PDEs) and associated adjoint equations. Whilst doing this is unnecessary for equations such as these, where the Jacobian can be derived quite easily, automatic Jacobian generation would be greatly beneficial for more complex PDEs.
+      Handcoded Jacobians are included here for comparison.
 
   Runtime options:
-    -forwardonly  - run the forward simulation without adjoint
-    -implicitform - provide IFunction and IJacobian to TS, if not set, RHSFunction and RHSJacobian will be used
-    -aijpc        - set the preconditioner matrix to be aij (the Jacobian matrix can be of a different type such as ELL)
+    -forwardonly    - run the forward simulation without adjoint
+    -implicitform   - provide IFunction and IJacobian to TS, if not set, RHSFunction and RHSJacobian will be used
+    -aijpc          - set the preconditioner matrix to be aij (the Jacobian matrix can be of a different type such as ELL)
+    -analytic       - use a hand-coded Jacobian
+    -no_annotations - do not annotate using ADOL-C
+    -sparse         - generate Jacobian using ADOL-C sparse Jacobian driver
  */
 
 #include <petscsys.h>
@@ -49,7 +51,6 @@ extern PetscErrorCode IJacobian(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode IJacobianByHand(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode ILocalActive(Field **f,Field **u,Field **udot,PetscInt *lbox,void *ptr);
 extern PetscErrorCode ILocalPassive(Field **f,Field **u,Field **udot,PetscInt *lbox,void *ptr);
-// TODO: IJacobian
 
 PetscErrorCode InitializeLambda(DM da,Vec lambda,PetscReal x,PetscReal y)
 {
@@ -578,7 +579,6 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   PetscFunctionReturn(0);
 }
 
-
 PetscErrorCode RHSJacobianByHand(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 {
   AppCtx         *appctx = (AppCtx*)ctx;     /* user-defined application context */
@@ -760,8 +760,6 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
-
-// TODO!!
 
 PetscErrorCode IJacobian(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat BB,void *ctx)
 {

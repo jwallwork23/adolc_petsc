@@ -1,36 +1,34 @@
 static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equations.\n";
 
 /*
-     Page 21, Pattern Formation with Reaction-Diffusion Equations
-
-        u_t = D1 (u_xx + u_yy)  - u*v^2 + gamma(1 -u)
-        v_t = D2 (v_xx + v_yy)  + u*v^2 - (gamma + kappa)v
-
-    Unlike in the book this uses periodic boundary conditions instead of Neumann
-    (since they are easier for finite differences).
+      See ex5.c for details on the equations.
+      This code applies the operator overloading automatic differentiation techniques provided by ADOL-C to automatically generate Jacobians for nonlinear partial differential equations (PDEs). Whilst this is unnecessary for equations such as these, where the Jacobian can be derived quite easily, automatic Jacobian generation would be greatly beneficial for more complex PDEs.
+      Handcoded Jacobians are included here for comparison.
 */
 
 /*
       Helpful runtime monitor options:
            -ts_monitor_draw_solution
            -draw_save -draw_save_movie
-           -da_grid_x 12 -da_grid_y 12 -ts_max_steps 1 -snes_test_jacobian
-           -da_grid_x 12 -da_grid_y 12 -ts_max_steps 1 -snes_test_jacobian -snes_test_jacobian_view
-      Follow any such command with "> <filename>.txt" to save output to file.
-
-      Helpful runtime linear solver options:
-           -pc_type mg -pc_mg_galerkin pmat -da_refine 1 -snes_monitor -ksp_monitor -ts_view  (note that these Jacobians are so well-conditioned multigrid may not be the best solver)
+           -analytic       - use a hand-coded Jacobian
+           -no_annotations - do not annotate using ADOL-C
+           -sparse         - generate Jacobian using ADOL-C sparse Jacobian driver
 
       Helpful ADOL-C related options:
            -adolc_test_zos (test Zero Order Scalar evaluation)
 
+      Helpful runtime monitor options for debugging:
+           -da_grid_x 12 -da_grid_y 12 -ts_max_steps 1 -snes_test_jacobian
+           -da_grid_x 12 -da_grid_y 12 -ts_max_steps 1 -snes_test_jacobian -snes_test_jacobian_view
+
+      Helpful runtime linear solver options:
+           -pc_type mg -pc_mg_galerkin pmat -da_refine 1 -snes_monitor -ksp_monitor -ts_view  (note that these Jacobians are so well-conditioned multigrid may not be the best solver)
+
       Point your browser to localhost:8080 to monitor the simulation
            ./ex5  -ts_view_pre saws  -stack_view saws -draw_save -draw_save_single_file -x_virtual -ts_monitor_draw_solution -saws_root .
-
 */
 
 /*
-
    Include "petscdmda.h" so that we can use distributed arrays (DMDAs).
    Include "petscts.h" so that we can use SNES solvers.  Note that this
    file automatically includes:
