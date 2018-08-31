@@ -19,10 +19,6 @@ ex1: ex1.o
 	$(COMPILE) $(CCFLAGS) -o $@ $^ ${PETSC_TS_LIB} -L${ADOLC_HOME}/build -ladolc
 	${RM} $^
 
-ex4: ex4.o
-	$(COMPILE) $(CCFLAGS) -o $@ $^ ${PETSC_TS_LIB} -L${ADOLC_HOME}/build -ladolc
-	${RM} $^
-
 ex5: ex5.o
 	$(COMPILE) $(CCFLAGS) -o $@ $^ ${PETSC_TS_LIB} $(LD_FLAGS) -L${ADOLC_HOME}/build -ladolc
 	${RM} $^

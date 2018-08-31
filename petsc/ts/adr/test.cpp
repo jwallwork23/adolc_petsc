@@ -53,22 +53,28 @@ PetscErrorCode aFieldFree(PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,PetscI
   PetscFunctionReturn(0);
 }
 */
-
-PetscErrorCode aFieldAlloc(aField *a,PetscInt m,PetscInt s,PetscInt dof,aField **A)
+/*
+PetscErrorCode aFieldAllocInner(aField *a,PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,adouble **A[])
 {
-  PetscInt       i;
+  PetscInt       j;
 
   PetscFunctionBegin;
-  A = new aField*[m];
-  for (i=s; i<m; i++) {
-    A[i] = new aField[m];
-    A[i] = a + dof*i*m - dof*s;
-  }
-  A -= s;
+  for (j=ys; j<ym; j++)
+    A[j] = a + j*xm - xs;
+  A -= ys;
 
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode aFieldAlloc(aField *a,PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,PetscInt dof,void *array)
+{
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  ierr = aFieldAllocInner(a,xs*dof,ys,xm*dof,ym,(adouble***)array);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+*/
 int main(int argc,char **argv)
 {
   PetscErrorCode  ierr;
@@ -99,20 +105,35 @@ int main(int argc,char **argv)
 
 
   // Allocate memory for 2-array aFields
-/*  
+/*
   if (ghost) {
-    ad = new aField[gm*gm];
-    bd = new aField[gm*gm];
-    ierr = aFieldAlloc(ad,gm,gs,dof,A);CHKERRQ(ierr);
-    ierr = aFieldAlloc(bd,gm,gs,dof,B);CHKERRQ(ierr);
+    ad = new aField[dof*gxm*gym];
+    bd = new aField[dof*gxm*gym];
+
+    A = new aField*[ym];
+    B = new aField*[ym];
+    for (j=ys; j<ym; j++) {
+      A[j] = new aField[xm];
+      B[j] = new aField[xm];
+    }
+    ierr = aFieldAlloc(ad,gxs,gys,gxm,gym,dof,&A);CHKERRQ(ierr);
+    ierr = aFieldAlloc(bd,gxs,gys,gxm,gym,dof,&B);CHKERRQ(ierr);
   } else {
-    ad = new aField[lm*lm];
-    bd = new aField[lm*lm];
-    ierr = aFieldAlloc(ad,lm,ls,dof,A);CHKERRQ(ierr);
-    ierr = aFieldAlloc(bd,lm,ls,dof,B);CHKERRQ(ierr);
+    ad = new aField[dof*xm*ym];
+
+    A = new aField*[ym];
+    B = new aField*[ym];
+    for (j=ys; j<ym; j++) {
+      A[j] = new aField[xm];
+      B[j] = new aField[xm];
+    }
+    bd = new aField[dof*xm*ym];
+    ierr = aFieldAlloc(ad,xs,ys,xm,ym,dof,&A);CHKERRQ(ierr);
+    ierr = aFieldAlloc(bd,xs,ys,xm,ym,dof,&B);CHKERRQ(ierr);
   }
 */
 
+  // TODO: create functions to wrap these allocations in
   if (ghost) {
     ad = new aField[dof*gxm*gym];
     A = new aField*[gym];
@@ -154,9 +175,9 @@ int main(int argc,char **argv)
   trace_on(1);
   for (j=ys; j<ym; j++) {
     for (i=xs; i<xm; i++) {
-      printf("i=%d,j=%d\n",i,j);
-      printf("  %d\n",&A[j][i]);
-      printf("    %d\n",&A[j][i].v);
+      //printf("i=%d,j=%d\n",i,j);
+      //printf("  %d\n",&A[j][i]);
+      //printf("    %d\n",&A[j][i].v);
       A[j][i].u <<= aa[j][i].u;
       A[j][i].v <<= aa[j][i].v;
     }

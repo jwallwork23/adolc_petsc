@@ -79,25 +79,23 @@ int main(int argc,char **argv)
   DM             da;
   AppCtx         appctx;
   aField         **u_a=NULL,**f_a=NULL; /* active fields used by ADOL-C */
-  PetscInt       Mx,My;
-  PetscBool      analytic=PETSC_FALSE,no_annotations=PETSC_FALSE,adolc_test_zos=PETSC_FALSE,sparse=PETSC_FALSE;
+  PetscInt       Mx,My,lbox[4],j;
+  PetscBool      analytic=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   PetscFunctionBeginUser;
-  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&adolc_test_zos,NULL);CHKERRQ(ierr);
+  appctx.zos = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&appctx.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotations",&no_annotations,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&sparse,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotations",&appctx.no_an,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
   appctx.D1     = 8.0e-5;
   appctx.D2     = 4.0e-5;
   appctx.gamma  = .024;
   appctx.kappa  = .06;
-  appctx.zos    = adolc_test_zos;
-  appctx.no_an  = no_annotations;
-  appctx.sparse = sparse;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
@@ -116,11 +114,7 @@ int main(int argc,char **argv)
      vectors that are the same types
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
-
-
-  PetscInt lbox[4],j;
   ierr = DMDAGetCorners(da,&lbox[0],&lbox[1],NULL,&lbox[2],&lbox[3],NULL);CHKERRQ(ierr);
-  // TODO: use ghost corners
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Allocate memory for active fields and store references in context 
@@ -129,14 +123,16 @@ int main(int argc,char **argv)
            cannot be allocated using PetscMalloc, as this does not call the
            relevant class constructor. Instead, we use the C++ keyword `new`.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  u_a = new aField*[lbox[1]+lbox[3]];
-  f_a = new aField*[lbox[1]+lbox[3]];
-  for (j=lbox[1]; j<lbox[1]+lbox[3]; j++) {
-    u_a[j] = new aField[lbox[0]+lbox[2]];
-    f_a[j] = new aField[lbox[0]+lbox[2]];
+  if (!appctx.no_an) {
+    u_a = new aField*[lbox[3]];		// TODO: Endow with ghost points
+    f_a = new aField*[lbox[3]];		// TODO: Are these the right size?
+    for (j=lbox[1]; j<lbox[1]+lbox[3]; j++) {
+      u_a[j] = new aField[lbox[2]];	// TODO: In parallel case, these need shifting
+      f_a[j] = new aField[lbox[2]];
+    }
+    appctx.u_a = u_a;
+    appctx.f_a = f_a;
   }
-  appctx.u_a = u_a;
-  appctx.f_a = f_a;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
@@ -179,8 +175,10 @@ int main(int argc,char **argv)
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
   ierr = DMDestroy(&da);CHKERRQ(ierr);
 
-  delete[] u_a;
-  delete[] f_a;
+  if (!appctx.no_an) {
+    delete[] u_a;
+    delete[] f_a;
+  }
 
   ierr = PetscFinalize();
   return ierr;
