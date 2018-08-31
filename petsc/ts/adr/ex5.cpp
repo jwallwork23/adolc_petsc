@@ -58,7 +58,7 @@ typedef struct {
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
   PetscBool zos,no_an,sparse;
-  aField    u_a,f_a;
+  aField    **u_a,**f_a;
 } AppCtx;
 
 /*
@@ -67,7 +67,7 @@ typedef struct {
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
 extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
-extern PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt *lbox,PetscReal hx,PetscReal hy,void *ptr);
+extern PetscErrorCode RHSLocalActive(Field **f,Field **u,aField **f_a,aField **u_a,PetscInt *lbox,PetscReal hx,PetscReal hy,void *ptr);
 extern PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,PetscReal hx,PetscReal hy,void *ptr);
 
 int main(int argc,char **argv)
@@ -111,7 +111,20 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
 
-  // TODO: Create aFields out here for efficiency
+
+  PetscInt lbox[4],j;
+  ierr = DMDAGetCorners(da,&lbox[0],&lbox[1],NULL,&lbox[2],&lbox[3],NULL);CHKERRQ(ierr);
+  // TODO: use ghost corners
+  aField       **u_a=NULL,**f_a=NULL;
+
+  u_a = new aField*[lbox[1]+lbox[3]];
+  f_a = new aField*[lbox[1]+lbox[3]];
+  for (j=lbox[1]; j<lbox[1]+lbox[3]; j++) {
+    u_a[j] = new aField[lbox[0]+lbox[2]];
+    f_a[j] = new aField[lbox[0]+lbox[2]];
+  }
+  appctx.u_a = u_a;
+  appctx.f_a = f_a;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
@@ -154,23 +167,20 @@ int main(int argc,char **argv)
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
   ierr = DMDestroy(&da);CHKERRQ(ierr);
 
+  delete[] u_a;
+  delete[] f_a;
+
   ierr = PetscFinalize();
   return ierr;
 }
 
-PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt *lbox,PetscInt *gbox,PetscReal Mx,PetscReal My,void *ptr)
+PetscErrorCode RHSLocalActive(Field **f,Field **u,aField **f_a,aField **u_a,PetscInt *lbox,PetscReal Mx,PetscReal My,void *ptr)
 {
   AppCtx          *appctx = (AppCtx*)ptr;
   PetscInt        i,j,sx,sy;
-  PetscInt        xl=lbox[0]+lbox[2],yl=lbox[1]+lbox[3],gxl=gbox[0]+gbox[2],gyl=gbox[1]+gbox[3];
+  PetscInt        xl=lbox[0]+lbox[2],yl=lbox[1]+lbox[3];
   PetscReal       hx,hy;
   adouble         uc,uxx,uyy,vc,vxx,vyy;
-  aField          u_a[gyl][gxl];	// Independent variables, as an array of structs
-  aField          f_a[gyl][gxl];	// Dependent variables, as an array of structs
-
-  //aField          **u_a=NULL,**f_a=NULL;
-  //u_a = new aField[yl][xl];
-  //f_a = new aField[yl][xl];
 
   PetscFunctionBeginUser;
 
@@ -204,59 +214,9 @@ PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt *lbox,PetscInt *gbox,
   }
   trace_off();  // ----------------------------------------------- End of active section
 
-  //delete[] u_a;
-  //delete[] f_a;
-
   PetscFunctionReturn(0);
 }
-/*
-PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt xm,PetscInt ys,PetscInt ym,PetscReal Mx,PetscReal My,void *ptr)
-{
-  AppCtx          *appctx = (AppCtx*)ptr;
-  PetscInt        i,j,k = 0,sx,sy;
-  PetscReal       hx,hy;
-  adouble         uc,uxx,uyy,vc,vxx,vyy;
-  adouble         *u_a = new adouble[2*(xs+xm)*(ys+ym)];	// TODO: Move this outside
-  adouble         *f_a = new adouble[2*(xs+xm)*(ys+ym)];
 
-  PetscFunctionBeginUser;
-  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
-
-  trace_on(1);  // ----------------------------------------------- Start of active section
-
-  // Mark independence
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      u_a[k++] <<= u[j][i].u;u_a[k++] <<= u[j][i].v;
-    }
-  }
-  k = 0;
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-
-      // Compute function over the locally owned part of the grid
-      uc          = u_a[k++];
-      uxx         = (-2.0*uc + u_a[m_map(i-1,j,0,Mx,My,2)] + u_a[m_map(i+1,j,0,Mx,My,2)])*sx;
-      uyy         = (-2.0*uc + u_a[m_map(i,j-1,0,Mx,My,2)] + u_a[m_map(i,j+1,0,Mx,My,2)])*sy;
-      vc          = u_a[k--];
-      vxx         = (-2.0*vc + u_a[m_map(i-1,j,1,Mx,My,2)] + u_a[m_map(i+1,j,1,Mx,My,2)])*sx;
-      vyy         = (-2.0*vc + u_a[m_map(i,j-1,1,Mx,My,2)] + u_a[m_map(i,j+1,1,Mx,My,2)])*sy;
-      f_a[k++] = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
-      f_a[k--] = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
-
-      // Mark dependence
-      f_a[k++] >>= f[j][i].u;f_a[k++] >>= f[j][i].v;
-    }
-  }
-  trace_off();  // ----------------------------------------------- End of active section
-
-  delete[] f_a;
-  delete[] u_a;
-
-  PetscFunctionReturn(0);
-}
-*/
 PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,PetscReal Mx,PetscReal My,void *ptr)
 {
   AppCtx        *appctx = (AppCtx*)ptr;
@@ -303,7 +263,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   AppCtx         *appctx = (AppCtx*)ptr;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       Mx,My,lbox[4],gbox[4],dofs;
+  PetscInt       Mx,My,lbox[4],dofs;
   Field          **u,**f;
   Vec            localU;
 
@@ -331,14 +291,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
      Get local grid boundaries
   */
   ierr = DMDAGetCorners(da,&lbox[0],&lbox[1],NULL,&lbox[2],&lbox[3],NULL);CHKERRQ(ierr);
-  ierr = DMDAGetGhostCorners(da,&gbox[0],&gbox[1],NULL,&gbox[2],&gbox[3],NULL);CHKERRQ(ierr);
-  // TODO: use this
 
   /*
      Compute function over the locally owned part of the grid
   */
   if (!appctx->no_an) {
-    RHSLocalActive(f,u,lbox,gbox,Mx,My,appctx);
+    RHSLocalActive(f,u,appctx->f_a,appctx->u_a,lbox,Mx,My,appctx);
   } else {
     RHSLocalPassive(f,u,lbox,Mx,My,appctx);
   }

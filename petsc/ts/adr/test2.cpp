@@ -12,11 +12,16 @@ typedef struct {
 
 aField **A;
 
-int main()
+int main(int argc,char **argv)
 {
-  int n,i,j;
-  double a = 2.,b=1.;
-  adouble tmp;
+  PetscErrorCode ierr;
+  PetscInt       n,i,j;
+  PetscScalar    a = 2.,b=1.;
+  adouble        tmp;
+  aField         **A = NULL;
+
+  ierr = PetscInitialize(&argc,&argv,(char*)0,NULL);if (ierr) return ierr;
+  PetscFunctionBeginUser;
 
   cout << "Matrix dimension ?= ";
   cin >> n;
@@ -40,5 +45,7 @@ int main()
 
   delete[] A;
 
-  return 0;
+  ierr = PetscFinalize();
+
+  return ierr;
 }

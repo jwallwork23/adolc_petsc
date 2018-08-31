@@ -61,11 +61,7 @@ int main(int argc,char **argv)
   aField          **a;
   PetscInt        i,j,k=0;
   PetscScalar     *aa;
-/*
-  PetscScalar     test1;
-  adouble         test2;
-  double          test3;
-*/
+
   ierr = PetscInitialize(&argc,&argv,(char*)0,NULL);if (ierr) return ierr;
   PetscFunctionBegin;
 
@@ -78,11 +74,6 @@ int main(int argc,char **argv)
       aa[k] = k;k++;
     }
   }
-/*
-  printf("Size of PetscScalar = %d\n",sizeof(test1));
-  printf("Size of adouble     = %d\n",sizeof(test2));
-  printf("Size of double      = %d\n",sizeof(test3));
-*/
 
   trace_on(1);
   a[0][0].u <<= aa[0];
