@@ -53,111 +53,147 @@ PetscErrorCode aFieldFree(PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,PetscI
   PetscFunctionReturn(0);
 }
 */
+
+PetscErrorCode aFieldAlloc(aField *a,PetscInt m,PetscInt s,PetscInt dof,aField **A)
+{
+  PetscInt       i;
+
+  PetscFunctionBegin;
+  A = new aField*[m];
+  for (i=s; i<m; i++) {
+    A[i] = new aField[m];
+    A[i] = a + dof*i*m - dof*s;
+  }
+  A -= s;
+
+  PetscFunctionReturn(0);
+}
+
 int main(int argc,char **argv)
 {
   PetscErrorCode  ierr;
   aField          **A = NULL,**B = NULL;
   aField          *ad = NULL,*bd = NULL;
-  PetscInt        ls=0,lm=3,i,j,dof=2,gs,gm;
+  PetscInt        xs=0,ys=0,xss=0,yss=0,xm=3,ym=3,i,j,dof=2,gxs,gys,gxm,gym;
   adouble         tmp;
   PetscBool       ghost=PETSC_FALSE;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,NULL);if (ierr) return ierr;
   PetscFunctionBegin;
   ierr = PetscOptionsGetBool(NULL,NULL,"-ghost",&ghost,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetInt(NULL,NULL,"-n",&lm,NULL);CHKERRQ(ierr);
-  gs=ls-1,gm=lm+2;
-  Field           aa[lm][lm],bb[lm][lm];
+  ierr = PetscOptionsGetInt(NULL,NULL,"-xm",&xm,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetInt(NULL,NULL,"-ym",&ym,NULL);CHKERRQ(ierr);
+  gxs=xs-1,gys=ys-1,gxm=xm+2,gym=ym+2;
+  Field           aa[ym][xm],bb[ym][xm];
 
   //ierr = aFieldMalloc(gs,gs,gm,gm,2,&a);CHKERRQ(ierr);
 
   printf("Before:\n\n");
-  for (j=ls; j<lm; j++) {
-    for (i=ls; i<lm; i++) {
-      aa[i][j].u = i;
-      aa[i][j].v = j;
-      printf("%f, %f\n",aa[i][j].u,aa[i][j].v);
+  for (j=ys; j<ym; j++) {
+    for (i=xs; i<xm; i++) {
+      aa[j][i].u = i+1;
+      aa[j][i].v = j+1;
+      printf("%f, %f\n",aa[j][i].u,aa[j][i].v);
     }
   }
 
 
   // Allocate memory for 2-array aFields
+/*  
   if (ghost) {
     ad = new aField[gm*gm];
-    A = new aField*[gm];
-    for (i=gs; i<gm; i++) {
-      A[i] = new aField[gm];
-      A[i] = ad + dof*i*gm - dof*gs;
-    }
-    A -= gs;
-
     bd = new aField[gm*gm];
-    B = new aField*[gm];
-    for (i=gs; i<gm; i++) {
-      B[i] = new aField[gm];
-      B[i] = bd + dof*i*gm - dof*gs;
-    }
-    B -= gs;
-   } else {
+    ierr = aFieldAlloc(ad,gm,gs,dof,A);CHKERRQ(ierr);
+    ierr = aFieldAlloc(bd,gm,gs,dof,B);CHKERRQ(ierr);
+  } else {
     ad = new aField[lm*lm];
-    A = new aField*[lm];
-    for (i=ls; i<lm; i++) {
-      A[i] = new aField[lm];
-      A[i] = ad + i*lm - ls;
-    }
-    A -= ls;
-
     bd = new aField[lm*lm];
-    B = new aField*[lm];
-    for (i=ls; i<lm; i++) {
-      B[i] = new aField[lm];
-      B[i] = bd + i*lm - ls;
+    ierr = aFieldAlloc(ad,lm,ls,dof,A);CHKERRQ(ierr);
+    ierr = aFieldAlloc(bd,lm,ls,dof,B);CHKERRQ(ierr);
+  }
+*/
+
+  if (ghost) {
+    ad = new aField[dof*gxm*gym];
+    A = new aField*[gym];
+    for (j=gys; j<gym; j++) {
+      A[j] = new aField[gxm];
+      A[j] = ad + dof*j*gxm - dof*gxs;
     }
-    B -= ls;
+    A -= gys;
+
+    bd = new aField[dof*gxm*gym];
+    B = new aField*[gym];
+    for (j=gys; j<gym; j++) {
+      B[j] = new aField[gxm];
+      B[j] = bd + dof*j*gxm - dof*gxs;
+    }
+    B -= gys;
+
+   } else {
+
+
+    ad = new aField[dof*xm*ym];
+    A = new aField*[ym];
+    for (j=ys; j<ym; j++) {
+      A[j] = new aField[xm];
+      A[j] = ad + dof*j*xm - dof*xs;
+    }
+    A -= ys;
+
+    bd = new aField[dof*xm*ym];
+    B = new aField*[ym];
+    for (j=ys; j<ym; j++) {
+      B[j] = new aField[xm];
+      B[j] = bd + dof*j*xm - dof*xs;
+    }
+    B -= ys;
   }
 
   // Perform active section
   trace_on(1);
-  for (i=ls; i<lm; i++) {
-    for (j=ls; j<lm; j++) {
-      //printf("i=%d,j=%d\n",i,j);
-      //printf("  %d\n",&A[i][j]);
-      //printf("    %d\n",&A[i][j].v);
-      A[i][j].u <<= aa[i][j].u;
-      A[i][j].v <<= aa[i][j].v;
+  for (j=ys; j<ym; j++) {
+    for (i=xs; i<xm; i++) {
+      printf("i=%d,j=%d\n",i,j);
+      printf("  %d\n",&A[j][i]);
+      printf("    %d\n",&A[j][i].v);
+      A[j][i].u <<= aa[j][i].u;
+      A[j][i].v <<= aa[j][i].v;
     }
   }
   if (!ghost) {
-    ls += 1;
+    xss += 1;yss += 1;
   }
-  for (i=ls; i<lm; i++) {
-    for (j=ls; j<lm; j++) {
-      B[i][j].u = A[i-1][j].u;
-      B[i][j].v = A[i][j-1].v;
+  for (j=ys; j<ym; j++) {
+    for (i=xss; i<xm; i++) {
+      B[j][i].u = A[j][i-1].u;
     }
   }
-
-  if (!ghost) {
-    ls -= 1;
+  for (j=yss; j<ym; j++) {
+    for (i=xs; i<xm; i++) {
+      B[j][i].v = A[j-1][i].v;
+    }
   }
-  for (i=ls; i<lm; i++) {
-    for (j=ls; j<lm; j++) {
-      B[i][j].u >>= bb[i][j].u;
-      B[i][j].v >>= bb[i][j].v;
+  for (j=ys; j<ym; j++) {
+    for (i=xs; i<xm; i++) {
+      B[j][i].u >>= bb[j][i].u;
+      B[j][i].v >>= bb[j][i].v;
     }
   }
   trace_off();
 
   printf("\nAfter:\n\n");
-  for (j=ls; j<lm; j++) {
-    for (i=ls; i<lm; i++) {
-      printf("%f, %f\n",bb[i][j].u,bb[i][j].v);
+  for (j=ys; j<ym; j++) {
+    for (i=xs; i<xm; i++) {
+      printf("%f, %f\n",bb[j][i].u,bb[j][i].v);
     }
   }
 
   printf("\nDone. Now need to destroy and deallocate aField.\n");
   delete[] A;
+  delete[] B;
   delete[] ad;
+  delete[] bd;
   printf("Done.\n");
 
   //ierr = aFieldFree(gs,gs,gm,gm,2,&a);CHKERRQ(ierr);
