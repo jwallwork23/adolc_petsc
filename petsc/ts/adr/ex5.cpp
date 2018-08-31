@@ -58,6 +58,7 @@ typedef struct {
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
   PetscBool zos,no_an,sparse;
+  PetscInt  Mx,My;
   aField    **u_a,**f_a;
 } AppCtx;
 
@@ -67,16 +68,18 @@ typedef struct {
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
 extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
-extern PetscErrorCode RHSLocalActive(Field **f,Field **u,aField **f_a,aField **u_a,PetscInt *lbox,PetscReal hx,PetscReal hy,void *ptr);
-extern PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,PetscReal hx,PetscReal hy,void *ptr);
+extern PetscErrorCode RHSLocalActive(Field **f,Field **u,aField **f_a,aField **u_a,PetscInt *lbox,void *ptr);
+extern PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,void *ptr);
 
 int main(int argc,char **argv)
 {
-  TS             ts;                  /* ODE integrator */
-  Vec            x;                   /* solution */
+  TS             ts;                    /* ODE integrator */
+  Vec            x;                     /* solution */
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
+  aField         **u_a=NULL,**f_a=NULL; /* active fields used by ADOL-C */
+  PetscInt       Mx,My;
   PetscBool      analytic=PETSC_FALSE,no_annotations=PETSC_FALSE,adolc_test_zos=PETSC_FALSE,sparse=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -104,6 +107,9 @@ int main(int argc,char **argv)
   ierr = DMSetUp(da);CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,0,"u");CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,1,"v");CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+  appctx.Mx     = Mx;
+  appctx.My     = My;
 
   /*  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Extract global vectors from DMDA; then duplicate for remaining
@@ -115,8 +121,10 @@ int main(int argc,char **argv)
   PetscInt lbox[4],j;
   ierr = DMDAGetCorners(da,&lbox[0],&lbox[1],NULL,&lbox[2],&lbox[3],NULL);CHKERRQ(ierr);
   // TODO: use ghost corners
-  aField       **u_a=NULL,**f_a=NULL;
 
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Allocate memory for active fields and store references in context 
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   u_a = new aField*[lbox[1]+lbox[3]];
   f_a = new aField*[lbox[1]+lbox[3]];
   for (j=lbox[1]; j<lbox[1]+lbox[3]; j++) {
@@ -174,11 +182,11 @@ int main(int argc,char **argv)
   return ierr;
 }
 
-PetscErrorCode RHSLocalActive(Field **f,Field **u,aField **f_a,aField **u_a,PetscInt *lbox,PetscReal Mx,PetscReal My,void *ptr)
+PetscErrorCode RHSLocalActive(Field **f,Field **u,aField **f_a,aField **u_a,PetscInt *lbox,void *ptr)
 {
   AppCtx          *appctx = (AppCtx*)ptr;
-  PetscInt        i,j,sx,sy;
-  PetscInt        xl=lbox[0]+lbox[2],yl=lbox[1]+lbox[3];
+  PetscInt        i,j,sx,sy,Mx = appctx->Mx,My = appctx->My;
+  PetscInt        xl = lbox[0]+lbox[2],yl = lbox[1]+lbox[3];
   PetscReal       hx,hy;
   adouble         uc,uxx,uyy,vc,vxx,vyy;
 
@@ -217,10 +225,10 @@ PetscErrorCode RHSLocalActive(Field **f,Field **u,aField **f_a,aField **u_a,Pets
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,PetscReal Mx,PetscReal My,void *ptr)
+PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,void *ptr)
 {
   AppCtx        *appctx = (AppCtx*)ptr;
-  PetscInt      i,j,sx,sy;
+  PetscInt      i,j,sx,sy,Mx = appctx->Mx,My = appctx->My;
   PetscReal     hx,hy;
   PetscScalar   uc,uxx,uyy,vc,vxx,vyy;
 
@@ -263,14 +271,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   AppCtx         *appctx = (AppCtx*)ptr;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       Mx,My,lbox[4],dofs;
+  PetscInt       lbox[4];
   Field          **u,**f;
   Vec            localU;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dofs,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
 
   /*
      Scatter ghost points to local vector,using the 2-step process
@@ -296,9 +303,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
      Compute function over the locally owned part of the grid
   */
   if (!appctx->no_an) {
-    RHSLocalActive(f,u,appctx->f_a,appctx->u_a,lbox,Mx,My,appctx);
+    RHSLocalActive(f,u,appctx->f_a,appctx->u_a,lbox,appctx);
   } else {
-    RHSLocalPassive(f,u,lbox,Mx,My,appctx);
+    RHSLocalPassive(f,u,lbox,appctx);
   }
   ierr = PetscLogFlops(16*lbox[2]*lbox[3]);CHKERRQ(ierr);
 
@@ -417,7 +424,7 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     for (j=ys; j<ys+ym; j++) {
       ierr = PetscMalloc1(N,&frhs[j]);CHKERRQ(ierr);
     }
-    RHSLocalPassive(frhs,u,lbox,Mx,My,appctx);
+    RHSLocalPassive(frhs,u,lbox,appctx);
 
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
