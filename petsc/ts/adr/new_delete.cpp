@@ -1,6 +1,5 @@
 #include <petscts.h>
 #include <iostream>
-#include "mmatrix.h"
 #include <adolc/adolc.h>
 
 using namespace std;
@@ -21,20 +20,6 @@ void FieldDelete(Field** f,PetscInt m)
   for(j = 0; j < m; j++) {
       delete[] f[j];   
   }
-  //Free the array of pointers
-  delete[] f;
-}
-
-void aFieldDelete(aField** f,PetscInt m)
-{
-  PetscInt j;
-
-  //Free each sub-array
-  for(j = 0; j < m; j++) {
-      delete[] f[j];   
-  }
-  //Free the array of pointers
-  delete[] f;
 }
 
 void FieldPrint(Field **f,PetscInt s,PetscInt m)
@@ -68,11 +53,6 @@ int main(int argc,char **argv)
     ierr = PetscOptionsGetBool(NULL,NULL,"-ghost",&ghost,NULL);CHKERRQ(ierr);
     ierr = PetscOptionsGetInt(NULL,NULL,"-m",&m,NULL);CHKERRQ(ierr);
 
-/*
-    MMatrix *M = new MMatrix(2,2);
-    delete M;
-*/
-
     //Create an array of pointers that points to more arrays of Fields
     Field** matrix1 = new Field*[m];
     for (j = s; j < m; j++) {
@@ -90,10 +70,16 @@ int main(int argc,char **argv)
     cout << endl << "BEFORE" << endl;
     FieldPrint(matrix1,s,m);
 
+    //Contiguous 1-arrays for active matrices
+    aField* alist1 = new aField[dof*m*m];
+    aField* alist2 = new aField[dof*m*m];
+
     //Create an array of pointers that points to more arrays of aFields
     aField** amatrix1 = new aField*[m];
     for (j = s; j < m; j++) {
         amatrix1[j] = new aField[m];
+        delete[] amatrix1[j];
+        amatrix1[j] = alist1 + dof*j*m;
     }
 
     //Do the same for outputs
@@ -106,6 +92,8 @@ int main(int argc,char **argv)
     aField** amatrix2 = new aField*[m];
     for (j = s; j < m; j++) {
         amatrix2[j] = new aField[m];
+        delete[] amatrix2[j];
+        amatrix2[j] = alist2 + dof*j*m;
     }
 
     trace_on(1);	/* ------------------- ACTIVE SECTION ----------------------- */
@@ -149,10 +137,15 @@ int main(int argc,char **argv)
     FieldPrint(matrix2,s,m);
 
     //Free memory
-    aFieldDelete(amatrix2,m);
     FieldDelete(matrix2,m);
-    aFieldDelete(amatrix1,m);
     FieldDelete(matrix1,m);
+
+    delete[] amatrix2;
+    delete[] matrix2;
+    delete[] amatrix1;
+    delete[] matrix1;
+    delete[] alist2;
+    delete[] alist1;
 
     ierr = PetscFinalize();CHKERRQ(ierr);
 

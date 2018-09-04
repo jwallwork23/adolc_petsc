@@ -76,8 +76,8 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
-  aField         **u_a=NULL,**f_a=NULL; /* active fields used by ADOL-C */
-  PetscInt       Mx,My,xs,ys,xm,ym,j;
+  aField         **u_a=NULL,**f_a=NULL,*u_c=NULL,*f_c=NULL;
+  PetscInt       Mx,My,xs,ys,xm,ym,j,dofs;
   PetscBool      analytic=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -103,7 +103,7 @@ int main(int argc,char **argv)
   ierr = DMSetUp(da);CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,0,"u");CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,1,"v");CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dofs,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
   appctx.Mx     = Mx;
   appctx.My     = My;
 
@@ -122,11 +122,20 @@ int main(int argc,char **argv)
            relevant class constructor. Instead, we use the C++ keyword `new`.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if (!appctx.no_an) {
+
+    // Create contiguous 1-arrays of aFields
+    u_c = new aField[dofs*xm*ym];
+    f_c = new aField[dofs*xm*ym];
+
     u_a = new aField*[ym];		// TODO: Endow with ghost points
     f_a = new aField*[ym];		// TODO: Are these the right size?
-    for (j=ys; j<ys+ym]; j++) {
+    for (j=ys; j<ys+ym; j++) {
       u_a[j] = new aField[xm];		// TODO: In parallel case, these need shifting
+      delete[] u_a[j];
+      u_a[j] = u_c + j*dofs*xm;
       f_a[j] = new aField[xm];
+      delete[] f_a[j];
+      f_a[j] = f_c + j*dofs*xm;
     }
     appctx.u_a = u_a;
     appctx.f_a = f_a;
@@ -174,8 +183,13 @@ int main(int argc,char **argv)
   ierr = DMDestroy(&da);CHKERRQ(ierr);
 
   if (!appctx.no_an) {
-    delete[] u_a;
+
+    // Call destructors and free memory
     delete[] f_a;
+    delete[] u_a;
+
+    delete[] f_c;
+    delete[] u_c;
   }
 
   ierr = PetscFinalize();
