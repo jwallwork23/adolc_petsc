@@ -77,7 +77,7 @@ int main(int argc,char **argv)
   DM             da;
   AppCtx         appctx;
   aField         **u_a=NULL,**f_a=NULL,*u_c=NULL,*f_c=NULL;
-  PetscInt       Mx,My,xs,ys,xm,ym,j,dofs;
+  PetscInt       xs,ys,xm,ym,gxs,gys,gxm,gym,j,dofs;
   PetscBool      analytic=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -103,9 +103,7 @@ int main(int argc,char **argv)
   ierr = DMSetUp(da);CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,0,"u");CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,1,"v");CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dofs,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
-  appctx.Mx     = Mx;
-  appctx.My     = My;
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&appctx.Mx,&appctx.My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dofs,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
 
   /*  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Extract global vectors from DMDA; then duplicate for remaining
@@ -113,6 +111,7 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Allocate memory for active fields and store references in context 
@@ -120,25 +119,43 @@ int main(int argc,char **argv)
      NOTE: Memory for ADOL-C active variables (such as adouble and aField)
            cannot be allocated using PetscMalloc, as this does not call the
            relevant class constructor. Instead, we use the C++ keyword `new`.
+
+           It is also important to deconstruct and free memory appropriately.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if (!appctx.no_an) {
 
-    // Create contiguous 1-arrays of aFields
-    u_c = new aField[dofs*xm*ym];
-    f_c = new aField[dofs*xm*ym];
+    // TODO: Finish endowment with ghost points
+    gxs = xs;gys = ys;gxm = xm;gym = ym;
 
-    u_a = new aField*[ym];		// TODO: Endow with ghost points
-    f_a = new aField*[ym];		// TODO: Are these the right size?
-    for (j=ys; j<ys+ym; j++) {
-      u_a[j] = new aField[xm];		// TODO: In parallel case, these need shifting
+    // Create contiguous 1-arrays of aFields
+    u_c = new aField[dofs*gxm*gym];	// TODO: Try conversion between adouble and aField
+    f_c = new aField[dofs*gxm*gym];
+
+    // Corresponding 2-arrays of aFields
+    u_a = new aField*[gym];
+    f_a = new aField*[gym];
+    for (j=0; j<gym; j++) {
+      u_a[j] = new aField[gxm];
       delete[] u_a[j];
-      u_a[j] = u_c + j*dofs*xm;
-      f_a[j] = new aField[xm];
+      u_a[j] = u_c + dofs*j*gxm - dofs*gxs;
+      f_a[j] = new aField[gxm];
       delete[] f_a[j];
-      f_a[j] = f_c + j*dofs*xm;
+      f_a[j] = f_c + dofs*j*gxm - dofs*gxs;
     }
+    u_a -= gys;
+    f_a -= gys;
     appctx.u_a = u_a;
     appctx.f_a = f_a;
+/*
+    PetscInt i,k=0;
+    for (j=gys; j<gym; j++) {
+      for (i=gxs; i<gxm; i++) {
+        std::cout << k << " " << &u_a[j][i].u << ", " << &u_c[k].u << std::endl;
+        std::cout << k << "  " << &u_a[j][i].v << ", " << &u_c[k].v << std::endl;
+        k++;
+      }
+    }
+*/
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -186,10 +203,14 @@ int main(int argc,char **argv)
 
     // Call destructors and free memory
     delete[] f_a;
+    printf("f_a freed\n");
     delete[] u_a;
+    printf("u_a freed\n");
 
     delete[] f_c;
+    printf("f_c freed\n");
     delete[] u_c;
+    printf("u_c freed\n");
   }
 
   ierr = PetscFinalize();
