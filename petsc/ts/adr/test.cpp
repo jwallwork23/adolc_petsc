@@ -59,7 +59,7 @@ PetscErrorCode aFieldAllocInner(aField *a,PetscInt xs,PetscInt ys,PetscInt xm,Pe
   PetscInt       j;
 
   PetscFunctionBegin;
-  for (j=ys; j<ym; j++)
+  for (j=0; j<ym; j++)
     A[j] = a + j*xm - xs;
   A -= ys;
 
@@ -92,52 +92,30 @@ int main(int argc,char **argv)
   gxs=xs-1,gys=ys-1,gxm=xm+2,gym=ym+2;
   Field           aa[ym][xm],bb[ym][xm];
 
-  //ierr = aFieldMalloc(gs,gs,gm,gm,2,&a);CHKERRQ(ierr);
-
-  printf("Before:\n\n");
+  printf("Before:\n");
+  printf("\nu component:\n");
   for (j=ys; j<ym; j++) {
     for (i=xs; i<xm; i++) {
       aa[j][i].u = i+1;
+      printf("%f, ",aa[j][i].u);
+    }
+    printf("\n");
+  }
+  printf("\nv component:\n");
+  for (j=ys; j<ym; j++) {
+    for (i=xs; i<xm; i++) {
       aa[j][i].v = j+1;
-      printf("%f, %f\n",aa[j][i].u,aa[j][i].v);
+      printf("%f, ",aa[j][i].v);
     }
+    printf("\n");
   }
 
-
-  // Allocate memory for 2-array aFields
-/*
-  if (ghost) {
-    ad = new aField[dof*gxm*gym];
-    bd = new aField[dof*gxm*gym];
-
-    A = new aField*[ym];
-    B = new aField*[ym];
-    for (j=ys; j<ym; j++) {
-      A[j] = new aField[xm];
-      B[j] = new aField[xm];
-    }
-    ierr = aFieldAlloc(ad,gxs,gys,gxm,gym,dof,&A);CHKERRQ(ierr);
-    ierr = aFieldAlloc(bd,gxs,gys,gxm,gym,dof,&B);CHKERRQ(ierr);
-  } else {
-    ad = new aField[dof*xm*ym];
-
-    A = new aField*[ym];
-    B = new aField*[ym];
-    for (j=ys; j<ym; j++) {
-      A[j] = new aField[xm];
-      B[j] = new aField[xm];
-    }
-    bd = new aField[dof*xm*ym];
-    ierr = aFieldAlloc(ad,xs,ys,xm,ym,dof,&A);CHKERRQ(ierr);
-    ierr = aFieldAlloc(bd,xs,ys,xm,ym,dof,&B);CHKERRQ(ierr);
-  }
-*/
 
   // TODO: create functions to wrap these allocations in
   if (ghost) {
     ad = new aField[dof*gxm*gym];
     A = new aField*[gym];
-    for (j=gys; j<gym; j++) {
+    for (j=0; j<gym; j++) {
       A[j] = new aField[gxm];
       A[j] = ad + dof*j*gxm - dof*gxs;
     }
@@ -145,7 +123,7 @@ int main(int argc,char **argv)
 
     bd = new aField[dof*gxm*gym];
     B = new aField*[gym];
-    for (j=gys; j<gym; j++) {
+    for (j=0; j<gym; j++) {
       B[j] = new aField[gxm];
       B[j] = bd + dof*j*gxm - dof*gxs;
     }
@@ -153,10 +131,9 @@ int main(int argc,char **argv)
 
    } else {
 
-
     ad = new aField[dof*xm*ym];
     A = new aField*[ym];
-    for (j=ys; j<ym; j++) {
+    for (j=0; j<ym; j++) {
       A[j] = new aField[xm];
       A[j] = ad + dof*j*xm - dof*xs;
     }
@@ -164,7 +141,7 @@ int main(int argc,char **argv)
 
     bd = new aField[dof*xm*ym];
     B = new aField*[ym];
-    for (j=ys; j<ym; j++) {
+    for (j=0; j<ym; j++) {
       B[j] = new aField[xm];
       B[j] = bd + dof*j*xm - dof*xs;
     }
@@ -203,21 +180,41 @@ int main(int argc,char **argv)
   }
   trace_off();
 
-  printf("\nAfter:\n\n");
+  printf("\nAfter:\n");
+  printf("\nu component:\n");
   for (j=ys; j<ym; j++) {
     for (i=xs; i<xm; i++) {
-      printf("%f, %f\n",bb[j][i].u,bb[j][i].v);
+      printf("%f, ",bb[j][i].u);
     }
+    printf("\n");
+  }
+  printf("\nv component:\n");
+  for (j=ys; j<ym; j++) {
+    for (i=xs; i<xm; i++) {
+      printf("%f, ",bb[j][i].v);
+    }
+    printf("\n");
   }
 
+/*
+  A += ys;
+  B += ys;
+  for (j=ys; j<ym; j++){
+    A[j] += dof*xs - dof*j*xm;
+    B[j] += dof*xs - dof*j*xm;
+  }
+*/
+
   printf("\nDone. Now need to destroy and deallocate aField.\n");
-  delete[] A;
   delete[] B;
-  delete[] ad;
+  printf("Freed B\n");
   delete[] bd;
+  printf("Freed bd\n");
+  delete[] A;
+  printf("Freed A\n");
+  delete[] ad;
   printf("Done.\n");
 
-  //ierr = aFieldFree(gs,gs,gm,gm,2,&a);CHKERRQ(ierr);
   ierr = PetscFinalize();
   return ierr;
 }
