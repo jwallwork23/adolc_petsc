@@ -77,7 +77,7 @@ int main(int argc,char **argv)
   DM             da;
   AppCtx         appctx;
   aField         **u_a=NULL,**f_a=NULL; /* active fields used by ADOL-C */
-  PetscInt       Mx,My,lbox[4],j;
+  PetscInt       Mx,My,xs,ys,xm,ym,j;
   PetscBool      analytic=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -112,7 +112,7 @@ int main(int argc,char **argv)
      vectors that are the same types
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
-  ierr = DMDAGetCorners(da,&lbox[0],&lbox[1],NULL,&lbox[2],&lbox[3],NULL);CHKERRQ(ierr);
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Allocate memory for active fields and store references in context 
@@ -122,11 +122,11 @@ int main(int argc,char **argv)
            relevant class constructor. Instead, we use the C++ keyword `new`.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if (!appctx.no_an) {
-    u_a = new aField*[lbox[3]];		// TODO: Endow with ghost points
-    f_a = new aField*[lbox[3]];		// TODO: Are these the right size?
-    for (j=lbox[1]; j<lbox[1]+lbox[3]; j++) {
-      u_a[j] = new aField[lbox[2]];	// TODO: In parallel case, these need shifting
-      f_a[j] = new aField[lbox[2]];
+    u_a = new aField*[ym];		// TODO: Endow with ghost points
+    f_a = new aField*[ym];		// TODO: Are these the right size?
+    for (j=ys; j<ys+ym]; j++) {
+      u_a[j] = new aField[xm];		// TODO: In parallel case, these need shifting
+      f_a[j] = new aField[xm];
     }
     appctx.u_a = u_a;
     appctx.f_a = f_a;

@@ -85,7 +85,6 @@ int main(int argc,char **argv)
   PetscBool       ghost=PETSC_FALSE;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,NULL);if (ierr) return ierr;
-  PetscFunctionBegin;
   ierr = PetscOptionsGetBool(NULL,NULL,"-ghost",&ghost,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetInt(NULL,NULL,"-xm",&xm,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetInt(NULL,NULL,"-ym",&ym,NULL);CHKERRQ(ierr);
@@ -196,20 +195,19 @@ int main(int argc,char **argv)
     printf("\n");
   }
 
-/*
-  A += ys;
-  B += ys;
-  for (j=ys; j<ym; j++){
-    A[j] += dof*xs - dof*j*xm;
-    B[j] += dof*xs - dof*j*xm;
-  }
-*/
-
   printf("\nDone. Now need to destroy and deallocate aField.\n");
+  for (j=ys; j<ym; j++) {
+    delete[] B[j];
+    printf("Freed B[%d]\n",j);
+  }
   delete[] B;
   printf("Freed B\n");
   delete[] bd;
   printf("Freed bd\n");
+  for (j=ys; j<ym; j++) {
+    delete[] A[j];
+    printf("Freed A[%d]\n",j);
+  }
   delete[] A;
   printf("Freed A\n");
   delete[] ad;
