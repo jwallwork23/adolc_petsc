@@ -3,7 +3,7 @@ CFLAGS			= -std=c++11 ${ADOLC_HOME}/build/include ${COLPACK_HOME}/include
 FFLAGS			=
 CPPFLAGS		=
 FPPFLAGS		=
-CLEANFILES		= ex1 ex4 ex5 ex5adj ex5test test test2 new_delete binaryoutput *.tap *.info
+CLEANFILES		= ex1 ex4 ex5 ex5adj ex5test test test2 new_delete basic binaryoutput *.tap *.info
 
 # Flags for ColPack TODO: link this properly - the below is currently ineffective
 COLPACK_INSTALL_PATH 	= ${COLPACK_HOME}/libs/libColPack.so
@@ -43,5 +43,8 @@ new_delete: new_delete.o
 	$(COMPILE) $(CCFLAGS) -o $@ $^ ${PETSC_TS_LIB} -L${ADOLC_HOME}/build -ladolc
 	${RM} $^
 
+basic: basic.o
+	$(COMPILE) $(CCFLAGS) -o $@ $^ ${PETSC_TS_LIB} -L${ADOLC_HOME}/build -ladolc
+	${RM} $^
 
 include ${PETSC_DIR}/lib/petsc/conf/test

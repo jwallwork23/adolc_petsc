@@ -1,5 +1,6 @@
 #include <petscts.h>
 #include <iostream>
+#include "mmatrix.h"
 #include <adolc/adolc.h>
 
 using namespace std;
@@ -36,15 +37,41 @@ void aFieldDelete(aField** f,PetscInt m)
   delete[] f;
 }
 
+void FieldPrint(Field **f,PetscInt s,PetscInt m)
+{
+    PetscInt i,j;
+
+    cout << endl << "u component:" << endl;
+    for (j = s; j < m; j++) {
+        for (i = s; i < m; i++) {
+            cout << f[j][i].u << ", ";
+        }
+        cout << endl;
+    }
+    cout << "v component:" << endl;
+    for (j = s; j < m; j++) {
+        for (i = s; i < m; i++) {
+            cout << f[j][i].v << ", ";
+        }
+        cout << endl;
+    }
+    cout << endl;
+}
+
 int main(int argc,char **argv)
 {
     PetscErrorCode ierr;
-    PetscInt       ss=0,i,j,s=0,m=5;
+    PetscInt       ss=0,i,j,s=0,m=5,dof=2;
     PetscBool      ghost;
 
     ierr = PetscInitialize(&argc,&argv,(char*)0,NULL);if (ierr) return ierr;
     ierr = PetscOptionsGetBool(NULL,NULL,"-ghost",&ghost,NULL);CHKERRQ(ierr);
     ierr = PetscOptionsGetInt(NULL,NULL,"-m",&m,NULL);CHKERRQ(ierr);
+
+/*
+    MMatrix *M = new MMatrix(2,2);
+    delete M;
+*/
 
     //Create an array of pointers that points to more arrays of Fields
     Field** matrix1 = new Field*[m];
@@ -59,22 +86,9 @@ int main(int argc,char **argv)
         }
     }
 
-    //Print out the matrices to verify we have created the matrix
-    cout << endl << "BEFORE" << endl << endl << "u component:" << endl;
-    for (j = s; j < m; j++) {
-        for (i = s; i < m; i++) {
-            cout << matrix1[j][i].u << ", ";
-        }
-        cout << endl;
-    }
-    cout << "v component:" << endl;
-    for (j = s; j < m; j++) {
-        for (i = s; i < m; i++) {
-            cout << matrix1[j][i].v << ", ";
-        }
-        cout << endl;
-    }
-    cout << endl;
+    //Print out the matrices to verify they have been created
+    cout << endl << "BEFORE" << endl;
+    FieldPrint(matrix1,s,m);
 
     //Create an array of pointers that points to more arrays of aFields
     aField** amatrix1 = new aField*[m];
@@ -131,21 +145,8 @@ int main(int argc,char **argv)
     trace_off();	/* ----------------------------------------------------------- */
 
     //Print out the matrices to verify everything has gone through
-    cout << endl << "AFTER" << endl << endl << "u component:" << endl;
-    for (j = s; j < m; j++) {
-        for (i = s; i < m; i++) {
-            cout << matrix2[j][i].u << ", ";
-        }
-        cout << endl;
-    }
-    cout << "v component:" << endl;
-    for (j = s; j < m; j++) {
-        for (i = s; i < m; i++) {
-            cout << matrix2[j][i].v << ", ";
-        }
-        cout << endl;
-    }
     cout << endl;
+    FieldPrint(matrix2,s,m);
 
     //Free memory
     aFieldDelete(amatrix2,m);
