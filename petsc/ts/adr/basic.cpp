@@ -3,49 +3,26 @@
 
 using namespace std;
 
-typedef struct {
-  double u,v;
-} Field;
-
 int main()
 {
-  int s=0,m=2,i,j;
 
-  Field* a = new Field[m*m];
+  double** d = new double*[1];
+  d[0] = new double[1];
+  double* e = new double[1];
 
-  for (j=s; j<m*m; j++) {
-    cout << &a[j] << ", ";
-  }
-  cout << endl << endl;
+  cout << "Initial addresses:" << endl;
+  cout << "&d = " << &d[0][0] << endl;
+  cout << "&e = " << &e[0] << endl << endl;
 
-  Field** f = new Field*[m];
-  for (j=s; j<m; j++) {
-    f[j] = new Field[m];   
-    f[j] = a + j*m;		// align with 1-array
-    for (i=s; i<m; i++) {
-       cout << &f[j][i] << ", ";
-    }
-    cout << endl;
-  }
-  cout << endl;
-/*
-  delete[] a;
-  cout << "a deleted" << endl;
-*/
-  for (j=s; j<m; j++) {
-    f[j] -= j*m;
-    for (i=s; i<m; i++) {
-       cout << &f[j][i] << ", ";
-    }
-    cout << endl;
-    delete[] f[j];
-    cout << "f[" << j << "] deleted" << endl;
-  }
-  delete[] f;
-  cout << "f deleted" << endl;
+  d[0] = e;
 
-  delete[] a;
-  cout << "a deleted" << endl;
+  cout << "Addresses after assignment:" << endl;
+  cout << "&d = " << &d[0][0] << endl;
+  cout << "&e = " << &e[0] << endl;
+
+  delete[] e;
+  //delete[] d[0];
+  delete[] d;
 
   return 0;
 }
