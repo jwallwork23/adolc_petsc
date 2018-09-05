@@ -69,15 +69,12 @@ extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,void *ptr);
 extern PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,void *ptr);
 
-PetscErrorCode ShiftIndices(adouble *arr,PetscInt s,PetscInt m,PetscInt dof,adouble **a[])
+PetscErrorCode ShiftIndices(adouble *arr,PetscInt ym,PetscInt xm,PetscInt ys,PetscInt xs,adouble **a[])
 {
   PetscInt       j;
-
   PetscFunctionBegin;
-
-  for (j=0; j<m; j++) (*a)[j] = arr + dof*j*m - dof*s;
-  *a -= s;
-
+  for (j=0; j<ym; j++) (*a)[j] = arr + j*xm - xs;
+  *a -= ys;
   PetscFunctionReturn(0);
 }
 
@@ -90,6 +87,8 @@ int main(int argc,char **argv)
   DM             da;
   AppCtx         appctx;
   aField         **u_a=NULL,**f_a=NULL,*u_c=NULL,*f_c=NULL;
+//  aField         **u_a=NULL,**f_a=NULL;
+//  adouble        *u_c=NULL,*f_c=NULL;
   PetscInt       gxs,gys,gxm,gym,j,dof;
   PetscBool      analytic=PETSC_FALSE;
 
@@ -101,7 +100,7 @@ int main(int argc,char **argv)
   appctx.zos = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&appctx.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotations",&appctx.no_an,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
   appctx.D1     = 8.0e-5;
   appctx.D2     = 4.0e-5;
@@ -145,11 +144,11 @@ int main(int argc,char **argv)
     // Create contiguous 1-arrays of aFields
     u_c = new aField[gxm*gym];
     f_c = new aField[gxm*gym];
-
-//    // Contiguous 1-arrays of adoubles
-//    u_c = new adouble[dof*gxm*gym];
-//    f_c = new adouble[dof*gxm*gym];
-
+/*
+    // Contiguous 1-arrays of adoubles
+    u_c = new adouble[dof*gxm*gym];
+    f_c = new adouble[dof*gxm*gym];
+*/
     // Corresponding 2-arrays of aFields
     u_a = new aField*[gym];
     f_a = new aField*[gym];
@@ -167,15 +166,31 @@ int main(int argc,char **argv)
     }
     *u_a -= gys;
     *f_a -= gys;
+/*
+    for (j=0; j<gym; j++) {
+      u_a[j] = u_c + j*gxm;
+      f_a[j] = f_c + j*gxm;
+    }
+*/
+/*
+    ierr = ShiftIndices(u_c,gym,gxm*dof,gys,gxs*dof,(adouble***)u_a);CHKERRQ(ierr);
+    ierr = ShiftIndices(f_c,gym,gxm*dof,gys,gxs*dof,(adouble***)f_a);CHKERRQ(ierr);
+*/
     appctx.u_a = u_a;
     appctx.f_a = f_a;
 
     PetscInt i,k=0;
     for (j=gys; j<gym; j++) {
       for (i=gxs; i<gxm; i++) {
+/*
         std::cout << i << "," << j << " " << &u_a[j][i].u << "," << &u_c[k].u << std::endl;
         std::cout << i << "," << j << " " << &u_a[j][i].v << "," << &u_c[k].v << std::endl;
         k++;
+*/
+/*
+        std::cout << i << "," << j << " " << &u_a[j][i].u << "," << &u_c[k++] << std::endl;
+        std::cout << i << "," << j << " " << &u_a[j][i].v << "," << &u_c[k++] << std::endl;
+*/
       }
     }
 /*
@@ -347,7 +362,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   AppCtx         *appctx = (AppCtx*)ptr;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       xs,ys,xm,ym;
+  PetscInt       xs,ys,xm,ym,N;
   Field          **u,**f;
   Vec            localU;
 
@@ -369,6 +384,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
   ierr = DMDAVecGetArray(da,F,&f);CHKERRQ(ierr);
+
+  VecGetLocalSize(localU,&N);
+  std::cout << "N = " << N << std::endl;
 
   /*
      Get local grid boundaries
