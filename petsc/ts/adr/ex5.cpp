@@ -77,7 +77,7 @@ int main(int argc,char **argv)
   DM             da;
   AppCtx         appctx;
   aField         **u_a=NULL,**f_a=NULL,*u_c=NULL,*f_c=NULL;
-  PetscInt       xs,ys,xm,ym,gxs,gys,gxm,gym,j,dofs;
+  PetscInt       gxs,gys,gxm,gym,j;
   PetscBool      analytic=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -103,15 +103,13 @@ int main(int argc,char **argv)
   ierr = DMSetUp(da);CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,0,"u");CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,1,"v");CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&appctx.Mx,&appctx.My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dofs,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&appctx.Mx,&appctx.My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
 
   /*  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Extract global vectors from DMDA; then duplicate for remaining
      vectors that are the same types
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Allocate memory for active fields and store references in context 
@@ -123,13 +121,17 @@ int main(int argc,char **argv)
            It is also important to deconstruct and free memory appropriately.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if (!appctx.no_an) {
+    /*
+       Create active field structures and endow with ghost points.
 
-    // TODO: Finish endowment with ghost points
-    gxs = xs;gys = ys;gxm = xm;gym = ym;
+       TODO: Enforce periodic BC.
+    */
+
+    ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
     // Create contiguous 1-arrays of aFields
-    u_c = new aField[dofs*gxm*gym];	// TODO: Try conversion between adouble and aField
-    f_c = new aField[dofs*gxm*gym];
+    u_c = new aField[gxm*gym];
+    f_c = new aField[gxm*gym];
 
     // Corresponding 2-arrays of aFields
     u_a = new aField*[gym];
@@ -137,25 +139,15 @@ int main(int argc,char **argv)
     for (j=0; j<gym; j++) {
       u_a[j] = new aField[gxm];
       delete[] u_a[j];
-      u_a[j] = u_c + dofs*j*gxm - dofs*gxs;
+      u_a[j] = u_c + j*gxm - gxs;
       f_a[j] = new aField[gxm];
       delete[] f_a[j];
-      f_a[j] = f_c + dofs*j*gxm - dofs*gxs;
+      f_a[j] = f_c + j*gxm - gxs;
     }
-    u_a -= gys;
-    f_a -= gys;
+    *u_a -= gys;
+    *f_a -= gys;
     appctx.u_a = u_a;
     appctx.f_a = f_a;
-/*
-    PetscInt i,k=0;
-    for (j=gys; j<gym; j++) {
-      for (i=gxs; i<gxm; i++) {
-        std::cout << k << " " << &u_a[j][i].u << ", " << &u_c[k].u << std::endl;
-        std::cout << k << "  " << &u_a[j][i].v << ", " << &u_c[k].v << std::endl;
-        k++;
-      }
-    }
-*/
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
