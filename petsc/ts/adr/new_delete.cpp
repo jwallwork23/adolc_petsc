@@ -12,16 +12,6 @@ typedef struct {
   adouble     u,v;
 } aField;
 
-void FieldDelete(Field** f,PetscInt m)
-{
-  PetscInt j;
-
-  //Free each sub-array
-  for(j = 0; j < m; j++) {
-      delete[] f[j];   
-  }
-}
-
 void FieldPrint(Field **f,PetscInt s,PetscInt m)
 {
     PetscInt i,j;
@@ -46,7 +36,7 @@ void FieldPrint(Field **f,PetscInt s,PetscInt m)
 int main(int argc,char **argv)
 {
     PetscErrorCode ierr;
-    PetscInt       ss=0,i,j,s=0,m=5,dof=2;
+    PetscInt       ss=0,i,j,s=0,m=5,dof=2,gs=0,gm=5;
     PetscBool      ghost;
 
     ierr = PetscInitialize(&argc,&argv,(char*)0,NULL);if (ierr) return ierr;
@@ -66,35 +56,43 @@ int main(int argc,char **argv)
         }
     }
 
-    //Print out the matrices to verify they have been created
-    cout << endl << "BEFORE" << endl;
-    FieldPrint(matrix1,s,m);
-
-    //Contiguous 1-arrays for active matrices
-    aField* alist1 = new aField[dof*m*m];
-    aField* alist2 = new aField[dof*m*m];
-
-    //Create an array of pointers that points to more arrays of aFields
-    aField** amatrix1 = new aField*[m];
-    for (j = s; j < m; j++) {
-        amatrix1[j] = new aField[m];
-        delete[] amatrix1[j];
-        amatrix1[j] = alist1 + dof*j*m;
-    }
-
     //Do the same for outputs
     Field** matrix2 = new Field*[m];
     for (j = s; j < m; j++) {
         matrix2[j] = new Field[m];
     }
 
-    //Do the same for outputs
-    aField** amatrix2 = new aField*[m];
-    for (j = s; j < m; j++) {
-        amatrix2[j] = new aField[m];
-        delete[] amatrix2[j];
-        amatrix2[j] = alist2 + dof*j*m;
+    if (ghost) {
+      gs = -1;gm = 7;
+    } else {
+      ss += 1;
     }
+
+    //Print out input matrices to verify they have been created
+    cout << endl << "BEFORE" << endl;
+    FieldPrint(matrix1,s,m);
+
+    //Contiguous 1-arrays for active matrices
+    aField* alist1 = new aField[gm*gm];
+    aField* alist2 = new aField[gm*gm];
+
+    //Create an array of pointers that points to more arrays of aFields
+    aField** amatrix1 = new aField*[gm];
+    for (j = 0; j < gm; j++) {
+        amatrix1[j] = new aField[gm];
+        delete[] amatrix1[j];
+        amatrix1[j] = alist1 + dof*j*gm - dof*gs;
+    }
+    *amatrix1 -= gs;
+
+    //Do the same for outputs
+    aField** amatrix2 = new aField*[gm];
+    for (j = 0; j < gm; j++) {
+        amatrix2[j] = new aField[gm];
+        delete[] amatrix2[j];
+        amatrix2[j] = alist2 + dof*j*gm - dof*gs;
+    }
+    *amatrix2 -= gs;
 
     trace_on(1);	/* ------------------- ACTIVE SECTION ----------------------- */
 
@@ -104,10 +102,6 @@ int main(int argc,char **argv)
             amatrix1[j][i].u <<= matrix1[j][i].u;
             amatrix1[j][i].v <<= matrix1[j][i].v;
         }
-    }
-
-    if (!ghost) {
-      ss += 1;
     }
 
     //Work on active variables
@@ -137,8 +131,12 @@ int main(int argc,char **argv)
     FieldPrint(matrix2,s,m);
 
     //Free memory
-    FieldDelete(matrix2,m);
-    FieldDelete(matrix1,m);
+    for(j = 0; j < m; j++) {
+        delete[] matrix2[j];   
+    }
+    for(j = 0; j < m; j++) {
+        delete[] matrix1[j];   
+    }
 
     delete[] amatrix2;
     delete[] matrix2;
