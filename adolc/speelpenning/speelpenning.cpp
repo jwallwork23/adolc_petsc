@@ -47,10 +47,9 @@ int main() {
     trace_on(1);                         // tag = 1, keep = 0 by default
     cout << "x = [";
     for(i=0; i<n; i++) {
-	// declare x as an _independent_ variable
-        x[i] <<= xp[i];                  // or  x <<= xp outside the loop
-        y *= x[i];
-        cout << x[i].value() << ", ";
+      // declare x as an _independent_ variable
+      x[i] <<= xp[i];                  // or  x <<= xp outside the loop
+      y *= x[i];
     } // end for
     cout << "]" << endl;
     y >>= yp;                            // declare y as a _dependent_ variable
