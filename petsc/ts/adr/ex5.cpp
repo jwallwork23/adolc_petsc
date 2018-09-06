@@ -43,7 +43,6 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
 #include <petscts.h>
 #include <adolc/adolc.h>	// Include ADOL-C
 #include <adolc/sparse/sparsedrivers.h>
-#include "utils.c"		// For modular arithmetic and coordinate mappings
 
 typedef struct {
   PetscScalar u,v;
@@ -51,13 +50,13 @@ typedef struct {
 
 typedef struct {
   adouble u,v;
-} aField;
+} AField;
 
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
   PetscBool zos,no_an,sparse;
   PetscInt  Mx,My;
-  aField    **u_a,**f_a;
+  AField    **u_a,**f_a;
 } AppCtx;
 
 /*
@@ -69,12 +68,36 @@ extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,void *ptr);
 extern PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,void *ptr);
 
-PetscErrorCode ShiftIndices(adouble *arr,PetscInt ym,PetscInt xm,PetscInt ys,PetscInt xs,adouble **a[])
+PetscErrorCode AFieldCreate2d(DM da,AField *cgs,AField **a2d)
 {
-  PetscInt       j;
+  PetscErrorCode ierr;
+  PetscInt       gxs,gys,gxm,gym;
+
   PetscFunctionBegin;
-  for (j=0; j<ym; j++) (*a)[j] = arr + j*xm - xs;
-  *a -= ys;
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+
+  // Create contiguous 1-arrays of AFields
+  cgs = new AField[gxm*gym];
+
+  // Corresponding 2-arrays of AFields
+  a2d = new AField*[gym];
+  PetscFunctionReturn(0);
+}
+
+/*
+  Shift indices in AField to endow it with ghost points.
+*/
+PetscErrorCode AFieldShift2d(DM da,AField *cgs,AField **a2d[])
+{
+  PetscErrorCode ierr;
+  PetscInt       gxs,gys,gxm,gym,j;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  for (j=0; j<gym; j++) {
+    (*a2d)[j] = cgs + j*gxm - gxs;
+  }
+  *a2d -= gys;
   PetscFunctionReturn(0);
 }
 
@@ -86,10 +109,8 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
-  aField         **u_a=NULL,**f_a=NULL,*u_c=NULL,*f_c=NULL;
-//  aField         **u_a=NULL,**f_a=NULL;
-//  adouble        *u_c=NULL,*f_c=NULL;
-  PetscInt       gxs,gys,gxm,gym,j,dof;
+  AField         **u_a=NULL,**f_a=NULL,*u_c=NULL,*f_c=NULL;
+  PetscInt       gxs,gys,gxm,gym;
   PetscBool      analytic=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -115,7 +136,7 @@ int main(int argc,char **argv)
   ierr = DMSetUp(da);CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,0,"u");CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,1,"v");CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&appctx.Mx,&appctx.My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dof,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&appctx.Mx,&appctx.My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
 
   /*  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Extract global vectors from DMDA; then duplicate for remaining
@@ -124,81 +145,41 @@ int main(int argc,char **argv)
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Allocate memory for active fields and store references in context 
+     Allocate memory for (local) active fields (called AFields) and store 
+     references in the application context. The AFields are reused at
+     each active section, so need only be created once.
 
-     NOTE: Memory for ADOL-C active variables (such as adouble and aField)
+     NOTE: Memory for ADOL-C active variables (such as adouble and AField)
            cannot be allocated using PetscMalloc, as this does not call the
            relevant class constructor. Instead, we use the C++ keyword `new`.
 
            It is also important to deconstruct and free memory appropriately.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  if (!appctx.no_an) {
-    /*
-       Create active field structures and endow with ghost points.
 
-       TODO: Enforce periodic BC.
-    */
+  if (!appctx.no_an) {
 
     ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
-    // Create contiguous 1-arrays of aFields
-    u_c = new aField[gxm*gym];
-    f_c = new aField[gxm*gym];
-/*
-    // Contiguous 1-arrays of adoubles
-    u_c = new adouble[dof*gxm*gym];
-    f_c = new adouble[dof*gxm*gym];
-*/
-    // Corresponding 2-arrays of aFields
-    u_a = new aField*[gym];
-    f_a = new aField*[gym];
-    for (j=0; j<gym; j++) {
-      u_a[j] = new aField[gxm];
-      delete[] u_a[j];
-      f_a[j] = new aField[gxm];
-      delete[] f_a[j];
-    }
 
-    // Shift the values to endow ghost points
-    for (j=0; j<gym; j++) {
-      u_a[j] = u_c + j*gxm - gxs;
-      f_a[j] = f_c + j*gxm - gxs;
-    }
-    *u_a -= gys;
-    *f_a -= gys;
+    // Create contiguous 1-arrays of AFields
+    u_c = new AField[gxm*gym];
+    f_c = new AField[gxm*gym];
+
+    // Corresponding 2-arrays of AFields
+    u_a = new AField*[gym];
+    f_a = new AField*[gym];
 /*
-    for (j=0; j<gym; j++) {
-      u_a[j] = u_c + j*gxm;
-      f_a[j] = f_c + j*gxm;
-    }
+    ierr = AFieldCreate2d(da,u_c,u_a);CHKERRQ(ierr);
+    ierr = AFieldCreate2d(da,f_c,f_a);CHKERRQ(ierr);
 */
-/*
-    ierr = ShiftIndices(u_c,gym,gxm*dof,gys,gxs*dof,(adouble***)u_a);CHKERRQ(ierr);
-    ierr = ShiftIndices(f_c,gym,gxm*dof,gys,gxs*dof,(adouble***)f_a);CHKERRQ(ierr);
-*/
+    // Align indices between array types and endow ghost points
+    ierr = AFieldShift2d(da,u_c,&u_a);CHKERRQ(ierr);
+    ierr = AFieldShift2d(da,f_c,&f_a);CHKERRQ(ierr);
+
+    // Store active variables in context
     appctx.u_a = u_a;
     appctx.f_a = f_a;
 
-    PetscInt i,k=0;
-    for (j=gys; j<gym; j++) {
-      for (i=gxs; i<gxm; i++) {
-/*
-        std::cout << i << "," << j << " " << &u_a[j][i].u << "," << &u_c[k].u << std::endl;
-        std::cout << i << "," << j << " " << &u_a[j][i].v << "," << &u_c[k].v << std::endl;
-        k++;
-*/
-/*
-        std::cout << i << "," << j << " " << &u_a[j][i].u << "," << &u_c[k++] << std::endl;
-        std::cout << i << "," << j << " " << &u_a[j][i].v << "," << &u_c[k++] << std::endl;
-*/
-      }
-    }
-/*
-    std::cout << "Addresses out of reach: " << std::endl;
-    for (i=0;i<12;i++){
-      std::cout << &u_a[-1][i].u << ", " << &u_a[-1][i].v << std::endl;
-    }
-*/
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -242,12 +223,12 @@ int main(int argc,char **argv)
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
   ierr = DMDestroy(&da);CHKERRQ(ierr);
 
+  // Call destructors / free memory
   if (!appctx.no_an) {
-
-    // Call destructors / free memory
+    f_a += gys;
+    u_a += gys;
     delete[] f_a;
     delete[] u_a;
-
     delete[] f_c;
     delete[] u_c;
   }
@@ -259,7 +240,7 @@ int main(int argc,char **argv)
 PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt ys,PetscInt xm,PetscInt ym,void *ptr)
 {
   AppCtx          *appctx = (AppCtx*)ptr;
-  aField          **f_a = appctx->f_a,**u_a = appctx->u_a;
+  AField          **f_a = appctx->f_a,**u_a = appctx->u_a;
   PetscInt        i,j,sx,sy;
   PetscReal       hx,hy;
   adouble         uc,uxx,uyy,vc,vxx,vyy;
@@ -268,15 +249,6 @@ PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt ys,PetscI
 
   hx = 2.50/(PetscReal)(appctx->Mx);sx = 1.0/(hx*hx);
   hy = 2.50/(PetscReal)(appctx->My);sy = 1.0/(hy*hy);
-
-/*
-  for (j=ys-1; j<ym+2; j++) {
-    for (i=xs-1; i<xm+2; i++) {
-      std::cout << i << "," << j << " " << &u[j][i].u << std::endl;
-      std::cout << i << "," << j << " " << &u[j][i].v << std::endl;
-    }
-  }
-*/
 
   trace_on(1);  // ----------------------------------------------- Start of active section
 
@@ -292,18 +264,10 @@ PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt xs,PetscInt ys,PetscI
       // Compute function over the locally owned part of the grid
       uc          = u_a[j][i].u;
       uxx         = (-2.0*uc + u_a[j][i-1].u + u_a[j][i+1].u)*sx;
-      if (j == 0) {	// TODO: remove temporary special-casing
-        uyy         = (-2.0*uc + u_a[modulo(j-1,appctx->My)][i].u + u_a[j+1][i].u)*sy;
-      } else {
-        uyy         = (-2.0*uc + u_a[j-1][i].u + u_a[j+1][i].u)*sy;
-      }
+      uyy         = (-2.0*uc + u_a[j-1][i].u + u_a[j+1][i].u)*sy;
       vc          = u_a[j][i].v;
       vxx         = (-2.0*vc + u_a[j][i-1].v + u_a[j][i+1].v)*sx;
-      if (j == 0) {
-        vyy         = (-2.0*vc + u_a[modulo(j-1,appctx->My)][i].v + u_a[j+1][i].v)*sy;
-      } else {
-        vyy         = (-2.0*vc + u_a[j-1][i].v + u_a[j+1][i].v)*sy;
-      }
+      vyy         = (-2.0*vc + u_a[j-1][i].v + u_a[j+1][i].v)*sy;
       f_a[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
       f_a[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
 
@@ -347,7 +311,7 @@ PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt xs,PetscInt ys,Petsc
 
                  If the -no_annotations option is not invoked then
                  annotations are made for ADOL-C automatic
-                 differentiation using an `aField` struct.
+                 differentiation using an `AField` struct.
 
    Input Parameters:
 .  ts - the TS context
@@ -362,7 +326,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   AppCtx         *appctx = (AppCtx*)ptr;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       xs,ys,xm,ym,N;
+  PetscInt       xs,ys,xm,ym;
   Field          **u,**f;
   Vec            localU;
 
@@ -384,9 +348,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
   ierr = DMDAVecGetArray(da,F,&f);CHKERRQ(ierr);
-
-  VecGetLocalSize(localU,&N);
-  std::cout << "N = " << N << std::endl;
 
   /*
      Get local grid boundaries
