@@ -141,8 +141,6 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
 
-  appctx.sol = x;
-
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Allocate memory for (local) active fields (called AFields) and store 
      references in the application context. The AFields are reused at
@@ -383,17 +381,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
     RHSLocalPassive(da,f,u,appctx);
   }
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
-/*
-  PetscScalar norm;
-  norm = 0.;
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      norm += f[j][i].u*f[j][i].u;
-      norm += f[j][i].v*f[j][i].v;
-    }
-  }
-  printf("||f||_2 = %.4e\n",sqrt(norm));
-*/
+
   /*
      Restore vectors
   */

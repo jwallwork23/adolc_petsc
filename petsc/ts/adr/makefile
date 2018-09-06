@@ -1,6 +1,7 @@
 ALL: ex5adj
-CFLAGS			= -std=c++11 ${ADOLC_HOME}/build/include ${COLPACK_HOME}/include
+CFLAGS			=
 FFLAGS			=
+CXXFLAGS		= -std=c++11 ${ADOLC_HOME}/build/include ${COLPACK_HOME}/include
 CPPFLAGS		=
 FPPFLAGS		=
 CLEANFILES		= ex1 ex5 ex5adj binaryoutput *.tap *.info

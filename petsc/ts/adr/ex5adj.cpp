@@ -274,7 +274,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   AppCtx         *appctx = (AppCtx*)ptr;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,xs,ys,xm,ym,Mx=appctx->Mx,My=appctx->My;
+  PetscInt       i,j,xs,ys,xm,ym;
   PetscReal      hx,hy,sx,sy;
   Field          **u,**f;
   Vec            localU;
@@ -282,8 +282,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
-  hx = 2.50/(PetscReal)Mx; sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)My; sy = 1.0/(hy*hy);
+  hx = 2.50/(PetscReal)appctx->Mx; sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)appctx->My; sy = 1.0/(hy*hy);
 
   /*
      Scatter ghost points to local vector,using the 2-step process

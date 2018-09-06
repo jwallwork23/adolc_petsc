@@ -1,6 +1,7 @@
 ALL: clean ex16adj
-CFLAGS		= -std=c++11 ${ADOLC_HOME}/build/include
+CFLAGS		=
 FFLAGS		=
+CXXFLAGS	= -std=c++11 ${ADOLC_HOME}/build/include
 CPPFLAGS	=
 FPPFLAGS	=
 CLEANFILES	= ex16adj ex16opt_ic ex20adj *.tap

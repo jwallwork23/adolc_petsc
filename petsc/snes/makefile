@@ -1,6 +1,7 @@
 ALL: ex1
-CFLAGS		= ${ADOLC_HOME}/build/include
+CFLAGS		=
 FFLAGS		=
+CXXFLAGS	= ${ADOLC_HOME}/build/include
 CPPFLAGS	=
 FPPFLAGS	=
 CLEANFILES	= ex1 *.tap
