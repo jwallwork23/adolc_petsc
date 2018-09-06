@@ -20,7 +20,6 @@ static char help[] = "Demonstrates adjoint sensitivity analysis for Reaction-Dif
 #include <petscts.h>
 #include <adolc/adolc.h>		// include ADOL-C
 #include <adolc/sparse/sparsedrivers.h>
-#include "utils.c"              // For modular arithmetic and coordinate mappings
 
 typedef struct {
   PetscScalar u,v;
@@ -28,13 +27,13 @@ typedef struct {
 
 typedef struct {
   adouble u,v;
-} aField;
+} AField;
 
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
   PetscBool aijpc,no_an,sparse;
   PetscInt  Mx,My;
-  aField    **u_a,**f_a;
+  AField    **u_a,**f_a;
 } AppCtx;
 
 /*
@@ -43,14 +42,14 @@ typedef struct {
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
 extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
-extern PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt *lbox,void *ptr);
-extern PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,void *ptr);
+extern PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr);
+extern PetscErrorCode RHSLocalPassive(DM da,Field **f,Field **u,void *ptr);
 
 extern PetscErrorCode IFunction(TS,PetscReal,Vec,Vec,Vec,void*);
 extern PetscErrorCode IJacobian(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode IJacobianByHand(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
-extern PetscErrorCode ILocalActive(Field **f,Field **u,Field **udot,PetscInt *lbox,void *ptr);
-extern PetscErrorCode ILocalPassive(Field **f,Field **u,Field **udot,PetscInt *lbox,void *ptr);
+extern PetscErrorCode ILocalActive(DM da,Field **f,Field **u,Field **udot,void *ptr);
+extern PetscErrorCode ILocalPassive(DM da,Field **f,Field **u,Field **udot,void *ptr);
 
 PetscErrorCode InitializeLambda(DM da,Vec lambda,PetscReal x,PetscReal y)
 {
@@ -75,6 +74,24 @@ PetscErrorCode InitializeLambda(DM da,Vec lambda,PetscReal x,PetscReal y)
    PetscFunctionReturn(0);
 }
 
+/*
+  Shift indices in AField to endow it with ghost points.
+*/
+PetscErrorCode AFieldShift2d(DM da,AField *cgs,AField **a2d[])
+{
+  PetscErrorCode ierr;
+  PetscInt       gxs,gys,gxm,gym,j;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  for (j=0; j<gym; j++) {
+    (*a2d)[j] = cgs + j*gxm - gxs;
+  }
+  *a2d -= gys;
+  PetscFunctionReturn(0);
+}
+
+
 int main(int argc,char **argv)
 {
   TS             ts;				/* ODE integrator */
@@ -82,11 +99,11 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
-  aField         **u_a = NULL,**f_a = NULL;	/* active fields used by ADOL-C */
-  PetscInt       Mx,My,lbox[4],j;
+  AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
+  PetscInt       gxs,gys,gxm,gym;
   Vec            lambda[1];
   PetscScalar    *x_ptr;
-  PetscBool      forwardonly=PETSC_FALSE,implicitform=PETSC_FALSE,analytic=PETSC_FALSE;
+  PetscBool      forwardonly = PETSC_FALSE,implicitform = PETSC_FALSE,analytic = PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
@@ -96,7 +113,7 @@ int main(int argc,char **argv)
   ierr = PetscOptionsGetBool(NULL,NULL,"-implicitform",&implicitform,NULL);CHKERRQ(ierr);
   appctx.aijpc = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-aijpc",&appctx.aijpc,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotations",&appctx.no_an,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
@@ -112,32 +129,42 @@ int main(int argc,char **argv)
   ierr = DMSetUp(da);CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,0,"u");CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,1,"v");CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
-  appctx.Mx     = Mx;
-  appctx.My     = My;
-
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&appctx.Mx,&appctx.My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
 
   /*  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Extract global vectors from DMDA; then duplicate for remaining
      vectors that are the same types
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
-  ierr = DMDAGetCorners(da,&lbox[0],&lbox[1],NULL,&lbox[2],&lbox[3],NULL);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Allocate memory for active fields and store references in context 
+     Allocate memory for (local) active fields (called AFields) and store 
+     references in the application context. The AFields are reused at
+     each active section, so need only be created once.
 
-     NOTE: Memory for ADOL-C active variables (such as adouble and aField)
+     NOTE: Memory for ADOL-C active variables (such as adouble and AField)
            cannot be allocated using PetscMalloc, as this does not call the
            relevant class constructor. Instead, we use the C++ keyword `new`.
+
+           It is also important to deconstruct and free memory appropriately.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if (!appctx.no_an) {
-    u_a = new aField*[lbox[3]];         // TODO: Endow with ghost points
-    f_a = new aField*[lbox[3]];
-    for (j=lbox[1]; j<lbox[1]+lbox[3]; j++) {
-      u_a[j] = new aField[lbox[2]];     // TODO: In parallel case, these need shifting
-      f_a[j] = new aField[lbox[2]];
-    }
+
+    ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+
+    // Create contiguous 1-arrays of AFields
+    u_c = new AField[gxm*gym];
+    f_c = new AField[gxm*gym];
+
+    // Corresponding 2-arrays of AFields
+    u_a = new AField*[gym];
+    f_a = new AField*[gym];
+
+    // Align indices between array types and endow ghost points
+    ierr = AFieldShift2d(da,u_c,&u_a);CHKERRQ(ierr);
+    ierr = AFieldShift2d(da,f_c,&f_a);CHKERRQ(ierr);
+
+    // Store active variables in context
     appctx.u_a = u_a;
     appctx.f_a = f_a;
   }
@@ -224,47 +251,70 @@ int main(int argc,char **argv)
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
   ierr = DMDestroy(&da);CHKERRQ(ierr);
 
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Call destructors for active fields, freeing associated memory in the
+     process.
+   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if (!appctx.no_an) {
-    delete[] u_a;
+    f_a += gys;
+    u_a += gys;
     delete[] f_a;
+    delete[] u_a;
+    delete[] f_c;
+    delete[] u_c;
   }
 
   ierr = PetscFinalize();
   return ierr;
 }
 
-PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt *lbox,void *ptr)
+PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
 {
-  AppCtx          *appctx = (AppCtx*)ptr;
-  aField          **f_a = appctx->f_a,**u_a = appctx->u_a;
-  PetscInt        i,j,sx,sy,Mx = appctx->Mx,My = appctx->My;
-  PetscInt        xl = lbox[0]+lbox[2],yl = lbox[1]+lbox[3];
-  PetscReal       hx,hy;
-  adouble         uc,uxx,uyy,vc,vxx,vyy;
+  PetscErrorCode ierr;
+  AppCtx         *appctx = (AppCtx*)ptr;
+  PetscInt       i,j,xs,ys,xm,ym;
+  PetscReal      hx,hy,sx,sy;
+  AField         **f_a = appctx->f_a,**u_a = appctx->u_a;
+  adouble        uc,uxx,uyy,vc,vxx,vyy;
 
   PetscFunctionBeginUser;
-
-  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  hx = 2.50/(PetscReal)(appctx->Mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(appctx->My);sy = 1.0/(hy*hy);
 
   trace_on(1);  // ----------------------------------------------- Start of active section
 
   // Mark independence
-  for (j=lbox[1]; j<yl; j++) {
-    for (i=lbox[0]; i<xl; i++) {
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
       u_a[j][i].u <<= u[j][i].u;u_a[j][i].v <<= u[j][i].v;
     }
   }
-  for (j=lbox[1]; j<yl; j++) {
-    for (i=lbox[0]; i<xl; i++) {
+/*
+  // Insert values at ghost points      FIXME: This format is star stencil specific
+  for (j=ys; j<ys+ym; j++) {
+    for (i=0; i<2; i++) {
+      u_a[j][gxs+i*(gxm-1)].u = u[j][gxs+i*(gxm-1)].u;
+      u_a[j][gxs+i*(gxm-1)].v = u[j][gxs+i*(gxm-1)].v;
+    }
+  }
+  for (i=xs; i<xs+xm; i++) {
+    for (j=0; j<2; j++) {
+      u_a[gys+j*(gym-1)][i].u = u[gys+j*(gym-1)][i].u;
+      u_a[gys+j*(gym-1)][i].v = u[gys+j*(gym-1)][i].v;
+    }
+  }
+*/
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
 
       // Compute function over the locally owned part of the grid
       uc          = u_a[j][i].u;
-      uxx         = (-2.0*uc + u_a[j][modulo(i-1,Mx)].u + u_a[j][modulo(i+1,Mx)].u)*sx;
-      uyy         = (-2.0*uc + u_a[modulo(j-1,My)][i].u + u_a[modulo(j+1,My)][i].u)*sy;
+      uxx         = (-2.0*uc + u_a[j][i-1].u + u_a[j][i+1].u)*sx;
+      uyy         = (-2.0*uc + u_a[j-1][i].u + u_a[j+1][i].u)*sy;
       vc          = u_a[j][i].v;
-      vxx         = (-2.0*vc + u_a[j][modulo(i-1,Mx)].v + u_a[j][modulo(i+1,Mx)].v)*sx;
-      vyy         = (-2.0*vc + u_a[modulo(j-1,My)][i].v + u_a[modulo(j+1,My)][i].v)*sy;
+      vxx         = (-2.0*vc + u_a[j][i-1].v + u_a[j][i+1].v)*sx;
+      vyy         = (-2.0*vc + u_a[j-1][i].v + u_a[j+1][i].v)*sy;
       f_a[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
       f_a[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
 
@@ -277,38 +327,53 @@ PetscErrorCode RHSLocalActive(Field **f,Field **u,PetscInt *lbox,void *ptr)
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode ILocalActive(Field **f,Field **u,Field **udot,PetscInt *lbox,void *ptr)
+PetscErrorCode ILocalActive(DM da,Field **f,Field **u,Field **udot,void *ptr)
 {
-  AppCtx          *appctx = (AppCtx*)ptr;
-  aField          **f_a = appctx->f_a,**u_a = appctx->u_a;
-  PetscInt        i,j,sx,sy,Mx = appctx->Mx,My = appctx->My;
-  PetscInt        xl = lbox[0]+lbox[2],yl = lbox[1]+lbox[3];
-  PetscReal       hx,hy;
-  adouble         uc,uxx,uyy,vc,vxx,vyy;
+  PetscErrorCode ierr;
+  AppCtx         *appctx = (AppCtx*)ptr;
+  PetscInt       i,j,xs,ys,xm,ym;
+  PetscReal      hx,hy,sx,sy;
+  AField         **f_a = appctx->f_a,**u_a = appctx->u_a;
+  adouble        uc,uxx,uyy,vc,vxx,vyy;
 
   PetscFunctionBeginUser;
-
-  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  hx = 2.50/(PetscReal)(appctx->Mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(appctx->My);sy = 1.0/(hy*hy);
 
   trace_on(1);  // ----------------------------------------------- Start of active section
 
   // Mark independence
-  for (j=lbox[1]; j<yl; j++) {
-    for (i=lbox[0]; i<xl; i++) {
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
       u_a[j][i].u <<= u[j][i].u;u_a[j][i].v <<= u[j][i].v;
     }
   }
-  for (j=lbox[1]; j<yl; j++) {
-    for (i=lbox[0]; i<xl; i++) {
+/*
+  // Insert values at ghost points      FIXME: This format is star stencil specific
+  for (j=ys; j<ys+ym; j++) {
+    for (i=0; i<2; i++) {
+      u_a[j][gxs+i*(gxm-1)].u = u[j][gxs+i*(gxm-1)].u;
+      u_a[j][gxs+i*(gxm-1)].v = u[j][gxs+i*(gxm-1)].v;
+    }
+  }
+  for (i=xs; i<xs+xm; i++) {
+    for (j=0; j<2; j++) {
+      u_a[gys+j*(gym-1)][i].u = u[gys+j*(gym-1)][i].u;
+      u_a[gys+j*(gym-1)][i].v = u[gys+j*(gym-1)][i].v;
+    }
+  }
+*/
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
 
       // Compute function over the locally owned part of the grid
       uc          = u_a[j][i].u;
-      uxx         = (-2.0*uc + u_a[j][modulo(i-1,Mx)].u + u_a[j][modulo(i+1,Mx)].u)*sx;
-      uyy         = (-2.0*uc + u_a[modulo(j-1,My)][i].u + u_a[modulo(j+1,My)][i].u)*sy;
+      uxx         = (-2.0*uc + u_a[j][i-1].u + u_a[j][i+1].u)*sx;
+      uyy         = (-2.0*uc + u_a[j-1][i].u + u_a[j+1][i].u)*sy;
       vc          = u_a[j][i].v;
-      vxx         = (-2.0*vc + u_a[j][modulo(i-1,Mx)].v + u_a[j][modulo(i+1,Mx)].v)*sx;
-      vyy         = (-2.0*vc + u_a[modulo(j-1,My)][i].v + u_a[modulo(j+1,My)][i].v)*sy;
+      vxx         = (-2.0*vc + u_a[j][i-1].v + u_a[j][i+1].v)*sx;
+      vyy         = (-2.0*vc + u_a[j-1][i].v + u_a[j+1][i].v)*sy;
       f_a[j][i].u = udot[j][i].u - ( appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc) );
       f_a[j][i].v = udot[j][i].v - ( appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc );
 
@@ -321,18 +386,20 @@ PetscErrorCode ILocalActive(Field **f,Field **u,Field **udot,PetscInt *lbox,void
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,void *ptr)
+PetscErrorCode RHSLocalPassive(DM da,Field **f,Field **u,void *ptr)
 {
-  AppCtx        *appctx = (AppCtx*)ptr;
-  PetscInt      i,j,sx,sy,Mx = appctx->Mx,My = appctx->My;
-  PetscReal     hx,hy;
-  PetscScalar   uc,uxx,uyy,vc,vxx,vyy;
+  PetscErrorCode ierr;
+  AppCtx         *appctx = (AppCtx*)ptr;
+  PetscInt       i,j,xs,ys,xm,ym;
+  PetscReal      hx,hy,sx,sy;
+  PetscScalar    uc,uxx,uyy,vc,vxx,vyy;
 
   PetscFunctionBeginUser;
-  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
-  for (j=lbox[1]; j<lbox[1]+lbox[3]; j++) {
-    for (i=lbox[0]; i<lbox[0]+lbox[2]; i++) {
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  hx = 2.50/(PetscReal)(appctx->Mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(appctx->My);sy = 1.0/(hy*hy);
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
       uc        = u[j][i].u;
       uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
       uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
@@ -346,18 +413,20 @@ PetscErrorCode RHSLocalPassive(Field **f,Field **u,PetscInt *lbox,void *ptr)
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode ILocalPassive(Field **f,Field **u,Field **udot,PetscInt *lbox,void *ptr)
+PetscErrorCode ILocalPassive(DM da,Field **f,Field **u,Field **udot,void *ptr)
 {
-  AppCtx        *appctx = (AppCtx*)ptr;
-  PetscInt      i,j,sx,sy,Mx = appctx->Mx,My = appctx->My;
-  PetscReal     hx,hy;
-  PetscScalar   uc,uxx,uyy,vc,vxx,vyy;
+  PetscErrorCode ierr;
+  AppCtx         *appctx = (AppCtx*)ptr;
+  PetscInt       i,j,xs,ys,xm,ym;
+  PetscReal      hx,hy,sx,sy;
+  PetscScalar    uc,uxx,uyy,vc,vxx,vyy;
 
   PetscFunctionBeginUser;
-  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
-  for (j=lbox[1]; j<lbox[1]+lbox[3]; j++) {
-    for (i=lbox[0]; i<lbox[0]+lbox[2]; i++) {
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  hx = 2.50/(PetscReal)(appctx->Mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(appctx->My);sy = 1.0/(hy*hy);
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
       uc        = u[j][i].u;
       uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
       uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
@@ -377,7 +446,7 @@ PetscErrorCode ILocalPassive(Field **f,Field **u,Field **udot,PetscInt *lbox,voi
 
                  If the -no_annotations option is not invoked then
                  annotations are made for ADOL-C automatic
-                 differentiation using an `aField` struct.
+                 differentiation using an `AField` struct.
 
    Input Parameters:
 .  ts - the TS context
@@ -392,7 +461,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   AppCtx         *appctx = (AppCtx*)ptr;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       lbox[4];
+  PetscInt       xs,ys,xm,ym;
   Field          **u,**f;
   Vec            localU;
 
@@ -418,17 +487,17 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   /*
      Get local grid boundaries
   */
-  ierr = DMDAGetCorners(da,&lbox[0],&lbox[1],NULL,&lbox[2],&lbox[3],NULL);CHKERRQ(ierr);
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
   /*
      Compute function over the locally owned part of the grid
   */
   if (!appctx->no_an) {
-    RHSLocalActive(f,u,lbox,appctx);
+    RHSLocalActive(da,f,u,appctx);
   } else {
-    RHSLocalPassive(f,u,lbox,appctx);
+    RHSLocalPassive(da,f,u,appctx);
   }
-  ierr = PetscLogFlops(16*lbox[2]*lbox[3]);CHKERRQ(ierr);
+  ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
 
   /*
      Restore vectors
@@ -712,7 +781,7 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   AppCtx         *appctx = (AppCtx*)ptr;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       lbox[4];
+  PetscInt       xs,ys,xm,ym;
   Field          **u,**f,**udot;
   Vec            localU;
 
@@ -739,17 +808,17 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   /*
      Get local grid boundaries
   */
-  ierr = DMDAGetCorners(da,&lbox[0],&lbox[1],NULL,&lbox[2],&lbox[3],NULL);CHKERRQ(ierr);
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
   /*
      Compute function over the locally owned part of the grid
   */
   if (!appctx->no_an) {
-    ILocalActive(f,u,udot,lbox,appctx);
+    ILocalActive(da,f,u,udot,appctx);
   } else {
-    ILocalPassive(f,u,udot,lbox,appctx);
+    ILocalPassive(da,f,u,udot,appctx);
   }
-  ierr = PetscLogFlops(16*lbox[2]*lbox[3]);CHKERRQ(ierr);
+  ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
 
   /*
      Restore vectors
