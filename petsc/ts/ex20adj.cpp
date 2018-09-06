@@ -146,7 +146,7 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   PetscFunctionBeginUser;
   ierr = SubJacobian(ts,t,X,A,B,m,row,n,col,s,indep_cols,PETSC_FALSE,ctx);CHKERRQ(ierr);
 /*
-  For this Jacobian we may use the rule that
+  For an implicit Jacobian we may use the rule that
      G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
   where a = d(xdot)/dx is a constant.
 */
