@@ -1,15 +1,19 @@
-all: clean exec
+ALL: clean exec
 
+CXXFLAGS	= -std=c++11
+INCLUDES	= -I${ADOLC_HOME}/build/include
+LIB		= -L${ADOLC_HOME}/build/ -ladolc
+CC		= g++
+CLEANFILES	= *.o exec *~ *.tap
 
 SRC=speelpenning.cpp
 OBJ=speelpenning.o
 
-#speelpenning.o:speelpenning.cpp
 %.o:%.cpp
-	g++ -std=c++11 -I${ADOLC_HOME}/build/include $^ -c -o$@
+	$(CC) $(CXXFLAGS) $(INCLUDES) $^ -c -o$@
 
 exec: $(OBJ)
-	g++ -std=c++11 $(OBJ) -L${ADOLC_HOME}/build/ -ladolc -o exec
+	$(CC) $(CXXFLAGS) $(OBJ) $(LIB) -o $@
 
 clean:
-	rm -Rf *.o exec *~ *.tap
+	rm -Rf $(CLEANFILES)
