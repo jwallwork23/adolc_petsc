@@ -489,8 +489,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,Mx,My,xs,ys,xm,ym,N,dofs,col[1];
-  PetscScalar    *u_vec,**J,norm=0.,diff=0.,*fz;
+  PetscInt       i,j,k = 0,Mx,My,xs,ys,xm,ym,N,dofs,col[1],nnz,options[4] = {0,0,0,0};
+  unsigned int   *rind = NULL,*cind = NULL;
+  PetscScalar    *u_vec,**J,norm=0.,diff=0.,*fz,*values = NULL;
   Field          **u,**frhs;
   Vec            localU;
 
@@ -556,23 +557,15 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   /*
     Calculate Jacobian using ADOL-C
   */
-  if (appctx->sparse) {		// TODO. Generate sparsity pattern with jac_pat and then repeat=1
-    PetscInt      nnz,*options;
-    unsigned int  *rind,*cind;
-    PetscScalar   *values;
-
+  if (appctx->sparse) {
     nnz = 10*N;
-    ierr = PetscMalloc1(2,&options);CHKERRQ(ierr);
-    options[0] = 0;options[1] = 0;
-    ierr = PetscMalloc1(nnz,&rind);CHKERRQ(ierr);
-    ierr = PetscMalloc1(nnz,&cind);CHKERRQ(ierr);
-    ierr = PetscMalloc1(nnz,&values);CHKERRQ(ierr);
     sparse_jac(1,N,N,0,u_vec,&nnz,&rind,&cind,&values,options);
-    ierr = PetscFree(values);CHKERRQ(ierr);
-    ierr = PetscFree(rind);CHKERRQ(ierr);
-    ierr = PetscFree(cind);CHKERRQ(ierr);
-    ierr = PetscFree(options);CHKERRQ(ierr);
 
+    // TODO: First need to link properly with ColPack
+
+    free(rind);rind = NULL;
+    free(cind);cind = NULL;
+    free(values);values = NULL;
   } else {
 
     J = myalloc2(N,N);
