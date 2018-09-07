@@ -63,7 +63,7 @@ typedef struct {
    User-defined routines
 */
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
-extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
+extern PetscErrorCode RHSJacobianADOLC(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr);
 extern PetscErrorCode RHSLocalPassive(DM da,Field **f,Field **u,void *ptr);
@@ -176,6 +176,10 @@ int main(int argc,char **argv)
     appctx.f_a = f_a;
   }
 
+  if (appctx.zos) {
+    PetscPrintf(MPI_COMM_WORLD,"    If ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 is O(1.e-8), ADOL-C function evaluation\n      is probably correct.\n");
+  }
+
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -186,7 +190,7 @@ int main(int argc,char **argv)
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
   ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
   if (!analytic) {
-    ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobian,&appctx);CHKERRQ(ierr);
+    ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianADOLC,&appctx);CHKERRQ(ierr);
   } else {
     ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianByHand,&appctx);CHKERRQ(ierr);
   }
@@ -258,8 +262,7 @@ PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
     }
   }
 
-/*
-  // Insert values at ghost points	FIXME: This format is star stencil specific
+  // Insert values at AField ghost points	FIXME: This format is star stencil specific
   for (j=ys; j<ys+ym; j++) {
     for (i=0; i<2; i++) {
       u_a[j][gxs+i*(gxm-1)].u = u[j][gxs+i*(gxm-1)].u;
@@ -272,7 +275,6 @@ PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
       u_a[gys+j*(gym-1)][i].v = u[gys+j*(gym-1)][i].v;
     }
   }
-*/
 
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
@@ -436,14 +438,14 @@ PetscErrorCode InitialConditions(DM da,Vec U)
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
+PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 {
   AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,Mx,My,xs,ys,xm,ym,N,dofs,col[1];
-  PetscScalar    *u_vec,**J,norm=0.,diff=0.;
-  Field          **u;
+  PetscScalar    *u_vec,**J,norm=0.,diff=0.,*fz;
+  Field          **u,**frhs;
   Vec            localU;
 
   PetscFunctionBegin;
@@ -486,16 +488,11 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   */
   if (appctx->zos) {
     k = 0;
-    PetscScalar  *fz;
-    Field        **frhs;
-
     ierr = PetscMalloc1(N,&fz);CHKERRQ(ierr);
     zos_forward(1,N,N,0,u_vec,fz);
-
     ierr = PetscMalloc1(N,&frhs);CHKERRQ(ierr);		// FIXME: Memory is not contiguous
-    for (j=ys; j<ys+ym; j++) {
+    for (j=ys; j<ys+ym; j++)
       ierr = PetscMalloc1(N,&frhs[j]);CHKERRQ(ierr);
-    }
     RHSLocalPassive(da,frhs,u,appctx);
 
     for (j=ys; j<ys+ym; j++) {
@@ -507,8 +504,7 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     }
     ierr = PetscFree(fz);CHKERRQ(ierr);
     ierr = PetscFree(frhs);CHKERRQ(ierr);
-    PetscPrintf(MPI_COMM_WORLD,"    ----- Testing Zero Order evaluation -----\n    If ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 is O(1.e-8), ADOL-C function evaluation\n      is probably correct.\n");
-    PetscPrintf(MPI_COMM_WORLD,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",sqrt(diff/norm));
+    PetscPrintf(MPI_COMM_WORLD,"    ----- Testing Zero Order evaluation -----\n    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",sqrt(diff/norm));
   }
 
   /*
