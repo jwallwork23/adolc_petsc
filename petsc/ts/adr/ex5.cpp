@@ -489,7 +489,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,Mx,My,xs,ys,xm,ym,N,dofs,col[1],nnz,options[4] = {0,0,0,0};
+  PetscInt       i,j,k = 0,xs,ys,xm,ym,N,nnz,options[4] = {0,0,0,0};
   unsigned int   *rind = NULL,*cind = NULL;
   PetscScalar    *u_vec,**J,norm=0.,diff=0.,*fz,*values = NULL;
   Field          **u,**frhs;
@@ -498,7 +498,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&dofs,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
 
   /*
      Scatter ghost points to local vector,using the 2-step process
@@ -557,28 +556,27 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   /*
     Calculate Jacobian using ADOL-C
   */
-  if (appctx->sparse) {
-    nnz = 10*N;
+  if (appctx->sparse) {  // TODO: First need to link properly with ColPack
     sparse_jac(1,N,N,0,u_vec,&nnz,&rind,&cind,&values,options);
-
-    // TODO: First need to link properly with ColPack
-
+    for (k=0; k<nnz; k++){
+      i = rind[k];j = cind[k];
+      ierr = MatSetValues(A,1,&i,1,&j,&values[k],INSERT_VALUES);CHKERRQ(ierr);
+    }
     free(rind);rind = NULL;
     free(cind);cind = NULL;
     free(values);values = NULL;
+
   } else {
 
     J = myalloc2(N,N);
     jacobian(1,N,N,u_vec,J);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-    // Insert entries one-by-one
+    // Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil
     for(j=0;j<N;j++){
       for(i=0;i<N;i++){
-        if(fabs(J[j][i])!=0.){
-            col[0] = i; // TODO: better to insert row-by-row, similarly as with the stencil
-            ierr = MatSetValues(A,1,&j,1,col,&J[j][i],INSERT_VALUES);CHKERRQ(ierr);
-        }
+        if(fabs(J[j][i])!=0.)
+            ierr = MatSetValues(A,1,&j,1,&i,&J[j][i],INSERT_VALUES);CHKERRQ(ierr);
       }
     }
     myfree2(J);
