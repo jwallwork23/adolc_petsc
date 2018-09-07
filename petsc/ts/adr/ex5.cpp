@@ -13,8 +13,9 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
            -analytic       - use a hand-coded Jacobian
            -no_annotations - do not annotate using ADOL-C
            -sparse         - generate Jacobian using ADOL-C sparse Jacobian driver
+           -sparse_row     - use row compression, rather than column compression
 
-      Helpful ADOL-C related options:
+      Helpful ADOL-C debugging options:
            -adolc_test_zos (test Zero Order Scalar evaluation)
 
       Helpful runtime monitor options for debugging:
@@ -42,7 +43,7 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>	// Include ADOL-C
-#include <adolc/sparse/sparsedrivers.h>
+#include <adolc/adolc_sparse.h>
 
 typedef struct {
   PetscScalar u,v;
@@ -54,7 +55,7 @@ typedef struct {
 
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
-  PetscBool zos,no_an,sparse;
+  PetscBool zos,no_an,sparse,sparse_row;
   PetscInt  Mx,My;
   AField    **u_a,**f_a;
 } AppCtx;
@@ -170,11 +171,12 @@ int main(int argc,char **argv)
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   PetscFunctionBeginUser;
-  appctx.zos = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;
+  appctx.zos = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_row = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&appctx.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-sparse_row",&appctx.sparse_row,NULL);CHKERRQ(ierr);
   appctx.D1     = 8.0e-5;
   appctx.D2     = 4.0e-5;
   appctx.gamma  = .024;
@@ -491,7 +493,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,xs,ys,xm,ym,N,nnz,options[4] = {0,0,0,0};
   unsigned int   *rind = NULL,*cind = NULL;
-  PetscScalar    *u_vec,**J,norm=0.,diff=0.,*fz,*values = NULL;
+  PetscScalar    *u_vec,**J = NULL,norm=0.,diff=0.,*fz,*values = NULL;
   Field          **u,**frhs;
   Vec            localU;
 
@@ -557,7 +559,12 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     Calculate Jacobian using ADOL-C
   */
   if (appctx->sparse) {  // TODO: First need to link properly with ColPack
-    sparse_jac(1,N,N,0,u_vec,&nnz,&rind,&cind,&values,options);
+
+    if (appctx->sparse_row) {
+      options[3] = 1;
+    }
+
+    sparse_jac(1,N,N,0,u_vec,&nnz,&rind,&cind,&values,options);	// TODO: Consider separate drivers
     for (k=0; k<nnz; k++){
       i = rind[k];j = cind[k];
       ierr = MatSetValues(A,1,&i,1,&j,&values[k],INSERT_VALUES);CHKERRQ(ierr);
