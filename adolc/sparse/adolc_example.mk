@@ -1,7 +1,7 @@
 COLPACK_INSTALL_PATH = ${COLPACK_HOME}/lib/libColPack.so
 
-SRC=sparse_jacobian.cpp
-OBJ=sparse_jacobian.o
+SRC=adolc_example.cpp
+OBJ=adolc_example.o
 EXE=exec
 
 # compiler
