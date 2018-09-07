@@ -68,7 +68,11 @@ extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr);
 extern PetscErrorCode RHSLocalPassive(DM da,Field **f,Field **u,void *ptr);
 
-// FIXME: How to do this properly?
+/*
+  Set up AField, including ghost points.
+
+  FIXME: How to do this properly?
+*/
 PetscErrorCode AFieldCreate2d(DM da,AField *cgs,AField **a2d)
 {
   PetscErrorCode ierr;
@@ -84,7 +88,7 @@ PetscErrorCode AFieldCreate2d(DM da,AField *cgs,AField **a2d)
 /*
   Shift indices in AField to endow it with ghost points.
 */
-PetscErrorCode AFieldShift2d(DM da,AField *cgs,AField **a2d[])
+PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
 {
   PetscErrorCode ierr;
   PetscInt       gxs,gys,gxm,gym,j;
@@ -98,6 +102,57 @@ PetscErrorCode AFieldShift2d(DM da,AField *cgs,AField **a2d[])
   PetscFunctionReturn(0);
 }
 
+/*
+  Insert ghost point values into AField.
+*/
+PetscErrorCode AFieldInsertGhostValues2d(DM da,Field **u,AField **u_a)
+{
+  PetscErrorCode  ierr;
+  PetscInt        i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,lower,upper;
+  DMDAStencilType st;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&st);CHKERRQ(ierr);
+
+  lower = ys;upper = ys+ym;
+  if (st == DMDA_STENCIL_BOX) lower += gys;upper -= gys;
+  for (j=lower; j<upper; j++) {
+    for (i=0; i<2; i++) {
+      u_a[j][gxs+i*(gxm-1)].u = u[j][gxs+i*(gxm-1)].u;
+      u_a[j][gxs+i*(gxm-1)].v = u[j][gxs+i*(gxm-1)].v;
+    }
+  }
+  lower = xs;upper = xs+xm;
+  if (st == DMDA_STENCIL_BOX) lower += gxs;upper -= gxs;
+  for (i=lower; i<upper; i++) {
+    for (j=0; j<2; j++) {
+      u_a[gys+j*(gym-1)][i].u = u[gys+j*(gym-1)][i].u;
+      u_a[gys+j*(gym-1)][i].v = u[gys+j*(gym-1)][i].v;
+    }
+  }
+  PetscFunctionReturn(0);
+}
+
+/*
+  Destroy AField.
+
+  FIXME: How to do this properly?
+*/
+PetscErrorCode AFieldDestroy2d(DM da,AField *cgs,AField **a2d)
+{
+  PetscErrorCode ierr;
+  PetscInt       gxs,gys,gxm,gym;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  *a2d += gys;
+  delete[] a2d;
+  delete[] cgs;
+
+  PetscFunctionReturn(0);
+}
 
 int main(int argc,char **argv)
 {
@@ -168,8 +223,8 @@ int main(int argc,char **argv)
     ierr = AFieldCreate2d(da,f_c,f_a);CHKERRQ(ierr);
 */
     // Align indices between array types and endow ghost points
-    ierr = AFieldShift2d(da,u_c,&u_a);CHKERRQ(ierr);
-    ierr = AFieldShift2d(da,f_c,&f_a);CHKERRQ(ierr);
+    ierr = AFieldGiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
+    ierr = AFieldGiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
 
     // Store active variables in context
     appctx.u_a = u_a;
@@ -226,6 +281,10 @@ int main(int argc,char **argv)
      process.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if (!appctx.no_an) {
+/*
+    ierr = AFieldDestroy2d(da,f_c,f_a);CHKERRQ(ierr);
+    ierr = AFieldDestroy2d(da,u_c,u_a);CHKERRQ(ierr);
+*/
     f_a += gys;
     u_a += gys;
     delete[] f_a;
@@ -261,20 +320,7 @@ PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
       u_a[j][i].u <<= u[j][i].u;u_a[j][i].v <<= u[j][i].v;
     }
   }
-
-  // Insert values at AField ghost points	FIXME: This format is star stencil specific
-  for (j=ys; j<ys+ym; j++) {
-    for (i=0; i<2; i++) {
-      u_a[j][gxs+i*(gxm-1)].u = u[j][gxs+i*(gxm-1)].u;
-      u_a[j][gxs+i*(gxm-1)].v = u[j][gxs+i*(gxm-1)].v;
-    }
-  }
-  for (i=xs; i<xs+xm; i++) {
-    for (j=0; j<2; j++) {
-      u_a[gys+j*(gym-1)][i].u = u[gys+j*(gym-1)][i].u;
-      u_a[gys+j*(gym-1)][i].v = u[gys+j*(gym-1)][i].v;
-    }
-  }
+  ierr = AFieldInsertGhostValues2d(da,u,u_a);CHKERRQ(ierr);
 
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
