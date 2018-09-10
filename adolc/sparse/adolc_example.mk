@@ -11,10 +11,10 @@ COMPILE	= g++
 CCFLAGS	= -Wall -fopenmp -O3 -std=c++11
 
 # link flags
-LDFLAGS	= -Wall -fopenmp -O3 -std=c++11 -L${ADOLC_HOME}/build -ladolc -ldl ${COLPACK_INSTALL_PATH}
+LDFLAGS	= -Wall -fopenmp -O3 -std=c++11 -L${ADOLC_BUILDDIR} -ladolc -ldl ${COLPACK_INSTALL_PATH}
 
 INCLUDES= -I./
-INCLUDES+= -I${ADOLC_HOME}/build/include/adolc
+INCLUDES+= -I${ADOLC_BUILDDIR}/include/adolc
 INCLUDES+= -I${COLPACK_HOME}/include/ColPack
 INCLUDES+= -I${COLPACK_HOME}/GraphColoring
 INCLUDES+= -I${COLPACK_HOME}/BipartiteGraphBicoloring
