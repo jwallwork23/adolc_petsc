@@ -55,7 +55,7 @@ typedef struct {
 
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
-  PetscBool zos,no_an,sparse,sparse_row;
+  PetscBool zos,zos_view,no_an,sparse,sparse_row;
   PetscInt  Mx,My;
   AField    **u_a,**f_a;
 } AppCtx;
@@ -171,8 +171,9 @@ int main(int argc,char **argv)
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   PetscFunctionBeginUser;
-  appctx.zos = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_row = PETSC_FALSE;
+  appctx.zos = PETSC_FALSE;appctx.zos_view = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_row = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&appctx.zos,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&appctx.zos_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
@@ -509,19 +510,13 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
 
-  /*
-     Get pointers to vector data
-  */
+  /* Get pointers to vector data */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
 
-  /*
-     Get local grid boundaries and total degrees of freedom on this process
-  */
+  /* Get local grid boundaries and total degrees of freedom on this process */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
-  /*
-    Convert array of structs to a 1-array, so this can be read by ADOL-C
-  */
+  /* Convert array of structs to a 1-array, so this can be read by ADOL-C */
   N = 2*(xs+xm)*(ys+ym);
   ierr = PetscMalloc1(N,&u_vec);CHKERRQ(ierr);
   for (j=ys; j<ys+ym; j++) {
@@ -544,6 +539,16 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
+        if (appctx->zos_view) {
+          if ((fabs(frhs[j][i].u) > 1.e-16) && (fabs(fz[k]) > 1.e-16)) {
+            PetscPrintf(MPI_COMM_WORLD,"F_rhs[%2d,%2d,u] = %+.4e, ",i,j,frhs[j][i].u);
+            PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d,u] = %+.4e\n",i,j,fz[k++]);
+          }
+          if ((fabs(frhs[j][i].v) > 1.e-16) && (fabs(fz[k]) > 1.e-16)) {
+            PetscPrintf(MPI_COMM_WORLD,"F_rhs[%2d,%2d,v] = %+.4e, ",i,j,frhs[j][i].v);
+            PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d,v] = %+.4e\n",i,j,fz[k--]);
+          }
+        }
         diff += (frhs[j][i].u-fz[k])*(frhs[j][i].u-fz[k]);k++;
         diff += (frhs[j][i].v-fz[k])*(frhs[j][i].v-fz[k]);k++;
         norm += frhs[j][i].u*frhs[j][i].u + frhs[j][i].v*frhs[j][i].v;

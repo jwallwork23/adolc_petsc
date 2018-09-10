@@ -22,7 +22,7 @@ static char help[] = "Time-dependent PDE in 2d. Simplified from ex7.c for illust
 */
 typedef struct {
   PetscReal c;
-  PetscBool no_an;
+  PetscBool zos,zos_view,no_an;
   PetscInt  Mx,My;
   adouble   **u_a,**f_a;
 } AppCtx;
@@ -97,7 +97,9 @@ int main(int argc,char **argv)
   PetscBool      analytic = PETSC_FALSE;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
-  user.no_an = PETSC_FALSE;
+  user.no_an = PETSC_FALSE;user.zos = PETSC_FALSE;user.zos_view = PETSC_FALSE;
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&user.zos,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&user.zos_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&user.no_an,NULL);CHKERRQ(ierr);
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -148,6 +150,10 @@ int main(int argc,char **argv)
     // Store active variables in context
     user.u_a = u_a;
     user.f_a = f_a;
+  }
+
+  if (user.zos) {
+    PetscPrintf(MPI_COMM_WORLD,"    If ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 is O(1.e-8), ADOL-C function evaluation\n      is probably correct.\n");
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -249,15 +255,12 @@ PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *p
       // Consider boundary cases
       if (i == 0 || j == 0 || i == user->Mx-1 || j == user->My-1) {
         f_a[j][i] = u_a[j][i];
-        f_a[j][i] >>= f[j][i];  // Mark dependence
-        continue;
+      } else {
+        u         = u_a[j][i];
+        uxx       = (-two*u + u_a[j][i-1] + u_a[j][i+1])*sx;
+        uyy       = (-two*u + u_a[j-1][i] + u_a[j+1][i])*sy;
+        f_a[j][i] = uxx + uyy;
       }
-
-      // Compute function over the locally owned part of the grid
-      u         = u_a[j][i];
-      uxx       = (-two*u + u_a[j][i-1] + u_a[j][i+1])*sx;
-      uyy       = (-two*u + u_a[j-1][i] + u_a[j+1][i])*sy;
-      f_a[j][i] = uxx + uyy;
 
       // Mark dependence
       f_a[j][i] >>= f[j][i];
@@ -412,11 +415,11 @@ PetscErrorCode RHSJacobianByHand(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ct
 */
 PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx)
 {
-  //AppCtx         *appctx = (AppCtx*)ctx;
+  AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
   PetscInt       i,j,k = 0,xs,ys,xm,ym,N;
-  PetscScalar    **u,*u_vec,**Jac = NULL;
+  PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.;
   Vec            localU;
 
   PetscFunctionBeginUser;
@@ -438,9 +441,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   /* Get local grid boundaries and total degrees of freedom on this process */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
-  /*
-    Convert 2-array to a 1-array, so this can be read by ADOL-C
-  */
+  /* Convert 2-array to a 1-array, so this can be read by ADOL-C */
   N = (xs+xm)*(ys+ym);
   ierr = PetscMalloc1(N,&u_vec);CHKERRQ(ierr);
   for (j=ys; j<ys+ym; j++) {
@@ -449,9 +450,34 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     }
   }
 
-  /*
-    Calculate Jacobian using ADOL-C
-  */
+  /* Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive */
+  if (appctx->zos) {
+    k = 0;
+    ierr = PetscMalloc1(N,&fz);CHKERRQ(ierr);
+    zos_forward(1,N,N,0,u_vec,fz);
+    ierr = PetscMalloc1(N,&frhs);CHKERRQ(ierr);         // FIXME: Memory is not contiguous
+    for (j=ys; j<ys+ym; j++)
+      ierr = PetscMalloc1(N,&frhs[j]);CHKERRQ(ierr);
+    RHSLocalPassive(da,frhs,u,appctx);
+
+    for (j=ys; j<ys+ym; j++) {
+      for (i=xs; i<xs+xm; i++) {
+        if (appctx->zos_view)
+          if ((fabs(frhs[j][i]) > 1.e-16) && (fabs(fz[k]) > 1.e-16)) {
+            PetscPrintf(MPI_COMM_WORLD,"F_rhs[%2d,%2d] = %+.4e, ",i,j,frhs[j][i]);
+            PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d] = %+.4e\n",i,j,fz[k]);
+          }
+        diff += (frhs[j][i]-fz[k])*(frhs[j][i]-fz[k]);k++;
+        norm += frhs[j][i]*frhs[j][i];
+      }
+    }
+    ierr = PetscFree(fz);CHKERRQ(ierr);
+    ierr = PetscFree(frhs);CHKERRQ(ierr);
+    PetscPrintf(MPI_COMM_WORLD,"    ----- Testing Zero Order evaluation -----\n    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",sqrt(diff/norm));
+  }
+
+
+  /* Calculate Jacobian using ADOL-C */
   Jac = myalloc2(N,N);
   jacobian(1,N,N,u_vec,Jac);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
