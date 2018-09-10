@@ -118,7 +118,9 @@ PetscErrorCode AFieldInsertGhostValues2d(DM da,Field **u,AField **u_a)
   ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&st);CHKERRQ(ierr);
 
   lower = ys;upper = ys+ym;
-  if (st == DMDA_STENCIL_BOX) lower += gys;upper -= gys;
+  if (st == DMDA_STENCIL_BOX) {
+    lower += gys;upper -= gys;
+  }
   for (j=lower; j<upper; j++) {
     for (i=0; i<2; i++) {
       u_a[j][gxs+i*(gxm-1)].u = u[j][gxs+i*(gxm-1)].u;
@@ -126,7 +128,9 @@ PetscErrorCode AFieldInsertGhostValues2d(DM da,Field **u,AField **u_a)
     }
   }
   lower = xs;upper = xs+xm;
-  if (st == DMDA_STENCIL_BOX) lower += gxs;upper -= gxs;
+  if (st == DMDA_STENCIL_BOX) {
+    lower += gxs;upper -= gxs;
+  }
   for (i=lower; i<upper; i++) {
     for (j=0; j<2; j++) {
       u_a[gys+j*(gym-1)][i].u = u[gys+j*(gym-1)][i].u;
@@ -541,12 +545,12 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
       for (i=xs; i<xs+xm; i++) {
         if (appctx->zos_view) {
           if ((fabs(frhs[j][i].u) > 1.e-16) && (fabs(fz[k]) > 1.e-16)) {
-            PetscPrintf(MPI_COMM_WORLD,"F_rhs[%2d,%2d,u] = %+.4e, ",i,j,frhs[j][i].u);
-            PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d,u] = %+.4e\n",i,j,fz[k++]);
+            PetscPrintf(MPI_COMM_WORLD,"F_rhs[%2d,%2d,u] = %+.4e, ",j,i,frhs[j][i].u);
+            PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d,u] = %+.4e\n",j,i,fz[k++]);
           }
           if ((fabs(frhs[j][i].v) > 1.e-16) && (fabs(fz[k]) > 1.e-16)) {
-            PetscPrintf(MPI_COMM_WORLD,"F_rhs[%2d,%2d,v] = %+.4e, ",i,j,frhs[j][i].v);
-            PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d,v] = %+.4e\n",i,j,fz[k--]);
+            PetscPrintf(MPI_COMM_WORLD,"F_rhs[%2d,%2d,v] = %+.4e, ",j,i,frhs[j][i].v);
+            PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d,v] = %+.4e\n",j,i,fz[k--]);
           }
         }
         diff += (frhs[j][i].u-fz[k])*(frhs[j][i].u-fz[k]);k++;
@@ -556,7 +560,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     }
     ierr = PetscFree(fz);CHKERRQ(ierr);
     ierr = PetscFree(frhs);CHKERRQ(ierr);
-    PetscPrintf(MPI_COMM_WORLD,"    ----- Testing Zero Order evaluation -----\n    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",sqrt(diff/norm));
+    PetscPrintf(MPI_COMM_WORLD,"    ----- Testing Zero Order evaluation -----\n");
+    PetscPrintf(MPI_COMM_WORLD,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",sqrt(diff/norm));
   }
 
   /*
@@ -583,7 +588,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     jacobian(1,N,N,u_vec,J);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-    // Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil
+    /* Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil */
     for(j=0;j<N;j++){
       for(i=0;i<N;i++){
         if(fabs(J[j][i])!=0.)
