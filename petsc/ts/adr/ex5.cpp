@@ -303,14 +303,13 @@ PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
 {
   PetscErrorCode  ierr;
   AppCtx          *appctx = (AppCtx*)ptr;
-  PetscInt        i,j,xs,ys,xm,ym,gxs,gys,gxm,gym;
+  PetscInt        i,j,xs,ys,xm,ym;
   PetscReal       hx,hy,sx,sy;
   AField          **f_a = appctx->f_a,**u_a = appctx->u_a;
   adouble         uc,uxx,uyy,vc,vxx,vyy;
 
   PetscFunctionBeginUser;
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
   hx = 2.50/(PetscReal)(appctx->Mx);sx = 1.0/(hx*hx);
   hy = 2.50/(PetscReal)(appctx->My);sy = 1.0/(hy*hy);
 
@@ -426,9 +425,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
      Compute function over the locally owned part of the grid
   */
   if (!appctx->no_an) {
-    RHSLocalActive(da,f,u,appctx);
+    ierr = RHSLocalActive(da,f,u,appctx);CHKERRQ(ierr);
   } else {
-    RHSLocalPassive(da,f,u,appctx);
+    ierr = RHSLocalPassive(da,f,u,appctx);CHKERRQ(ierr);
   }
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
 
