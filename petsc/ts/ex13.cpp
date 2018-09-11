@@ -243,21 +243,29 @@ PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *p
 {
   AppCtx         *user=(AppCtx*)ptr;
   PetscErrorCode ierr;
-  PetscInt       i,j,xs,ys,xm,ym;
+  PetscInt       i,j,xs,ys,xm,ym,gxs,gys,gxm,gym;
   PetscReal      hx,hy,sx,sy,two=2.0;
   adouble        **f_a = user->f_a,**u_a = user->u_a;
   adouble        u,uxx,uyy;
 
   PetscFunctionBegin;
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+
   hx = 1.0/(PetscReal)(user->Mx-1); sx = 1.0/(hx*hx);
   hy = 1.0/(PetscReal)(user->My-1); sy = 1.0/(hy*hy);
 
   trace_on(1);  // ----------------------------------------------- Start of active section
 
-  // Mark independence
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
+  /*
+    Mark independence
+
+    NOTE: Ghost points are marked as independent at this stage, but their contributions to
+          the Jacobian will be added to the corresponding rows on other processes, meaning
+          the Jacobian remains square.
+  */
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
       u_a[j][i] <<= uarray[j][i];
     }
   }
@@ -439,7 +447,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       i,j,k = 0,xs,ys,xm,ym,N,nnz,options[4] = {0,0,0,0};
+  PetscInt       i,j,k = 0,w_ghost = 0,wo_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G,nnz,options[4] = {0,0,0,0},loc;
   unsigned int   *rind = NULL,*cind = NULL;
   PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.,*values = NULL;
   Vec            localU;
@@ -462,35 +470,38 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
   /* Get local grid boundaries and total degrees of freedom on this process */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
   /* Convert 2-array to a 1-array, so this can be read by ADOL-C */
-  N = (xs+xm)*(ys+ym);
-  ierr = PetscMalloc1(N,&u_vec);CHKERRQ(ierr);
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
+  L = (xs+xm)*(ys+ym);G = gxm*gym;
+  ierr = PetscMalloc1(G,&u_vec);CHKERRQ(ierr);
+  for (j=gys; j<gys+ym; j++) {
+    for (i=gxs; i<gxs+xm; i++) {
       u_vec[k++] = u[j][i];
     }
   }
 
   /* Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive */
-  if (appctx->zos) {
+  if (appctx->zos) {                                    // TODO: ZOS test needs readjustment
     k = 0;
-    ierr = PetscMalloc1(N,&fz);CHKERRQ(ierr);
-    zos_forward(1,N,N,0,u_vec,fz);
-    ierr = PetscMalloc1(N,&frhs);CHKERRQ(ierr);         // FIXME: Memory is not contiguous
+    ierr = PetscMalloc1(L,&fz);CHKERRQ(ierr);
+    zos_forward(1,L,G,0,u_vec,fz);
+    ierr = PetscMalloc1(L,&frhs);CHKERRQ(ierr);         // FIXME: Memory is not contiguous
     for (j=ys; j<ys+ym; j++)
-      ierr = PetscMalloc1(N,&frhs[j]);CHKERRQ(ierr);
+      ierr = PetscMalloc1(L,&frhs[j]);CHKERRQ(ierr);
     RHSLocalPassive(da,frhs,u,appctx);
 
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
-        if (appctx->zos_view)
+        if (appctx->zos_view) {
           if ((fabs(frhs[j][i]) > 1.e-16) && (fabs(fz[k]) > 1.e-16)) {
             PetscPrintf(MPI_COMM_WORLD,"F_rhs[%2d,%2d] = %+.4e, ",j,i,frhs[j][i]);
             PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d] = %+.4e\n",j,i,fz[k]);
           }
-        diff += (frhs[j][i]-fz[k])*(frhs[j][i]-fz[k]);k++;
+        }
+        diff += (frhs[j][i]-fz[k])*(frhs[j][i]-fz[k]);
         norm += frhs[j][i]*frhs[j][i];
+      k++;
       }
     }
     ierr = PetscFree(fz);CHKERRQ(ierr);
@@ -508,9 +519,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       options[3] = 1;
     }
 
-    sparse_jac(1,N,N,0,u_vec,&nnz,&rind,&cind,&values,options); // TODO: Consider separate drivers
+    sparse_jac(1,L,G,0,u_vec,&nnz,&rind,&cind,&values,options); // TODO: Consider separate drivers
     for (k=0; k<nnz; k++){
-      j = rind[k];i = cind[k];
+      j = rind[k];i = cind[k]; // TODO: These need adjustment
       ierr = MatSetValues(J,1,&j,1,&i,&values[k],INSERT_VALUES);CHKERRQ(ierr);
     }
     free(rind);rind = NULL;
@@ -519,16 +530,38 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
   } else {
 
-    Jac = myalloc2(N,N);
-    jacobian(1,N,N,u_vec,Jac);
+    Jac = myalloc2(L,G);
+    jacobian(1,L,G,u_vec,Jac);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
+    // TODO: For a proper implementation we should either have different INSERT and ADD steps, or re-initialise J to zero using MatSetValue before doing anything.
+
     /* Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil */
-    for(j=0;j<N;j++){
-      for(i=0;i<N;i++){
-        if(fabs(Jac[j][i])!=0.)
-          ierr = MatSetValues(J,1,&j,1,&i,&Jac[j][i],INSERT_VALUES);CHKERRQ(ierr);
+    for (k=0; k<L; k++) {
+      for (j=gys; j<gys+gym; j++) {
+        for (i=gxs; i<gxs+gxm; i++) {
+          if (j == gys) {
+            //if (fabs(Jac[k][w_ghost])!=0.) {
+            //  loc = wo_ghost+gys+gym;   // This is NOT the right index
+            //  printf("k = %d, loc = %d\n",k,loc);
+            //  ierr = MatSetValues(J,1,&k,1,&loc,&Jac[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
+            //}
+          } else if (j == gys+gym-1) {
+            // TODO
+          } else if (i == gxs) {
+            // TODO
+          } else if  (i == gxs+gxm-1) {
+            // TODO
+          } else {
+            if (fabs(Jac[k][w_ghost])!=0.)
+              ierr = MatSetValues(J,1,&k,1,&wo_ghost,&Jac[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
+            // TODO: else part for ghost points
+            wo_ghost++;
+          }
+          w_ghost++;
+        }
       }
+      w_ghost = 0;wo_ghost = 0;
     }
     myfree2(Jac);
   }
@@ -538,6 +571,15 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   */
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
+
+  /*
+    Assemble local matrix
+
+    NOTE (from Vec ex2): Each processor can contribute any vector entries, regardless of which
+         processor "owns" them; any nonlocal contributions will be transferred to the appropriate
+         processor during the assembly process.
+  */
+
   ierr = MatAssemblyBegin(Jpre,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(Jpre,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (J != Jpre) {
