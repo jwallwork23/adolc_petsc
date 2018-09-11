@@ -155,10 +155,10 @@ PetscErrorCode AFieldInsertGhostValues2d(DM da,Field **u,AField **u_a)
 PetscErrorCode AFieldDestroy2d(DM da,AField *cgs,AField **a2d)
 {
   PetscErrorCode ierr;
-  PetscInt       gxs,gys,gxm,gym;
+  PetscInt       gys;
 
   PetscFunctionBegin;
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(da,NULL,&gys,NULL,NULL,NULL,NULL);CHKERRQ(ierr);
   *a2d += gys;
   delete[] a2d;
   delete[] cgs;
@@ -175,7 +175,7 @@ int main(int argc,char **argv)
   AppCtx         appctx;
   AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
   PetscInt       gxs,gys,gxm,gym;
-  PetscBool      analytic = PETSC_FALSE;
+  PetscBool      byhand = PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
@@ -185,7 +185,7 @@ int main(int argc,char **argv)
   appctx.zos = PETSC_FALSE;appctx.zos_view = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_row = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&appctx.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&appctx.zos_view,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&analytic,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse_row",&appctx.sparse_row,NULL);CHKERRQ(ierr);
@@ -258,7 +258,7 @@ int main(int argc,char **argv)
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
   ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
-  if (!analytic) {
+  if (!byhand) {
     ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianADOLC,&appctx);CHKERRQ(ierr);
   } else {
     ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianByHand,&appctx);CHKERRQ(ierr);

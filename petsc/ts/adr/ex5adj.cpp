@@ -6,12 +6,12 @@ static char help[] = "Demonstrates adjoint sensitivity analysis for Reaction-Dif
       Handcoded Jacobians are included here for comparison.
 
   Runtime options:
-    -forwardonly    - run the forward simulation without adjoint
-    -implicitform   - provide IFunction and IJacobian to TS, if not set, RHSFunction and RHSJacobian will be used
-    -aijpc          - set the preconditioner matrix to be aij (the Jacobian matrix can be of a different type such as ELL)
-    -analytic       - use a hand-coded Jacobian
-    -no_annotations - do not annotate using ADOL-C
-    -sparse         - generate Jacobian using ADOL-C sparse Jacobian driver TODO
+    -forwardonly      - run the forward simulation without adjoint
+    -implicitform     - provide IFunction and IJacobian to TS, if not set, RHSFunction and RHSJacobian will be used
+    -aijpc            - set the preconditioner matrix to be aij (the Jacobian matrix can be of a different type such as ELL)
+    -jacobian_by_hand - use a hand-coded Jacobian
+    -no_annotation    - do not annotate using ADOL-C
+    -sparse           - generate Jacobian using ADOL-C sparse Jacobian driver TODO
  */
 
 #include <petscsys.h>
@@ -39,11 +39,11 @@ typedef struct {
    User-defined routines
 */
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
-extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
+extern PetscErrorCode RHSJacobianADOLC(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
 
 extern PetscErrorCode IFunction(TS,PetscReal,Vec,Vec,Vec,void*);
-extern PetscErrorCode IJacobian(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
+extern PetscErrorCode IJacobianADOLC(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode IJacobianByHand(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
 
 PetscErrorCode InitializeLambda(DM da,Vec lambda,PetscReal x,PetscReal y)
@@ -72,7 +72,7 @@ PetscErrorCode InitializeLambda(DM da,Vec lambda,PetscReal x,PetscReal y)
 /*
   Shift indices in AField to endow it with ghost points.
 */
-PetscErrorCode AFieldShift2d(DM da,AField *cgs,AField **a2d[])
+PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
 {
   PetscErrorCode ierr;
   PetscInt       gxs,gys,gxm,gym,j;
@@ -83,6 +83,49 @@ PetscErrorCode AFieldShift2d(DM da,AField *cgs,AField **a2d[])
     (*a2d)[j] = cgs + j*gxm - gxs;
   }
   *a2d -= gys;
+  PetscFunctionReturn(0);
+}
+
+/*
+  Insert ghost point values into AField.
+*/
+PetscErrorCode AFieldInsertGhostValues2d(DM da,Field **u,AField **u_a)
+{
+  PetscErrorCode  ierr;
+  PetscInt        i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,lower,upper;
+  DMDAStencilType st;
+  DMBoundaryType  xbc,ybc;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&xbc,&ybc,PETSC_IGNORE,&st);CHKERRQ(ierr);
+
+  // Ghost points need to be present, even if unused, as with DM_BOUNDARY_GHOSTED.
+  if ((xbc != DM_BOUNDARY_NONE) && (ybc != DM_BOUNDARY_NONE)) {
+    lower = ys;upper = ys+ym;
+    if (st == DMDA_STENCIL_BOX) {
+      lower += gys;upper -= gys;
+    }
+    for (j=lower; j<upper; j++) {
+      for (i=0; i<2; i++) {
+        u_a[j][gxs+i*(gxm-1)].u = u[j][gxs+i*(gxm-1)].u;
+        u_a[j][gxs+i*(gxm-1)].v = u[j][gxs+i*(gxm-1)].v;
+      }
+    }
+    lower = xs;upper = xs+xm;
+    if (st == DMDA_STENCIL_BOX) {
+      lower += gxs;upper -= gxs;
+    }
+    for (i=lower; i<upper; i++) {
+      for (j=0; j<2; j++) {
+        u_a[gys+j*(gym-1)][i].u = u[gys+j*(gym-1)][i].u;
+        u_a[gys+j*(gym-1)][i].v = u[gys+j*(gym-1)][i].v;
+      }
+    }
+  } else {
+    SETERRQ(PETSC_COMM_SELF,1,"Ghost points required on boundary.");
+  }
   PetscFunctionReturn(0);
 }
 
@@ -97,7 +140,7 @@ int main(int argc,char **argv)
   PetscInt       gxs,gys,gxm,gym;
   Vec            lambda[1];
   PetscScalar    *x_ptr;
-  PetscBool      forwardonly=PETSC_FALSE,implicitform=PETSC_FALSE,analytic=PETSC_FALSE;
+  PetscBool      forwardonly=PETSC_FALSE,implicitform=PETSC_FALSE,byhand=PETSC_FALSE;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   ierr = PetscOptionsGetBool(NULL,NULL,"-forwardonly",&forwardonly,NULL);CHKERRQ(ierr);
@@ -105,7 +148,7 @@ int main(int argc,char **argv)
   appctx.aijpc = PETSC_FALSE,appctx.no_an = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-aijpc",&appctx.aijpc,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
   appctx.gamma = .024;
@@ -154,8 +197,8 @@ int main(int argc,char **argv)
     ierr = AFieldCreate2d(da,f_c,f_a);CHKERRQ(ierr);
 */
     // Align indices between array types and endow ghost points
-    ierr = AFieldShift2d(da,u_c,&u_a);CHKERRQ(ierr);
-    ierr = AFieldShift2d(da,f_c,&f_a);CHKERRQ(ierr);
+    ierr = AFieldGiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
+    ierr = AFieldGiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
 
     // Store active variables in context
     appctx.u_a = u_a;
@@ -171,8 +214,8 @@ int main(int argc,char **argv)
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
   if (!implicitform) {
     ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
-    if (!analytic) {
-      ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobian,&appctx);CHKERRQ(ierr);
+    if (!byhand) {
+      ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianADOLC,&appctx);CHKERRQ(ierr);
     } else {
       ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianByHand,&appctx);CHKERRQ(ierr);
     }
@@ -185,12 +228,16 @@ int main(int argc,char **argv)
       ierr = DMCreateMatrix(da,&A);CHKERRQ(ierr);
       ierr = MatConvert(A,MATAIJ,MAT_INITIAL_MATRIX,&B);CHKERRQ(ierr);
       /* FIXME do we need to change viewer to display matrix in natural ordering as DMCreateMatrix_DA does? */
-      ierr = TSSetIJacobian(ts,A,B,IJacobian,&appctx);CHKERRQ(ierr);
+      if (!byhand) {
+        ierr = TSSetIJacobian(ts,A,B,IJacobianADOLC,&appctx);CHKERRQ(ierr);
+      } else {
+        ierr = TSSetIJacobian(ts,A,B,IJacobianByHand,&appctx);CHKERRQ(ierr);
+      }
       ierr = MatDestroy(&A);CHKERRQ(ierr);
       ierr = MatDestroy(&B);CHKERRQ(ierr);
     } else {
-      if (!analytic) {
-        ierr = TSSetIJacobian(ts,NULL,NULL,IJacobian,&appctx);CHKERRQ(ierr);
+      if (!byhand) {
+        ierr = TSSetIJacobian(ts,NULL,NULL,IJacobianADOLC,&appctx);CHKERRQ(ierr);
       } else {
         ierr = TSSetIJacobian(ts,NULL,NULL,IJacobianByHand,&appctx);CHKERRQ(ierr);
       }
@@ -319,6 +366,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
         appctx->u_a[j][i].u <<= u[j][i].u;appctx->u_a[j][i].v <<= u[j][i].v;
       }
     }
+    ierr = AFieldInsertGhostValues2d(da,u,appctx->u_a);CHKERRQ(ierr);
+
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
 
@@ -409,7 +458,7 @@ PetscErrorCode InitialConditions(DM da,Vec U)
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
+PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 {
   DM             da;
   PetscErrorCode ierr;
@@ -659,6 +708,8 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
         appctx->u_a[j][i].u <<= u[j][i].u;appctx->u_a[j][i].v <<= u[j][i].v;
       }
     }
+    ierr = AFieldInsertGhostValues2d(da,u,appctx->u_a);CHKERRQ(ierr);
+
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
 
@@ -705,7 +756,7 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode IJacobian(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat BB,void *ctx)
+PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat BB,void *ctx)
 {
   DM             da;
   PetscErrorCode ierr;
