@@ -52,36 +52,42 @@ PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[])
 }
 
 /*
-  Insert ghost point values into adouble array. FIXME: need take boundaries into account.
+  Insert ghost point values into adouble array.
 */
 PetscErrorCode AdoubleInsertGhostValues2d(DM da,PetscScalar **u,adouble **u_a)
 {
-  PetscErrorCode  ierr;
-  PetscInt        i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,lower,upper;
-  DMDAStencilType st;
+  PetscErrorCode   ierr;
+  PetscInt         i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,lower,upper;
+  DMDAStencilType  st;
+  DMBoundaryType   xbc,ybc;
 
   PetscFunctionBegin;
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&st);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&xbc,&ybc,PETSC_IGNORE,&st);CHKERRQ(ierr);
 
-  lower = ys;upper = ys+ym;
-  if (st == DMDA_STENCIL_BOX) {
-    lower += gys;upper -= gys;
-  }
-  for (j=lower; j<upper; j++) {
-    for (i=0; i<2; i++) {
-      u_a[j][gxs+i*(gxm-1)] = u[j][gxs+i*(gxm-1)];
+  // Ghost points need to be present, even if unused, as with DM_BOUNDARY_GHOSTED.
+  if ((xbc != DM_BOUNDARY_NONE) && (ybc != DM_BOUNDARY_NONE)) {
+    lower = ys;upper = ys+ym;
+    if (st == DMDA_STENCIL_BOX) {
+      lower += gys;upper -= gys;
     }
-  }
-  lower = xs;upper = xs+xm;
-  if (st == DMDA_STENCIL_BOX) {
-    lower += gxs;upper -= gxs;
-  }
-  for (i=lower; i<upper; i++) {
-    for (j=0; j<2; j++) {
-      u_a[gys+j*(gym-1)][i] = u[gys+j*(gym-1)][i];
+    for (j=lower; j<upper; j++) {
+      for (i=0; i<2; i++) {
+        u_a[j][gxs+i*(gxm-1)] = u[j][gxs+i*(gxm-1)];
+      }
     }
+    lower = xs;upper = xs+xm;
+    if (st == DMDA_STENCIL_BOX) {
+      lower += gxs;upper -= gxs;
+    }
+    for (i=lower; i<upper; i++) {
+      for (j=0; j<2; j++) {
+        u_a[gys+j*(gym-1)][i] = u[gys+j*(gym-1)][i];
+      }
+    }
+  } else {
+    SETERRQ(PETSC_COMM_SELF,1,"Ghost points required on boundary.");
   }
   PetscFunctionReturn(0);
 }
@@ -104,12 +110,13 @@ int main(int argc,char **argv)
   user.no_an = PETSC_FALSE;user.zos = PETSC_FALSE;user.zos_view = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&user.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&user.zos_view,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&analytic,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&user.no_an,NULL);CHKERRQ(ierr);
+
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = DMDACreate2d(PETSC_COMM_WORLD, DM_BOUNDARY_NONE, DM_BOUNDARY_NONE,DMDA_STENCIL_STAR,8,8,PETSC_DECIDE,PETSC_DECIDE,1,1,NULL,NULL,&da);CHKERRQ(ierr);
+  ierr = DMDACreate2d(PETSC_COMM_WORLD, DM_BOUNDARY_GHOSTED, DM_BOUNDARY_GHOSTED,DMDA_STENCIL_STAR,8,8,PETSC_DECIDE,PETSC_DECIDE,1,1,NULL,NULL,&da);CHKERRQ(ierr);
   ierr = DMSetFromOptions(da);CHKERRQ(ierr);
   ierr = DMSetUp(da);CHKERRQ(ierr);
   ierr = DMDAGetInfo(da,PETSC_IGNORE,&user.Mx,&user.My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
@@ -251,7 +258,14 @@ PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *p
       u_a[j][i] <<= uarray[j][i];
     }
   }
-  // ierr = AdoubleInsertGhostValues2d(da,uarray,u_a);CHKERRQ(ierr);  // FIXME
+
+  /*
+    Give active ghost points the required values
+
+    NOTE: Applying this function requires DM_Boundary type to be DM_BOUNDARY_GHOSTED,
+          rather than DM_BOUNDARY_NONE.
+  */
+  ierr = AdoubleInsertGhostValues2d(da,uarray,u_a);CHKERRQ(ierr);
 
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {

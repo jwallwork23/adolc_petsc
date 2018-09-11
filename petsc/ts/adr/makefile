@@ -1,4 +1,4 @@
-ALL: clean ex1 ex5 ex5adj
+ALL: clean ex5
 CFLAGS			=
 FFLAGS			=
 CXXFLAGS		= -std=c++11

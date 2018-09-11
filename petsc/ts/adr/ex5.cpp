@@ -10,13 +10,14 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
       Helpful runtime monitor options:
            -ts_monitor_draw_solution
            -draw_save -draw_save_movie
-           -analytic       - use a hand-coded Jacobian
-           -no_annotations - do not annotate using ADOL-C
-           -sparse         - generate Jacobian using ADOL-C sparse Jacobian driver
-           -sparse_row     - use row compression, rather than column compression
+           -jacobian_by_hand - use a hand-coded Jacobian
+           -no_annotations   - do not annotate using ADOL-C
+           -sparse           - generate Jacobian using ADOL-C sparse Jacobian driver
+           -sparse_row       - use row compression, rather than column compression
 
       Helpful ADOL-C debugging options:
-           -adolc_test_zos (test Zero Order Scalar evaluation)
+           -adolc_test_zos      - test Zero Order Scalar evaluation
+           -adolc_test_zos_view - view each nonzero contribution to check validity
 
       Helpful runtime monitor options for debugging:
            -da_grid_x 12 -da_grid_y 12 -ts_max_steps 1 -snes_test_jacobian
@@ -111,31 +112,37 @@ PetscErrorCode AFieldInsertGhostValues2d(DM da,Field **u,AField **u_a)
   PetscErrorCode  ierr;
   PetscInt        i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,lower,upper;
   DMDAStencilType st;
+  DMBoundaryType  xbc,ybc;
 
   PetscFunctionBegin;
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&st);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&xbc,&ybc,PETSC_IGNORE,&st);CHKERRQ(ierr);
 
-  lower = ys;upper = ys+ym;
-  if (st == DMDA_STENCIL_BOX) {
-    lower += gys;upper -= gys;
-  }
-  for (j=lower; j<upper; j++) {
-    for (i=0; i<2; i++) {
-      u_a[j][gxs+i*(gxm-1)].u = u[j][gxs+i*(gxm-1)].u;
-      u_a[j][gxs+i*(gxm-1)].v = u[j][gxs+i*(gxm-1)].v;
+  // Ghost points need to be present, even if unused, as with DM_BOUNDARY_GHOSTED.
+  if ((xbc != DM_BOUNDARY_NONE) && (ybc != DM_BOUNDARY_NONE)) {
+    lower = ys;upper = ys+ym;
+    if (st == DMDA_STENCIL_BOX) {
+      lower += gys;upper -= gys;
     }
-  }
-  lower = xs;upper = xs+xm;
-  if (st == DMDA_STENCIL_BOX) {
-    lower += gxs;upper -= gxs;
-  }
-  for (i=lower; i<upper; i++) {
-    for (j=0; j<2; j++) {
-      u_a[gys+j*(gym-1)][i].u = u[gys+j*(gym-1)][i].u;
-      u_a[gys+j*(gym-1)][i].v = u[gys+j*(gym-1)][i].v;
+    for (j=lower; j<upper; j++) {
+      for (i=0; i<2; i++) {
+        u_a[j][gxs+i*(gxm-1)].u = u[j][gxs+i*(gxm-1)].u;
+        u_a[j][gxs+i*(gxm-1)].v = u[j][gxs+i*(gxm-1)].v;
+      }
     }
+    lower = xs;upper = xs+xm;
+    if (st == DMDA_STENCIL_BOX) {
+      lower += gxs;upper -= gxs;
+    }
+    for (i=lower; i<upper; i++) {
+      for (j=0; j<2; j++) {
+        u_a[gys+j*(gym-1)][i].u = u[gys+j*(gym-1)][i].u;
+        u_a[gys+j*(gym-1)][i].v = u[gys+j*(gym-1)][i].v;
+      }
+    }
+  } else {
+    SETERRQ(PETSC_COMM_SELF,1,"Ghost points required on boundary.");
   }
   PetscFunctionReturn(0);
 }
@@ -178,7 +185,7 @@ int main(int argc,char **argv)
   appctx.zos = PETSC_FALSE;appctx.zos_view = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_row = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&appctx.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&appctx.zos_view,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&analytic,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse_row",&appctx.sparse_row,NULL);CHKERRQ(ierr);
