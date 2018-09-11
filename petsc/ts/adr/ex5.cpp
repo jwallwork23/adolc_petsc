@@ -628,12 +628,12 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
             // NOTE: there are two DOFs at each point TODO: Loop over dofs for generality
             if (fabs(J[k][w_ghost])!=0.)
               ierr = MatSetValues(A,1,&k,1,&wo_ghost,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
-            wo_ghost++;
+            wo_ghost++;w_ghost++;
             if (fabs(J[k][w_ghost])!=0.)
               ierr = MatSetValues(A,1,&k,1,&wo_ghost,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
-            wo_ghost++;
+            wo_ghost++;w_ghost--;
           }
-          w_ghost++;
+          w_ghost++;w_ghost++;
         }
       }
       w_ghost = 0;wo_ghost = 0;
