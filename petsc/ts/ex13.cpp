@@ -16,13 +16,14 @@ static char help[] = "Time-dependent PDE in 2d. Simplified from ex7.c for illust
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>	// Include ADOL-C
+#include <adolc/adolc_sparse.h> // Include ADOL-C sparse drivers
 
 /*
    User-defined data structures and routines
 */
 typedef struct {
   PetscReal c;
-  PetscBool zos,zos_view,no_an;
+  PetscBool zos,zos_view,no_an,sparse,sparse_row;
   PetscInt  Mx,My;
   adouble   **u_a,**f_a;
 } AppCtx;
@@ -107,11 +108,13 @@ int main(int argc,char **argv)
   PetscBool      byhand = PETSC_FALSE;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
-  user.no_an = PETSC_FALSE;user.zos = PETSC_FALSE;user.zos_view = PETSC_FALSE;
+  user.no_an = PETSC_FALSE;user.zos = PETSC_FALSE;user.zos_view = PETSC_FALSE;user.sparse = PETSC_FALSE;user.sparse_row = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&user.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&user.zos_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&user.no_an,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&user.sparse,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-sparse_row",&user.sparse_row,NULL);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
@@ -436,8 +439,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       i,j,k = 0,xs,ys,xm,ym,N;
-  PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.;
+  PetscInt       i,j,k = 0,xs,ys,xm,ym,N,nnz,options[4] = {0,0,0,0};
+  unsigned int   *rind = NULL,*cind = NULL;
+  PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.,*values = NULL;
   Vec            localU;
 
   PetscFunctionBeginUser;
@@ -495,20 +499,43 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     PetscPrintf(MPI_COMM_WORLD,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",sqrt(diff/norm));
   }
 
-  /* Calculate Jacobian using ADOL-C */
-  Jac = myalloc2(N,N);
-  jacobian(1,N,N,u_vec,Jac);
-  ierr = PetscFree(u_vec);CHKERRQ(ierr);
+  /*
+    Calculate Jacobian using ADOL-C
+  */
+  if (appctx->sparse) {  // TODO: First need to link properly with ColPack
 
-  /* Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil */
-  for(j=0;j<N;j++){
-    for(i=0;i<N;i++){
-      if(fabs(Jac[j][i])!=0.)
-          ierr = MatSetValues(J,1,&j,1,&i,&Jac[j][i],INSERT_VALUES);CHKERRQ(ierr);
+    if (appctx->sparse_row) {
+      options[3] = 1;
     }
-  }
-  myfree2(Jac);
 
+    sparse_jac(1,N,N,0,u_vec,&nnz,&rind,&cind,&values,options); // TODO: Consider separate drivers
+    for (k=0; k<nnz; k++){
+      j = rind[k];i = cind[k];
+      ierr = MatSetValues(J,1,&j,1,&i,&values[k],INSERT_VALUES);CHKERRQ(ierr);
+    }
+    free(rind);rind = NULL;
+    free(cind);cind = NULL;
+    free(values);values = NULL;
+
+  } else {
+
+    Jac = myalloc2(N,N);
+    jacobian(1,N,N,u_vec,Jac);
+    ierr = PetscFree(u_vec);CHKERRQ(ierr);
+
+    /* Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil */
+    for(j=0;j<N;j++){
+      for(i=0;i<N;i++){
+        if(fabs(Jac[j][i])!=0.)
+          ierr = MatSetValues(J,1,&j,1,&i,&Jac[j][i],INSERT_VALUES);CHKERRQ(ierr);
+      }
+    }
+    myfree2(Jac);
+  }
+
+  /*
+    Restore vectors
+  */
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(Jpre,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);

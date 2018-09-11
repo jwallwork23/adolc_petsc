@@ -44,7 +44,7 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>	// Include ADOL-C
-#include <adolc/adolc_sparse.h>
+#include <adolc/adolc_sparse.h> // Include ADOL-C sparse drivers
 
 typedef struct {
   PetscScalar u,v;
@@ -152,7 +152,7 @@ PetscErrorCode AFieldInsertGhostValues2d(DM da,Field **u,AField **u_a)
 
   FIXME: How to do this properly?
 */
-PetscErrorCode AFieldDestroy2d(DM da,AField *cgs,AField **a2d)
+PetscErrorCode AFieldDestroy2d(DM da,AField *cgs[],AField **a2d[])
 {
   PetscErrorCode ierr;
   PetscInt       gys;
@@ -305,6 +305,7 @@ int main(int argc,char **argv)
     delete[] u_a;
     delete[] f_c;
     delete[] u_c;
+
   }
 
   ierr = PetscFinalize();
@@ -582,8 +583,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 
     sparse_jac(1,N,N,0,u_vec,&nnz,&rind,&cind,&values,options);	// TODO: Consider separate drivers
     for (k=0; k<nnz; k++){
-      i = rind[k];j = cind[k];
-      ierr = MatSetValues(A,1,&i,1,&j,&values[k],INSERT_VALUES);CHKERRQ(ierr);
+      j = rind[k];i = cind[k];
+      ierr = MatSetValues(A,1,&j,1,&i,&values[k],INSERT_VALUES);CHKERRQ(ierr);
     }
     free(rind);rind = NULL;
     free(cind);cind = NULL;
