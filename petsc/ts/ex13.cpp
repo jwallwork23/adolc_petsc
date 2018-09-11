@@ -251,7 +251,6 @@ PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *p
   PetscFunctionBegin;
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-
   hx = 1.0/(PetscReal)(user->Mx-1); sx = 1.0/(hx*hx);
   hy = 1.0/(PetscReal)(user->My-1); sy = 1.0/(hy*hy);
 
@@ -447,7 +446,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       i,j,k = 0,w_ghost = 0,wo_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G,nnz,options[4] = {0,0,0,0},loc;
+  PetscInt       i,j,k = 0,w_ghost = 0,wo_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G;
+  PetscInt       nnz,options[4] = {0,0,0,0},loc;
   unsigned int   *rind = NULL,*cind = NULL;
   PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.,*values = NULL;
   Vec            localU;
@@ -468,27 +468,27 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   /* Get pointers to vector data */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
 
-  /* Get local grid boundaries and total degrees of freedom on this process */
+  /* Get local and ghosted grid boundaries */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
   /* Convert 2-array to a 1-array, so this can be read by ADOL-C */
-  L = (xs+xm)*(ys+ym);G = gxm*gym;
+  L = xm*ym;G = gxm*gym;
   ierr = PetscMalloc1(G,&u_vec);CHKERRQ(ierr);
-  for (j=gys; j<gys+ym; j++) {
-    for (i=gxs; i<gxs+xm; i++) {
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
       u_vec[k++] = u[j][i];
     }
   }
 
   /* Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive */
-  if (appctx->zos) {                                    // TODO: ZOS test needs readjustment
+  if (appctx->zos) {
     k = 0;
     ierr = PetscMalloc1(L,&fz);CHKERRQ(ierr);
     zos_forward(1,L,G,0,u_vec,fz);
     ierr = PetscMalloc1(L,&frhs);CHKERRQ(ierr);         // FIXME: Memory is not contiguous
     for (j=ys; j<ys+ym; j++)
-      ierr = PetscMalloc1(L,&frhs[j]);CHKERRQ(ierr);
+      ierr = PetscMalloc1(L,&frhs[j]);CHKERRQ(ierr);	// TODO: ZOS test needs readjustment (here?)
     RHSLocalPassive(da,frhs,u,appctx);
 
     for (j=ys; j<ys+ym; j++) {
@@ -499,9 +499,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
             PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d] = %+.4e\n",j,i,fz[k]);
           }
         }
-        diff += (frhs[j][i]-fz[k])*(frhs[j][i]-fz[k]);
+        diff += (frhs[j][i]-fz[k])*(frhs[j][i]-fz[k++]);
         norm += frhs[j][i]*frhs[j][i];
-      k++;
       }
     }
     ierr = PetscFree(fz);CHKERRQ(ierr);
@@ -521,7 +520,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
     sparse_jac(1,L,G,0,u_vec,&nnz,&rind,&cind,&values,options); // TODO: Consider separate drivers
     for (k=0; k<nnz; k++){
-      j = rind[k];i = cind[k]; // TODO: These need adjustment
+      j = rind[k];i = cind[k]; // TODO: These need adjustment for ghost points, as below.
       ierr = MatSetValues(J,1,&j,1,&i,&values[k],INSERT_VALUES);CHKERRQ(ierr);
     }
     free(rind);rind = NULL;
@@ -540,22 +539,21 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     for (k=0; k<L; k++) {
       for (j=gys; j<gys+gym; j++) {
         for (i=gxs; i<gxs+gxm; i++) {
-          if (j == gys) {
+          if (j < ys) {
             //if (fabs(Jac[k][w_ghost])!=0.) {
             //  loc = wo_ghost+gys+gym;   // This is NOT the right index
             //  printf("k = %d, loc = %d\n",k,loc);
             //  ierr = MatSetValues(J,1,&k,1,&loc,&Jac[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
             //}
-          } else if (j == gys+gym-1) {
+          } else if (j >= ym) {
             // TODO
-          } else if (i == gxs) {
+          } else if (i < xs) {
             // TODO
-          } else if  (i == gxs+gxm-1) {
+          } else if (i >= xm) {
             // TODO
           } else {
             if (fabs(Jac[k][w_ghost])!=0.)
               ierr = MatSetValues(J,1,&k,1,&wo_ghost,&Jac[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
-            // TODO: else part for ghost points
             wo_ghost++;
           }
           w_ghost++;
