@@ -341,10 +341,10 @@ PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
       u_a[j][i].u <<= u[j][i].u;u_a[j][i].v <<= u[j][i].v;
     }
   }
-
-  /* Give active ghost points the required values */
+/*
+  // Give active ghost points the required values
   ierr = AFieldInsertGhostValues2d(da,u,u_a);CHKERRQ(ierr);
-
+*/
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
 
@@ -513,7 +513,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   DM             da;
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,w_ghost = 0,wo_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G;
-  PetscInt       nnz,options[4] = {0,0,0,0},loc;
+  PetscInt       nnz,options[4] = {0,0,0,0},loc,d,dofs = 2;
   unsigned int   *rind = NULL,*cind = NULL;
   PetscScalar    *u_vec,**J = NULL,norm=0.,diff=0.,*fz,*values = NULL;
   Field          **u,**frhs;
@@ -540,7 +540,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
   /* Convert array of structs to a 1-array, so this can be read by ADOL-C */
-  L = 2*xm*ym;G = 2*gxm*gym;
+  L = dofs*xm*ym;G = dofs*gxm*gym;
   ierr = PetscMalloc1(G,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
@@ -612,28 +612,40 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     for (k=0; k<L; k++) {
       for (j=gys; j<gys+gym; j++) {
         for (i=gxs; i<gxs+gxm; i++) {
-          if (j < ys) {
-            //if (fabs(J[k][w_ghost])!=0.) {
-            //  loc = wo_ghost+gys+gym;   // This is NOT the right index
-            //  printf("k = %d, loc = %d\n",k,loc);
-            //  ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
-            //}
-          } else if (j >= ym) {
-            // TODO
-          } else if (i < xs) {
-            // TODO
-          } else if (i >= xm) {
-            // TODO
-          } else {
-            // NOTE: there are two DOFs at each point TODO: Loop over dofs for generality
-            if (fabs(J[k][w_ghost])!=0.)
-              ierr = MatSetValues(A,1,&k,1,&wo_ghost,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
-            wo_ghost++;w_ghost++;
-            if (fabs(J[k][w_ghost])!=0.)
-              ierr = MatSetValues(A,1,&k,1,&wo_ghost,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
-            wo_ghost++;w_ghost--;
+          for (d=0; d<dofs; d++) {
+            if (j < ys) {
+              if (j < 0) {
+                //loc = wo_ghost+dofs*xm*(ym+j);
+                //if (fabs(J[k][w_ghost])!=0.) ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
+              }
+              // TODO
+            } else if (j >= ym) {
+              if ((j >= appctx->My) && (i >= 0) && (i < appctx->Mx)) {
+                //loc = wo_ghost-dofs*xm*(2*ym-j);
+                //if (fabs(J[k][w_ghost])!=0.) ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
+              }
+              // TODO
+            } else if (i < xs) {
+              if ((i < 0) && (j >= 0) && (j < appctx->My)) {
+                loc = wo_ghost+dofs*(xm+i);
+                if (fabs(J[k][w_ghost])!=0.) ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
+              }
+              // TODO
+            } else if (i >= xm) {
+              if ((i >= appctx->Mx) && (j >= 0) && (j < appctx->My)) {
+                loc = wo_ghost-dofs*(2*xm-i);
+                if (fabs(J[k][w_ghost])!=0.) ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
+              }
+              // TODO
+            } else {
+              loc = wo_ghost;
+              wo_ghost++;
+
+              if (fabs(J[k][w_ghost])!=0.) ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
+            }
+            //if (fabs(J[k][w_ghost])!=0.) ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
+            w_ghost++;
           }
-          w_ghost++;w_ghost++;
         }
       }
       w_ghost = 0;wo_ghost = 0;
@@ -648,18 +660,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
          processor "owns" them; any nonlocal contributions will be transferred to the appropriate
          processor during the assembly process.
   */
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-
-  /*
-    Now include values from ghost points contributions. TODO
-
-    NOTE: Calls to MatSetValues in INSERT_VALUES and ADD_VALUES modes must be separated by matrix
-          assembly phases.
-  */
-
-
-
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 

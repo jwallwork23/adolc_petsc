@@ -514,9 +514,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   */
   if (appctx->sparse) {  // TODO: First need to link properly with ColPack
 
-    if (appctx->sparse_row) {
+    if (appctx->sparse_row)
       options[3] = 1;
-    }
 
     sparse_jac(1,L,G,0,u_vec,&nnz,&rind,&cind,&values,options); // TODO: Consider separate drivers
     for (k=0; k<nnz; k++){
@@ -540,11 +539,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       for (j=gys; j<gys+gym; j++) {
         for (i=gxs; i<gxs+gxm; i++) {
           if (j < ys) {
-            //if (fabs(Jac[k][w_ghost])!=0.) {
-            //  loc = wo_ghost+gys+gym;   // This is NOT the right index
-            //  printf("k = %d, loc = %d\n",k,loc);
-            //  ierr = MatSetValues(J,1,&k,1,&loc,&Jac[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
-            //}
+            // TODO
           } else if (j >= ym) {
             // TODO
           } else if (i < xs) {
@@ -552,10 +547,11 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
           } else if (i >= xm) {
             // TODO
           } else {
-            if (fabs(Jac[k][w_ghost])!=0.)
-              ierr = MatSetValues(J,1,&k,1,&wo_ghost,&Jac[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
+            loc = wo_ghost;
             wo_ghost++;
           }
+          if (fabs(Jac[k][w_ghost])!=0.)
+            ierr = MatSetValues(J,1,&k,1,&loc,&Jac[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
           w_ghost++;
         }
       }
