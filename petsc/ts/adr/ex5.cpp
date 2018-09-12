@@ -516,7 +516,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   PetscInt       nnz,options[4] = {0,0,0,0},loc,d,dofs = 2;
   unsigned int   *rind = NULL,*cind = NULL;
   PetscScalar    *u_vec,**J = NULL,norm=0.,diff=0.,*fz,*values = NULL;
-  PetscBool      use = PETSC_FALSE; // TODO: TEMP
   Field          **u,**frhs;
   Vec            localU;
 
@@ -619,58 +618,44 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
             if (j < ys) {
 
               // Bottom boundary
-              if ((j < 0) && (i >= 0) && (i < appctx->Mx)) {
-                //loc = wo_ghost+dofs*xm*(ym+j);
-                use = PETSC_FALSE;
-              } else {
-                use = PETSC_FALSE;
-                // TODO
-              }
+              if ((j < 0) && (i >= 0) && (i < appctx->Mx))
+                loc = d+dofs*(i+appctx->Mx*(appctx->My+j));
+              else
+                loc = d+dofs*(i+xm*(ym+j));	// TODO: Test this
 
             // CASE 2: ghost point above local region
             } else if (j >= ym) {
 
               // Top boundary
-              if ((j >= appctx->My) && (i >= 0) && (i < appctx->Mx)) {
-                //loc = wo_ghost-dofs*xm*(2*ym-j);
-                use = PETSC_FALSE;
-              } else {
-                use = PETSC_FALSE;
-                // TODO
-              }
+              if ((j >= appctx->My) && (i >= 0) && (i < appctx->Mx))
+                loc = d+dofs*i;
+              else
+                loc = xs+d*dofs*i;		// TODO: Test this
 
             // CASE 3: ghost point left of local region
             } else if (i < xs) {
 
               // Left boundary
-              if ((i < 0) && (j >= 0) && (j < appctx->My)) {
-                loc = wo_ghost+dofs*(xm+i);
-                use = PETSC_TRUE;
-              } else {
-                use = PETSC_FALSE;
-                // TODO
-              }
+              if ((i < 0) && (j >= 0) && (j < appctx->My))
+                loc = wo_ghost+dofs*(appctx->Mx+i)+d;
+              else
+                loc = wo_ghost+dofs*(xm+i)+d;	// TODO: Test this
 
             // CASE 4: ghost point right of local region
             } else if (i >= xm) {
 
               // Right boundary
-              if ((i >= appctx->Mx) && (j >= 0) && (j < appctx->My)) {
-                loc = wo_ghost-dofs*(2*xm-i);
-                use = PETSC_TRUE;
-              } else {
-                use = PETSC_FALSE;
-                // TODO
-              }
+              if ((i >= appctx->Mx) && (j >= 0) && (j < appctx->My))
+                loc = wo_ghost-dofs*(2*appctx->Mx-i)+d;
+              else
+                loc = wo_ghost-dofs*(2*xm-i)-d;	// TODO: Test this
 
-            // Interior points
+            // CASE 5: Interior points of local region
             } else {
               loc = wo_ghost;
-              use = PETSC_TRUE;
               wo_ghost++;
-
             }
-            if ((fabs(J[k][w_ghost])!=0.) && use)
+            if (fabs(J[k][w_ghost])!=0.)
               ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
             w_ghost++;
           }

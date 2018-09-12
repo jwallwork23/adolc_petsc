@@ -539,13 +539,13 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       for (j=gys; j<gys+gym; j++) {
         for (i=gxs; i<gxs+gxm; i++) {
           if (j < ys) {
-            // TODO
+            loc = i+xm*(ym+j);		// TODO: Test this
           } else if (j >= ym) {
-            // TODO
+            loc = xs+i;			// TODO: Test this
           } else if (i < xs) {
-            // TODO
+            loc = wo_ghost+xm+i;	// TODO: Test this
           } else if (i >= xm) {
-            // TODO
+            loc = wo_ghost+i-2*xm;// TODO
           } else {
             loc = wo_ghost;
             wo_ghost++;
