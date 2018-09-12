@@ -532,14 +532,19 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       for (j=gys; j<gys+gym; j++) {
         for (i=gxs; i<gxs+gxm; i++) {
           if (j < ys) {
+            //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 1\n");
             loc = i+xm*(ym+j);		// TODO: Test this
           } else if (j >= ym) {
-            loc = xs+i;			// TODO: Test this
+            //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 2\n");
+            loc = i;			// TODO: Test this
           } else if (i < xs) {
+            //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 3\n");
             loc = wo_ghost+xm+i;	// TODO: Test this
           } else if (i >= xm) {
+            //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 4\n");
             loc = wo_ghost+i-2*xm;	// TODO: Test this
           } else {
+            //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 5\n");
             loc = wo_ghost;
             wo_ghost++;
           }

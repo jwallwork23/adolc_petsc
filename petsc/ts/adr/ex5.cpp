@@ -626,7 +626,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
               if ((j >= appctx->My) && (i >= 0) && (i < appctx->Mx))
                 loc = d+dofs*i;
               else
-                loc = xs+d*dofs*i;		// TODO: Test this
+                loc = d+dofs*i;			// TODO: Test this
 
             // CASE 3: ghost point left of local region
             } else if (i < xs) {
