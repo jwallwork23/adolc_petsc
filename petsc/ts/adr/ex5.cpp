@@ -341,10 +341,7 @@ PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
       u_a[j][i].u <<= u[j][i].u;u_a[j][i].v <<= u[j][i].v;
     }
   }
-/*
-  // Give active ghost points the required values
-  ierr = AFieldInsertGhostValues2d(da,u,u_a);CHKERRQ(ierr);
-*/
+
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
 
@@ -556,7 +553,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     frhs = new Field*[ym];
     for (j=ys; j<ys+ym; j++)
       frhs[j] = new Field[xm];
-
     RHSLocalPassive(da,frhs,u,appctx);
 
     for (j=ys; j<ys+ym; j++) {
@@ -667,6 +663,13 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   }
 
   /*
+     Restore vectors
+  */
+  ierr = PetscLogFlops(19*xm*ym);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
+
+  /*
     Assemble local matrix
 
     NOTE (from Vec ex2): Each processor can contribute any vector entries, regardless of which
@@ -675,13 +678,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   */
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-
-  /*
-     Restore vectors
-  */
-  ierr = PetscLogFlops(19*xm*ym);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }

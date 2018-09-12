@@ -269,14 +269,7 @@ PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *p
     }
   }
 
-  /*
-    Give active ghost points the required values
-
-    NOTE: Applying this function requires DM_Boundary type to be DM_BOUNDARY_GHOSTED,
-          rather than DM_BOUNDARY_NONE.
-  */
-  ierr = AdoubleInsertGhostValues2d(da,uarray,u_a);CHKERRQ(ierr);
-
+  /* Compute function over the locally owned part of the grid */
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
 
