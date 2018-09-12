@@ -553,9 +553,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     k = 0;
     ierr = PetscMalloc1(L,&fz);CHKERRQ(ierr);
     zos_forward(1,L,G,0,u_vec,fz);
-    ierr = PetscMalloc1(L,&frhs);CHKERRQ(ierr);		// FIXME: Memory is not contiguous
+    frhs = new Field*[ym];
     for (j=ys; j<ys+ym; j++)
-      ierr = PetscMalloc1(L,&frhs[j]);CHKERRQ(ierr);    // TODO: ZOS test needs readjustment (here?)
+      frhs[j] = new Field[xm];
 
     RHSLocalPassive(da,frhs,u,appctx);
 
@@ -577,7 +577,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
       }
     }
     ierr = PetscFree(fz);CHKERRQ(ierr);
-    ierr = PetscFree(frhs);CHKERRQ(ierr);
+    for (j=ys; j<ys+ym; j++)
+      delete[] frhs[j];
+    delete[] frhs;
     PetscPrintf(MPI_COMM_WORLD,"    ----- Testing Zero Order evaluation -----\n");
     PetscPrintf(MPI_COMM_WORLD,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",sqrt(diff/norm));
   }
@@ -605,8 +607,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     J = myalloc2(L,G);
     jacobian(1,L,G,u_vec,J);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
-
-    // TODO: For a proper implementation we should either have different INSERT and ADD steps, or re-initialise J to zero using MatSetValue before doing anything.
 
     /* Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil */
     for (k=0; k<L; k++) {

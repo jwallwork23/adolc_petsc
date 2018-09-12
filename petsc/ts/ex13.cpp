@@ -486,9 +486,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     k = 0;
     ierr = PetscMalloc1(L,&fz);CHKERRQ(ierr);
     zos_forward(1,L,G,0,u_vec,fz);
-    ierr = PetscMalloc1(L,&frhs);CHKERRQ(ierr);         // FIXME: Memory is not contiguous
+    frhs = new PetscScalar*[ym];
     for (j=ys; j<ys+ym; j++)
-      ierr = PetscMalloc1(L,&frhs[j]);CHKERRQ(ierr);	// TODO: ZOS test needs readjustment (here?)
+      frhs[j] = new PetscScalar[xm];
     RHSLocalPassive(da,frhs,u,appctx);
 
     for (j=ys; j<ys+ym; j++) {
@@ -499,12 +499,14 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
             PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d] = %+.4e\n",j,i,fz[k]);
           }
         }
-        diff += (frhs[j][i]-fz[k])*(frhs[j][i]-fz[k++]);
+        diff += (frhs[j][i]-fz[k])*(frhs[j][i]-fz[k]);k++;
         norm += frhs[j][i]*frhs[j][i];
       }
     }
     ierr = PetscFree(fz);CHKERRQ(ierr);
-    ierr = PetscFree(frhs);CHKERRQ(ierr);
+    for (j=ys; j<ys+ym; j++)
+      delete[] frhs[j];
+    delete[] frhs;
     PetscPrintf(MPI_COMM_WORLD,"    ----- Testing Zero Order evaluation -----\n");
     PetscPrintf(MPI_COMM_WORLD,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",sqrt(diff/norm));
   }
@@ -532,8 +534,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     jacobian(1,L,G,u_vec,Jac);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-    // TODO: For a proper implementation we should either have different INSERT and ADD steps, or re-initialise J to zero using MatSetValue before doing anything.
-
     /* Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil */
     for (k=0; k<L; k++) {
       for (j=gys; j<gys+gym; j++) {
@@ -545,7 +545,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
           } else if (i < xs) {
             loc = wo_ghost+xm+i;	// TODO: Test this
           } else if (i >= xm) {
-            loc = wo_ghost+i-2*xm;// TODO
+            loc = wo_ghost+i-2*xm;	// TODO: Test this
           } else {
             loc = wo_ghost;
             wo_ghost++;
