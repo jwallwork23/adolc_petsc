@@ -439,7 +439,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       i,j,k = 0,w_ghost = 0,wo_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G;
+  PetscInt       i,j,k = 0,w_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G;
   PetscInt       nnz,options[4] = {0,0,0,0},loc;
   unsigned int   *rind = NULL,*cind = NULL;
   PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.,*values = NULL;
@@ -539,21 +539,20 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
             loc = i;			// TODO: Test this
           } else if (i < xs) {
             //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 3\n");
-            loc = wo_ghost+xm+i;	// TODO: Test this
+            loc = j*ym+xm+2*i;		// TODO: Test this
           } else if (i >= xm) {
             //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 4\n");
-            loc = wo_ghost+i-2*xm;	// TODO: Test this
+            loc = i+j*ym+i-2*xm;	// TODO: Test this
           } else {
             //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 5\n");
             loc = i+j*ym;
-            wo_ghost++;
           }
           if (fabs(Jac[k][w_ghost])!=0.)
             ierr = MatSetValues(J,1,&k,1,&loc,&Jac[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
           w_ghost++;
         }
       }
-      w_ghost = 0;wo_ghost = 0;
+      w_ghost = 0;
     }
     myfree2(Jac);
   }
