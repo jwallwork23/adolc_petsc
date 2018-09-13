@@ -6,6 +6,37 @@ typedef struct {
 } AppCtx;
 
 /*
+  FormFunction1 from snes ex1
+
+  TODO: Consider something that actually has sparsity
+*/
+PetscErrorCode FormFunction(SNES snes,Vec U,Vec F,void *ctx)
+{
+  PetscErrorCode    ierr;
+  const PetscScalar *u;
+  PetscScalar       *f;
+
+  /*
+   Get pointers to vector data.
+      - For default PETSc vectors, VecGetArray() returns a pointer to
+        the data array.  Otherwise, the routine is implementation dependent.
+      - You MUST call VecRestoreArray() when you no longer need access to
+        the array.
+   */
+  ierr = VecGetArrayRead(U,&u);CHKERRQ(ierr);
+  ierr = VecGetArray(F,&f);CHKERRQ(ierr);
+
+  /* Compute function */
+  f[0] = u[0]*u[0] + u[0]*u[1] - 3.0;
+  f[1] = u[0]*u[1] + u[1]*u[1] - 6.0;
+
+  /* Restore vectors */
+  ierr = VecRestoreArrayRead(U,&u);CHKERRQ(ierr);
+  ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
+  return 0;
+}
+
+/*
   FormJacobian1 from snes ex1
 
   TODO: Consider something that actually has sparsity
@@ -14,7 +45,7 @@ PetscErrorCode FormJacobian(SNES snes,Vec U,Mat J,Mat Jpre,void *ctx)
 {
   PetscErrorCode    ierr;
   const PetscScalar *u;
-  PetscScalar       A[2][2];
+  PetscScalar       A[4];
   PetscInt          idx[2] = {0,1};
 
   PetscFunctionBegin;
@@ -23,10 +54,10 @@ PetscErrorCode FormJacobian(SNES snes,Vec U,Mat J,Mat Jpre,void *ctx)
   ierr = VecGetArrayRead(U,&u);CHKERRQ(ierr);
 
   /* Compute Jacobian entries and insert into matrix */
-  A[0][0] = 2.0*u[0]+u[1];
-  A[0][1] = u[0];
-  A[1][0] = u[1];
-  A[1][1] = u[0]+2.0*u[1];
+  A[0] = 2.0*u[0]+u[1];
+  A[1] = u[0];
+  A[2] = u[1];
+  A[3] = u[0]+2.0*u[1];
   ierr = MatSetValues(Jpre,2,idx,2,idx,A,INSERT_VALUES);CHKERRQ(ierr);
 
   /* Restore vector */
@@ -50,15 +81,32 @@ int main(int argc,char **args)
   AppCtx         appctx;
   SNES           snes;
   Mat            J;
-  Vec            u;
+  Vec            u,r;
   ISColoring     iscoloring;
   MatFDColoring  fdcoloring;
   MatColoring    coloring;
 
   ierr = PetscInitialize(&argc,&args,(char*)0,NULL);if (ierr) return ierr;
 
-  /* Initialise the nonzero structure of the Jacobian, using ADOL-C */
-  ierr = FormJacobian(snes,u,&J,&J,&appctx);CHKERRQ(ierr);
+  /* Create nonlinear solver context */
+  ierr = SNESCreate(PETSC_COMM_WORLD,&snes);CHKERRQ(ierr);
+
+  /* Create vectors for solution and nonlinear function */
+  ierr = VecCreate(PETSC_COMM_WORLD,&u);CHKERRQ(ierr);
+  ierr = VecSetSizes(u,PETSC_DECIDE,2);CHKERRQ(ierr);
+  ierr = VecSetFromOptions(u);CHKERRQ(ierr);
+  ierr = VecDuplicate(u,&r);CHKERRQ(ierr);
+
+  /* Create Jacobian object */
+  ierr = MatCreate(PETSC_COMM_WORLD,&J);CHKERRQ(ierr);
+  ierr = MatSetSizes(J,PETSC_DECIDE,PETSC_DECIDE,2,2);CHKERRQ(ierr);
+  ierr = MatSetFromOptions(J);CHKERRQ(ierr);
+  ierr = MatSetUp(J);CHKERRQ(ierr);
+
+  /* Initialise the nonzero structure of the Jacobian TODO: use ADOL-C */
+  ierr = FormJacobian(snes,u,J,J,&appctx);CHKERRQ(ierr);
+
+  // TODO: More to update
 
   /*
     Colour the matrix, i.e. determine groups of columns that share no common rows. These columns
@@ -77,8 +125,12 @@ int main(int argc,char **args)
   /* Compute Jacobians this way using SNES */
   ierr = SNESSetJacobian(snes,J,J,SNESComputeJacobianDefaultColor,fdcoloring);CHKERRQ(ierr);
 
+  /* Free workspace */
   ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
-
+  ierr = MatDestroy(&J);CHKERRQ(ierr);
+  ierr = VecDestroy(&r);CHKERRQ(ierr);
+  ierr = VecDestroy(&u);CHKERRQ(ierr);
+  ierr = SNESDestroy(&snes);CHKERRQ(ierr);
   ierr = PetscFinalize();
 
   return ierr;
