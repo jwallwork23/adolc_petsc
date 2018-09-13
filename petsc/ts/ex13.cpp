@@ -545,7 +545,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
             loc = wo_ghost+i-2*xm;	// TODO: Test this
           } else {
             //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 5\n");
-            loc = wo_ghost;
+            loc = i+j*ym;
             wo_ghost++;
           }
           if (fabs(Jac[k][w_ghost])!=0.)
