@@ -100,15 +100,14 @@ int main(int argc,char **args)
   // TODO: try preallocating using MatCreateSeqAIJ with nz and nnz
 
 /*--------------------------------------------------------------------------*/
-/*                                                        colour the matrix */
+/*                                      obtain a colouring for the Jacobian */
 /*--------------------------------------------------------------------------*/
 
   ISColoring      iscoloring;
   MatColoring     coloring;
-  //MatFDColoring   fdcoloring;
   Mat             J;
   PetscInt        k,max=(int) JP[0][0],nis=0,size;
-  PetscScalar     one=1.,Seed[m][n];
+  PetscScalar     one=1.,**Seed = NULL;
   IS              *isp,is;
   const PetscInt  *nindices;
 
@@ -129,64 +128,38 @@ int main(int argc,char **args)
   ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
   // Colour Jacobian
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"Creating colouring of J...\n");CHKERRQ(ierr);
   ierr = MatColoringCreate(J,&coloring);CHKERRQ(ierr);
   ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // Use 'smallest last' method
   ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
   ierr = MatColoringApply(coloring,&iscoloring);CHKERRQ(ierr);
-  //ierr = MatFDColoringCreate(J,iscoloring,&fdcoloring);CHKERRQ(ierr);
-  //ierr = MatFDColoringSetFromOptions(fdcoloring);CHKERRQ(ierr);
-  //ierr = MatFDColoringSetUp(J,iscoloring,fdcoloring);CHKERRQ(ierr);
-
   //ierr = MatColoringView(coloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  ierr = ISColoringView(iscoloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"------------------------------------\n");CHKERRQ(ierr);
+  //ierr = ISColoringView(iscoloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+
+/*--------------------------------------------------------------------------*/
+/*                                                              seed matrix */
+/*--------------------------------------------------------------------------*/
+
+  Seed = myalloc2(n,max);
 
   ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
-
-
-
   for (i=0;i<max;i++) {
     is = *(isp+i);
     //ierr = ISView(is,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
     ierr = ISGetLocalSize(is,&size);CHKERRQ(ierr);
     ierr = ISGetIndices(is,&nindices);CHKERRQ(ierr);
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"Indices in set %d:\n",i);
     for (j=0;j<size;j++)
-      ierr = PetscPrintf(PETSC_COMM_WORLD," %d",nindices[j]);CHKERRQ(ierr);
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+      Seed[nindices[j]][i] = 1.;  // Extract nonzeros for seed matrix
     ierr = ISRestoreIndices(is,&nindices);CHKERRQ(ierr);
   }
-/*
-  for (i=0;i<m;i++) {
-    for (j=0;j<nis;j++) {
-      // TODO: Extract locations for seed matrix
-    }
-  }
-*/
   ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
-
-/*--------------------------------------------------------------------------*/
-/*                                                              seed matrix */
-/*--------------------------------------------------------------------------*/
-/*
-  double **Seed;
-  int p;
-  int option = 0;
-
-  generate_seed_jac(m,n,JP,&Seed,&p,option);
-
-  for (i=0;i<n;i++)
-    delete[] Seed[i];
-  delete[] Seed;
-*/
+  ierr = PrintMat(PETSC_COMM_WORLD,"Seed matrix:",n,max,Seed);CHKERRQ(ierr);
+  myfree2(Seed);
 
 
 /****************************************************************************/
 /*******       free workspace and finalise                    ***************/
 /****************************************************************************/
 
-  //ierr = MatFDColoringDestroy(&fdcoloring);CHKERRQ(ierr);
   ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
   ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
   ierr = MatDestroy(&J);CHKERRQ(ierr);
