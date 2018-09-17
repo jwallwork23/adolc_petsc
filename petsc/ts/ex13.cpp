@@ -18,6 +18,8 @@ static char help[] = "Time-dependent PDE in 2d. Simplified from ex7.c for illust
 #include <adolc/adolc.h>	// Include ADOL-C
 #include <adolc/adolc_sparse.h> // Include ADOL-C sparse drivers
 
+#define tag 1
+
 /*
    User-defined data structures and routines
 */
@@ -35,63 +37,8 @@ extern PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,
 extern PetscErrorCode RHSLocalPassive(DM da,PetscScalar **f,PetscScalar **uarray,void *ptr);
 extern PetscErrorCode FormInitialSolution(DM,Vec,void*);
 
-/*
-  Shift indices in adouble array to endow it with ghost points.
-*/
-PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[])
-{
-  PetscErrorCode ierr;
-  PetscInt       gxs,gys,gxm,gym,j;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  for (j=0; j<gym; j++) {
-    (*a2d)[j] = cgs + j*gxm - gxs;
-  }
-  *a2d -= gys;
-  PetscFunctionReturn(0);
-}
-
-/*
-  Insert ghost point values into adouble array.
-*/
-PetscErrorCode AdoubleInsertGhostValues2d(DM da,PetscScalar **u,adouble **u_a)
-{
-  PetscErrorCode   ierr;
-  PetscInt         i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,lower,upper;
-  DMDAStencilType  st;
-  DMBoundaryType   xbc,ybc;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&xbc,&ybc,PETSC_IGNORE,&st);CHKERRQ(ierr);
-
-  // Ghost points need to be present, even if unused, as with DM_BOUNDARY_GHOSTED.
-  if ((xbc != DM_BOUNDARY_NONE) && (ybc != DM_BOUNDARY_NONE)) {
-    lower = ys;upper = ys+ym;
-    if (st == DMDA_STENCIL_BOX) {
-      lower += gys;upper -= gys;
-    }
-    for (j=lower; j<upper; j++) {
-      for (i=0; i<2; i++) {
-        u_a[j][gxs+i*(gxm-1)] = u[j][gxs+i*(gxm-1)];
-      }
-    }
-    lower = xs;upper = xs+xm;
-    if (st == DMDA_STENCIL_BOX) {
-      lower += gxs;upper -= gxs;
-    }
-    for (i=lower; i<upper; i++) {
-      for (j=0; j<2; j++) {
-        u_a[gys+j*(gym-1)][i] = u[gys+j*(gym-1)][i];
-      }
-    }
-  } else {
-    SETERRQ(PETSC_COMM_SELF,1,"Ghost points required on boundary.");
-  }
-  PetscFunctionReturn(0);
-}
+extern PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[]);
+extern PetscErrorCode AdoubleInsertGhostValues2d(DM da,PetscScalar **u,adouble **u_a);
 
 
 int main(int argc,char **argv)
@@ -254,7 +201,7 @@ PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *p
   hx = 1.0/(PetscReal)(user->Mx-1); sx = 1.0/(hx*hx);
   hy = 1.0/(PetscReal)(user->My-1); sy = 1.0/(hy*hy);
 
-  trace_on(1);  // ----------------------------------------------- Start of active section
+  trace_on(tag);  // ----------------------------------------------- Start of active section
 
   /*
     Mark independence
@@ -439,10 +386,10 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       i,j,k = 0,w_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G;
-  PetscInt       nnz,options[4] = {0,0,0,0},loc;
-  unsigned int   *rind = NULL,*cind = NULL;
-  PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.,*values = NULL;
+  PetscInt       i,j,k = 0,w_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G,loc;
+  //PetscInt       nnz,options[4] = {0,0,0,0};
+  //unsigned int   *rind = NULL,*cind = NULL;
+  PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.;//,*values = NULL;
   Vec            localU;
 
   PetscFunctionBeginUser;
@@ -507,24 +454,32 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   /*
     Calculate Jacobian using ADOL-C
   */
-  if (appctx->sparse) {  // TODO: First need to link properly with ColPack
+  if (appctx->sparse) {
 
-    if (appctx->sparse_row)
-      options[3] = 1;
+    // Generate sparsity pattern  TODO: This only need be done once
+    unsigned int   **JP = NULL;
+    PetscInt     ctrl[3] = {0,0,0};
 
-    sparse_jac(1,L,G,0,u_vec,&nnz,&rind,&cind,&values,options); // TODO: Consider separate drivers
-    for (k=0; k<nnz; k++){
-      j = rind[k];i = cind[k]; // TODO: These need adjustment for ghost points, as below.
-      ierr = MatSetValues(J,1,&j,1,&i,&values[k],INSERT_VALUES);CHKERRQ(ierr);
-    }
-    free(rind);rind = NULL;
-    free(cind);cind = NULL;
-    free(values);values = NULL;
+    JP = (unsigned int **) malloc(L*sizeof(unsigned int*));
+    jac_pat(tag,L,G,u_vec,JP,ctrl);
+
+    for (i=0;i<L;i++)
+      free(JP[i]);
+    free(JP);
+
+    ierr = PetscPrintf(MPI_COMM_WORLD,"Successfully generated sparsity pattern.\n");CHKERRQ(ierr);
+
+    // TODO: Generate colouring
+
+    // TODO: Use colouring in compressed format
+
+    ierr = PetscPrintf(MPI_COMM_WORLD,"Exiting. Sparse driver not yet complete.\n");CHKERRQ(ierr);
+    exit(0);
 
   } else {
 
     Jac = myalloc2(L,G);
-    jacobian(1,L,G,u_vec,Jac);
+    jacobian(tag,L,G,u_vec,Jac);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
     /* Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil */
@@ -615,6 +570,64 @@ PetscErrorCode FormInitialSolution(DM da,Vec U,void* ptr)
 
   /* Restore vectors */
   ierr = DMDAVecRestoreArray(da,U,&u);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Shift indices in adouble array to endow it with ghost points.
+*/
+PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[])
+{
+  PetscErrorCode ierr;
+  PetscInt       gxs,gys,gxm,gym,j;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  for (j=0; j<gym; j++) {
+    (*a2d)[j] = cgs + j*gxm - gxs;
+  }
+  *a2d -= gys;
+  PetscFunctionReturn(0);
+}
+
+/*
+  Insert ghost point values into adouble array.
+*/
+PetscErrorCode AdoubleInsertGhostValues2d(DM da,PetscScalar **u,adouble **u_a)
+{
+  PetscErrorCode   ierr;
+  PetscInt         i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,lower,upper;
+  DMDAStencilType  st;
+  DMBoundaryType   xbc,ybc;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&xbc,&ybc,PETSC_IGNORE,&st);CHKERRQ(ierr);
+
+  // Ghost points need to be present, even if unused, as with DM_BOUNDARY_GHOSTED.
+  if ((xbc != DM_BOUNDARY_NONE) && (ybc != DM_BOUNDARY_NONE)) {
+    lower = ys;upper = ys+ym;
+    if (st == DMDA_STENCIL_BOX) {
+      lower += gys;upper -= gys;
+    }
+    for (j=lower; j<upper; j++) {
+      for (i=0; i<2; i++) {
+        u_a[j][gxs+i*(gxm-1)] = u[j][gxs+i*(gxm-1)];
+      }
+    }
+    lower = xs;upper = xs+xm;
+    if (st == DMDA_STENCIL_BOX) {
+      lower += gxs;upper -= gxs;
+    }
+    for (i=lower; i<upper; i++) {
+      for (j=0; j<2; j++) {
+        u_a[gys+j*(gym-1)][i] = u[gys+j*(gym-1)][i];
+      }
+    }
+  } else {
+    SETERRQ(PETSC_COMM_SELF,1,"Ghost points required on boundary.");
+  }
   PetscFunctionReturn(0);
 }
 

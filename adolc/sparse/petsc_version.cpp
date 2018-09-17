@@ -83,7 +83,7 @@ int main(int argc,char **args)
 /*--------------------------------------------------------------------------*/
 /*                                                     preallocate nonzeros */
 /*--------------------------------------------------------------------------*/
-
+/*
   PetscInt        *dnz,*onz,*cols;
 
   ierr = MatPreallocateInitialize(PETSC_COMM_WORLD,m,n,dnz,onz);CHKERRQ(ierr);
@@ -96,23 +96,34 @@ int main(int argc,char **args)
     ierr = PetscFree(cols);CHKERRQ(ierr);
   }
   ierr = MatPreallocateFinalize(dnz,onz);CHKERRQ(ierr);
-
-  // TODO: If it turns out this isn't doing the right job then try MatCreateSeqAIJ with nz and nnz
+*/
+  // TODO: try preallocating using MatCreateSeqAIJ with nz and nnz
 
 /*--------------------------------------------------------------------------*/
-/*                                                            colour matrix */
+/*                                                        colour the matrix */
 /*--------------------------------------------------------------------------*/
 
   ISColoring      iscoloring;
   MatColoring     coloring;
   //MatFDColoring   fdcoloring;
   Mat             J;
+  PetscInt        k,max=(int) JP[0][0],nis=0;
+  PetscScalar     one=1.;
+  IS              *is;
 
-  // Create Jacobian object, assemnling with preallocated nonzeros
+  // Create Jacobian object, assembling with preallocated nonzeros as ones
   ierr = MatCreate(PETSC_COMM_WORLD,&J);CHKERRQ(ierr);
   ierr = MatSetSizes(J,PETSC_DECIDE,PETSC_DECIDE,m,n);CHKERRQ(ierr);
   ierr = MatSetFromOptions(J);CHKERRQ(ierr);
   ierr = MatSetUp(J);CHKERRQ(ierr);
+  for (i=0;i<m;i++) {
+    if ((int) JP[i][0] > max)
+      nis = JP[i][0];
+    for (j=1;j<= (int) JP[i][0];j++) {
+      k = JP[i][j];
+      ierr = MatSetValues(J,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
+    }
+  }
   ierr = MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
@@ -125,6 +136,28 @@ int main(int argc,char **args)
   //ierr = MatFDColoringCreate(J,iscoloring,&fdcoloring);CHKERRQ(ierr);
   //ierr = MatFDColoringSetFromOptions(fdcoloring);CHKERRQ(ierr);
   //ierr = MatFDColoringSetUp(J,iscoloring,fdcoloring);CHKERRQ(ierr);
+
+  //ierr = MatColoringView(coloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  ierr = ISColoringView(iscoloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+
+  ierr = ISColoringGetIS(iscoloring,&nis,&is);CHKERRQ(ierr);
+  // TODO
+  ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
+
+/*--------------------------------------------------------------------------*/
+/*                                                              seed matrix */
+/*--------------------------------------------------------------------------*/
+/*
+  double **Seed;
+  int p;
+  int option = 0;
+
+  generate_seed_jac(m,n,JP,&Seed,&p,option);
+
+  for (i=0;i<n;i++)
+    delete[] Seed[i];
+  delete[] Seed;
+*/
 
 
 /****************************************************************************/
