@@ -14,7 +14,7 @@ int main(int argc,char **args)
 
   ierr = PetscInitialize(&argc,&args,(char*)0,NULL);if (ierr) return ierr;
 
-  PetscInt n=6,m=3,i,j;
+  PetscInt n = 6,m = 3,i,j;
   PetscScalar x[n],c[m];
   adouble xad[n],cad[m];
 
@@ -60,7 +60,7 @@ int main(int argc,char **args)
 /*                                                sparsity pattern Jacobian */
 /*--------------------------------------------------------------------------*/
 
-  unsigned int  **JP=NULL;                /* compressed block row storage */
+  unsigned int  **JP = NULL;                /* compressed block row storage */
   PetscInt ctrl[3];
 
   JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
@@ -70,7 +70,7 @@ int main(int argc,char **args)
 
   jac_pat(tag, m, n, x, JP, ctrl);
 
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"Sparsity pattern of Jacobian: \n");CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD," Sparsity pattern: \n");CHKERRQ(ierr);
   for (i=0;i<m;i++) {
     ierr = PetscPrintf(PETSC_COMM_WORLD," %d: ",i);CHKERRQ(ierr);
     for (j=1;j<= (int) JP[i][0];j++)
@@ -105,8 +105,8 @@ int main(int argc,char **args)
   ISColoring      iscoloring;
   MatColoring     coloring;
   Mat             J;
-  PetscInt        k,p=(int) JP[0][0];
-  PetscScalar     one=1.;
+  PetscInt        k,p = (int) JP[0][0];
+  PetscScalar     one = 1.;
 
   PetscScalar     **Seed = NULL;
   IS              *isp,is;
@@ -154,7 +154,7 @@ int main(int argc,char **args)
     ierr = ISRestoreIndices(is,&indices);CHKERRQ(ierr);
   }
   ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
-  ierr = PrintMat(PETSC_COMM_WORLD,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+  ierr = PrintMat(PETSC_COMM_WORLD," Seed matrix:",n,p,Seed);CHKERRQ(ierr);
 
 /*--------------------------------------------------------------------------*/
 /*                                                      compressed Jacobian */
@@ -164,9 +164,7 @@ int main(int argc,char **args)
   Jcomp = myalloc2(m,p);
 
   fov_forward(tag,m,n,p,x,Seed,c,Jcomp);
-  ierr = PrintMat(PETSC_COMM_WORLD,"compressed Jacobian:",m,p,Jcomp);CHKERRQ(ierr);
-
-
+  ierr = PrintMat(PETSC_COMM_WORLD," Compressed Jacobian:",m,p,Jcomp);CHKERRQ(ierr);
 
 /****************************************************************************/
 /*******       free workspace and finalise                    ***************/
@@ -178,11 +176,9 @@ int main(int argc,char **args)
   ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
   ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
   ierr = MatDestroy(&J);CHKERRQ(ierr);
-
   for (i=0;i<m;i++)
     free(JP[i]);
   free(JP);
-
   ierr = PetscFinalize();
 
   return ierr;
