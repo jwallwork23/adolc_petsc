@@ -83,8 +83,8 @@ int main(int argc,char **args)
   Mat            J;
   Vec            u,r;
   ISColoring     iscoloring;
-  MatFDColoring  fdcoloring;
   MatColoring    coloring;
+  MatFDColoring  fdcoloring;
 
   ierr = PetscInitialize(&argc,&args,(char*)0,NULL);if (ierr) return ierr;
 
