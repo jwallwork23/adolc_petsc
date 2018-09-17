@@ -4,7 +4,7 @@
 
 #define tag 1
 
-PetscErrorCode PrintMat(const char* name,PetscInt n,PetscInt m,PetscScalar **M);
+PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt n,PetscInt m,PetscScalar **M);
 PetscErrorCode PassiveEvaluate(PetscScalar *x,PetscScalar *c);
 PetscErrorCode ActiveEvaluate(adouble *x,adouble *c);
 
@@ -36,10 +36,10 @@ int main(int argc,char **args)
       cad[i] >>= c[i];
   trace_off();
 
-  printf("\n c =  ");
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"\n c = ");CHKERRQ(ierr);
   for(j=0;j<m;j++)
-      printf(" %e ",c[j]);
-  printf("\n");
+      ierr = PetscPrintf(PETSC_COMM_WORLD," %e ",c[j]);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
 
 /****************************************************************************/
 /********           For comparisons: Full Jacobian                   ********/
@@ -50,8 +50,8 @@ int main(int argc,char **args)
 
   jacobian(tag,m,n,x,Jdense);
 
-  ierr = PrintMat(" J",m,n,Jdense);CHKERRQ(ierr);
-  printf("\n");
+  ierr = PrintMat(PETSC_COMM_WORLD," J",m,n,Jdense);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
 
 /****************************************************************************/
 /*******       sparse Jacobians, separate drivers             ***************/
@@ -71,15 +71,14 @@ int main(int argc,char **args)
 
   jac_pat(tag, m, n, x, JP, ctrl);
 
-  printf("\n");
-  printf("Sparsity pattern of Jacobian: \n");
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"\nSparsity pattern of Jacobian: \n");CHKERRQ(ierr);
   for (i=0;i<m;i++) {
-    printf(" %d: ",i);
+    ierr = PetscPrintf(PETSC_COMM_WORLD," %d: ",i);CHKERRQ(ierr);
     for (j=1;j<= (int) JP[i][0];j++)
-      printf(" %d ",JP[i][j]);
-    printf("\n");
+      ierr = PetscPrintf(PETSC_COMM_WORLD," %d ",JP[i][j]);CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
   }
-  printf("\n");
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
 
 /*--------------------------------------------------------------------------*/
 /*                                                     preallocate nonzeros */
@@ -106,7 +105,7 @@ int main(int argc,char **args)
 
   ISColoring      iscoloring;
   MatColoring     coloring;
-  MatFDColoring   fdcoloring;
+  //MatFDColoring   fdcoloring;
   Mat             J;
 
   // Create Jacobian object, assemnling with preallocated nonzeros
@@ -118,21 +117,21 @@ int main(int argc,char **args)
   ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
   // Colour Jacobian
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"Creating colouring of J...\n");
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"Creating colouring of J...\n");CHKERRQ(ierr);
   ierr = MatColoringCreate(J,&coloring);CHKERRQ(ierr);
   ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // Use 'smallest last' method
   ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
   ierr = MatColoringApply(coloring,&iscoloring);CHKERRQ(ierr);
-  ierr = MatFDColoringCreate(J,iscoloring,&fdcoloring);CHKERRQ(ierr);
-  ierr = MatFDColoringSetFromOptions(fdcoloring);CHKERRQ(ierr);
-  ierr = MatFDColoringSetUp(J,iscoloring,fdcoloring);CHKERRQ(ierr);
+  //ierr = MatFDColoringCreate(J,iscoloring,&fdcoloring);CHKERRQ(ierr);
+  //ierr = MatFDColoringSetFromOptions(fdcoloring);CHKERRQ(ierr);
+  //ierr = MatFDColoringSetUp(J,iscoloring,fdcoloring);CHKERRQ(ierr);
 
 
 /****************************************************************************/
 /*******       free workspace and finalise                    ***************/
 /****************************************************************************/
 
-  ierr = MatFDColoringDestroy(&fdcoloring);CHKERRQ(ierr);
+  //ierr = MatFDColoringDestroy(&fdcoloring);CHKERRQ(ierr);
   ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
   ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
   ierr = MatDestroy(&J);CHKERRQ(ierr);
@@ -147,18 +146,19 @@ int main(int argc,char **args)
   return ierr;
 }
 
-PetscErrorCode PrintMat(const char* name,PetscInt m,PetscInt n,PetscScalar **M)
+PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M)
 {
+  PetscErrorCode ierr;
   PetscInt       i,j;
 
   PetscFunctionBegin;
-  printf("%s \n",name);
+  ierr = PetscPrintf(comm,"%s \n",name);CHKERRQ(ierr);
   for(i=0; i<m ;i++) {
-      printf("\n %d: ",i);
-      for(j=0;j<n ;j++)
-          printf(" %10.4f ", M[i][j]);
+    ierr = PetscPrintf(comm,"\n %d: ",i);CHKERRQ(ierr);
+    for(j=0;j<n ;j++)
+      ierr = PetscPrintf(comm," %10.4f ", M[i][j]);CHKERRQ(ierr);
   }
-  printf("\n");
+  ierr = PetscPrintf(comm,"\n");CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -169,6 +169,7 @@ PetscErrorCode PassiveEvaluate(PetscScalar *x,PetscScalar *c)
   c[0] += PetscCosScalar(x[3])*PetscSinScalar(x[4]);
   c[1] = x[2]*x[2]+x[3]*x[3]-2.0;
   c[2] = 3*x[4]*x[5] - 3.0+PetscSinScalar(x[4]*x[5]);
+  //c[3] = x[3];c[4] = x[4];c[5] = x[5]; // Trivial extension to a square problem
   PetscFunctionReturn(0);
 }
 
@@ -179,5 +180,6 @@ PetscErrorCode ActiveEvaluate(adouble *x,adouble *c)
   c[0] += PetscCosScalar(x[3])*PetscSinScalar(x[4]);
   c[1] = x[2]*x[2]+x[3]*x[3]-2.0;
   c[2] = 3*x[4]*x[5] - 3.0+PetscSinScalar(x[4]*x[5]);
+  //c[3] = x[3];c[4] = x[4];c[5] = x[5]; // Trivial extension to a square problem
   PetscFunctionReturn(0);
 }
