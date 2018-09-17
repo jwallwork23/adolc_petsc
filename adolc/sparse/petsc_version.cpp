@@ -39,7 +39,7 @@ int main(int argc,char **args)
   ierr = PetscPrintf(PETSC_COMM_WORLD,"\n c = ");CHKERRQ(ierr);
   for(j=0;j<m;j++)
       ierr = PetscPrintf(PETSC_COMM_WORLD," %e ",c[j]);CHKERRQ(ierr);
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"\n\n");CHKERRQ(ierr);
 
 /****************************************************************************/
 /********           For comparisons: Full Jacobian                   ********/
@@ -50,8 +50,7 @@ int main(int argc,char **args)
 
   jacobian(tag,m,n,x,Jdense);
 
-  ierr = PrintMat(PETSC_COMM_WORLD," J",m,n,Jdense);CHKERRQ(ierr);
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+  ierr = PrintMat(PETSC_COMM_WORLD," Jacobian:",m,n,Jdense);CHKERRQ(ierr);
 
 /****************************************************************************/
 /*******       sparse Jacobians, separate drivers             ***************/
@@ -71,7 +70,7 @@ int main(int argc,char **args)
 
   jac_pat(tag, m, n, x, JP, ctrl);
 
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"\nSparsity pattern of Jacobian: \n");CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"Sparsity pattern of Jacobian: \n");CHKERRQ(ierr);
   for (i=0;i<m;i++) {
     ierr = PetscPrintf(PETSC_COMM_WORLD," %d: ",i);CHKERRQ(ierr);
     for (j=1;j<= (int) JP[i][0];j++)
@@ -106,10 +105,12 @@ int main(int argc,char **args)
   ISColoring      iscoloring;
   MatColoring     coloring;
   Mat             J;
-  PetscInt        k,max=(int) JP[0][0],nis=0,size;
-  PetscScalar     one=1.,**Seed = NULL;
+  PetscInt        k,p=(int) JP[0][0];
+  PetscScalar     one=1.;
+
+  PetscScalar     **Seed = NULL;
   IS              *isp,is;
-  const PetscInt  *nindices;
+  const PetscInt  *indices;
 
   // Create Jacobian object, assembling with preallocated nonzeros as ones
   ierr = MatCreate(PETSC_COMM_WORLD,&J);CHKERRQ(ierr);
@@ -117,8 +118,8 @@ int main(int argc,char **args)
   ierr = MatSetFromOptions(J);CHKERRQ(ierr);
   ierr = MatSetUp(J);CHKERRQ(ierr);
   for (i=0;i<m;i++) {
-    if ((int) JP[i][0] > max)
-      nis = JP[i][0];
+    if ((int) JP[i][0] > p)
+      p = JP[i][0];
     for (j=1;j<= (int) JP[i][0];j++) {
       k = JP[i][j];
       ierr = MatSetValues(J,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
@@ -127,39 +128,53 @@ int main(int argc,char **args)
   ierr = MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
-  // Colour Jacobian
+  // Colour Jacobian using 'smallest last' method TODO: Experiment with other methods
   ierr = MatColoringCreate(J,&coloring);CHKERRQ(ierr);
-  ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // Use 'smallest last' method
+  ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);
   ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
   ierr = MatColoringApply(coloring,&iscoloring);CHKERRQ(ierr);
-  //ierr = MatColoringView(coloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  //ierr = ISColoringView(iscoloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 /*--------------------------------------------------------------------------*/
 /*                                                              seed matrix */
 /*--------------------------------------------------------------------------*/
 
-  Seed = myalloc2(n,max);
+  PetscInt nis,size;
+
+  nis = 4; // TODO: How do we extract this from the colouring?
+
+  Seed = myalloc2(n,p);
 
   ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
-  for (i=0;i<max;i++) {
+  for (i=0;i<p;i++) {
     is = *(isp+i);
-    //ierr = ISView(is,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
     ierr = ISGetLocalSize(is,&size);CHKERRQ(ierr);
-    ierr = ISGetIndices(is,&nindices);CHKERRQ(ierr);
+    ierr = ISGetIndices(is,&indices);CHKERRQ(ierr);
     for (j=0;j<size;j++)
-      Seed[nindices[j]][i] = 1.;  // Extract nonzeros for seed matrix
-    ierr = ISRestoreIndices(is,&nindices);CHKERRQ(ierr);
+      Seed[indices[j]][i] = 1.;
+    ierr = ISRestoreIndices(is,&indices);CHKERRQ(ierr);
   }
   ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
-  ierr = PrintMat(PETSC_COMM_WORLD,"Seed matrix:",n,max,Seed);CHKERRQ(ierr);
-  myfree2(Seed);
+  ierr = PrintMat(PETSC_COMM_WORLD,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+
+/*--------------------------------------------------------------------------*/
+/*                                                      compressed Jacobian */
+/*--------------------------------------------------------------------------*/
+
+  double **Jcomp;
+  Jcomp = myalloc2(m,p);
+
+  fov_forward(tag,m,n,p,x,Seed,c,Jcomp);
+  ierr = PrintMat(PETSC_COMM_WORLD,"compressed Jacobian:",m,p,Jcomp);CHKERRQ(ierr);
+
 
 
 /****************************************************************************/
 /*******       free workspace and finalise                    ***************/
 /****************************************************************************/
 
+  myfree2(Jcomp);
+  myfree2(Seed);
+  myfree2(Jdense);
   ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
   ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
   ierr = MatDestroy(&J);CHKERRQ(ierr);
@@ -167,7 +182,6 @@ int main(int argc,char **args)
   for (i=0;i<m;i++)
     free(JP[i]);
   free(JP);
-  myfree2(Jdense);
 
   ierr = PetscFinalize();
 
@@ -186,7 +200,7 @@ PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,Pet
     for(j=0;j<n ;j++)
       ierr = PetscPrintf(comm," %10.4f ", M[i][j]);CHKERRQ(ierr);
   }
-  ierr = PetscPrintf(comm,"\n");CHKERRQ(ierr);
+  ierr = PetscPrintf(comm,"\n\n");CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -197,7 +211,6 @@ PetscErrorCode PassiveEvaluate(PetscScalar *x,PetscScalar *c)
   c[0] += PetscCosScalar(x[3])*PetscSinScalar(x[4]);
   c[1] = x[2]*x[2]+x[3]*x[3]-2.0;
   c[2] = 3*x[4]*x[5] - 3.0+PetscSinScalar(x[4]*x[5]);
-  //c[3] = x[3];c[4] = x[4];c[5] = x[5]; // Trivial extension to a square problem
   PetscFunctionReturn(0);
 }
 
@@ -208,6 +221,5 @@ PetscErrorCode ActiveEvaluate(adouble *x,adouble *c)
   c[0] += PetscCosScalar(x[3])*PetscSinScalar(x[4]);
   c[1] = x[2]*x[2]+x[3]*x[3]-2.0;
   c[2] = 3*x[4]*x[5] - 3.0+PetscSinScalar(x[4]*x[5]);
-  //c[3] = x[3];c[4] = x[4];c[5] = x[5]; // Trivial extension to a square problem
   PetscFunctionReturn(0);
 }
