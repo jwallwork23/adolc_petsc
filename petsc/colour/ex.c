@@ -115,20 +115,19 @@ int main(int argc,char **args)
   ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);	// Use 'smallest last' method
   ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
   ierr = MatColoringApply(coloring,&iscoloring);CHKERRQ(ierr);
-  ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
   ierr = MatFDColoringCreate(J,iscoloring,&fdcoloring);CHKERRQ(ierr);
   ierr = MatFDColoringSetFromOptions(fdcoloring);CHKERRQ(ierr);
+  ierr = MatFDColoringSetUp(J,iscoloring,fdcoloring);CHKERRQ(ierr);
   ierr = MatFDColoringSetFunction(fdcoloring,(PetscErrorCode(*)(void))FormFunction,&appctx);CHKERRQ(ierr);
-  ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
-  //ierr = MatFDColoringSetFromOptions(fdcoloring);CHKERRQ(ierr);
-
-  // MORE TODO: See mat/ex16
+  //ierr = MatFDColoringView(fdcoloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
   /* Compute Jacobians this way using SNES */
   ierr = SNESSetJacobian(snes,J,J,SNESComputeJacobianDefaultColor,fdcoloring);CHKERRQ(ierr);
 
   /* Free workspace */
   ierr = MatFDColoringDestroy(&fdcoloring);CHKERRQ(ierr);
+  ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
+  ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
   ierr = MatDestroy(&J);CHKERRQ(ierr);
   ierr = VecDestroy(&r);CHKERRQ(ierr);
   ierr = VecDestroy(&u);CHKERRQ(ierr);
