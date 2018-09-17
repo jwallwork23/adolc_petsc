@@ -463,13 +463,60 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     JP = (unsigned int **) malloc(L*sizeof(unsigned int*));
     jac_pat(tag,L,G,u_vec,JP,ctrl);
 
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"\nSparsity pattern of Jacobian: \n");CHKERRQ(ierr);
+    for (i=0;i<L;i++) {
+      ierr = PetscPrintf(PETSC_COMM_WORLD," %d: ",i);CHKERRQ(ierr);
+      for (j=1;j<= (int) JP[i][0];j++)
+        ierr = PetscPrintf(PETSC_COMM_WORLD," %d ",JP[i][j]);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+    }
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+
+    ierr = PetscPrintf(MPI_COMM_WORLD,"Successfully generated sparsity pattern.\n");CHKERRQ(ierr);
+
+    // TODO: Use sparsity pattern
+/*
+    PetscScalar one = 1.;
+    PetscInt    max = JP[0][0],nis=0;
+
+    // Create Jacobian object, assembling with preallocated nonzeros as ones
+    for (i=0;i<L;i++) {
+      if ((int) JP[i][0] > max)
+        nis = JP[i][0];
+      for (j=1;j<= (int) JP[i][0];j++) {
+        k = JP[i][j];
+        ierr = MatSetValues(Jpre,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
+      }
+    }
+    ierr = MatAssemblyBegin(Jpre,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+    ierr = MatAssemblyEnd(Jpre,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+*/
     for (i=0;i<L;i++)
       free(JP[i]);
     free(JP);
 
-    ierr = PetscPrintf(MPI_COMM_WORLD,"Successfully generated sparsity pattern.\n");CHKERRQ(ierr);
 
-    // TODO: Generate colouring
+    ISColoring     iscoloring;
+    MatColoring    coloring;
+    MatFDColoring  fdcoloring;
+
+    // Colour Jacobian
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Creating colouring of J...\n");CHKERRQ(ierr);
+    ierr = MatColoringCreate(Jpre,&coloring);CHKERRQ(ierr);
+    ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // Use 'smallest last' method
+    ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
+    ierr = MatColoringApply(coloring,&iscoloring);CHKERRQ(ierr);
+    ierr = MatFDColoringCreate(Jpre,iscoloring,&fdcoloring);CHKERRQ(ierr);
+    ierr = MatFDColoringSetFromOptions(fdcoloring);CHKERRQ(ierr);
+    ierr = MatFDColoringSetUp(Jpre,iscoloring,fdcoloring);CHKERRQ(ierr);
+
+    //ierr = MatColoringView(coloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+    //ierr = ISColoringView(iscoloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+    ierr = MatFDColoringView(fdcoloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+
+    ierr = MatFDColoringDestroy(&fdcoloring);CHKERRQ(ierr);
+    ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
+    ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
 
     // TODO: Use colouring in compressed format
 

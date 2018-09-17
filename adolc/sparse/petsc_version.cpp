@@ -107,9 +107,10 @@ int main(int argc,char **args)
   MatColoring     coloring;
   //MatFDColoring   fdcoloring;
   Mat             J;
-  PetscInt        k,max=(int) JP[0][0],nis=0;
-  PetscScalar     one=1.;
-  IS              *is;
+  PetscInt        k,max=(int) JP[0][0],nis=0,size;
+  PetscScalar     one=1.,Seed[m][n];
+  IS              *isp,is;
+  const PetscInt  *nindices;
 
   // Create Jacobian object, assembling with preallocated nonzeros as ones
   ierr = MatCreate(PETSC_COMM_WORLD,&J);CHKERRQ(ierr);
@@ -139,10 +140,31 @@ int main(int argc,char **args)
 
   //ierr = MatColoringView(coloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   ierr = ISColoringView(iscoloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"------------------------------------\n");CHKERRQ(ierr);
 
-  ierr = ISColoringGetIS(iscoloring,&nis,&is);CHKERRQ(ierr);
-  // TODO
-  ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
+  ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
+
+
+
+  for (i=0;i<max;i++) {
+    is = *(isp+i);
+    //ierr = ISView(is,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+    ierr = ISGetLocalSize(is,&size);CHKERRQ(ierr);
+    ierr = ISGetIndices(is,&nindices);CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"Indices in set %d:\n",i);
+    for (j=0;j<size;j++)
+      ierr = PetscPrintf(PETSC_COMM_WORLD," %d",nindices[j]);CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+    ierr = ISRestoreIndices(is,&nindices);CHKERRQ(ierr);
+  }
+/*
+  for (i=0;i<m;i++) {
+    for (j=0;j<nis;j++) {
+      // TODO: Extract locations for seed matrix
+    }
+  }
+*/
+  ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
 
 /*--------------------------------------------------------------------------*/
 /*                                                              seed matrix */
