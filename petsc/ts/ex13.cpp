@@ -488,15 +488,11 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
     ISColoring     iscoloring;
     MatColoring    coloring;
-    //MatFDColoring  fdcoloring;
 
     ierr = MatColoringCreate(Jpre,&coloring);CHKERRQ(ierr);
     ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // 'Smallest last' default
     ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
     ierr = MatColoringApply(coloring,&iscoloring);CHKERRQ(ierr);
-    //ierr = MatFDColoringCreate(Jpre,iscoloring,&fdcoloring);CHKERRQ(ierr);
-    //ierr = MatFDColoringSetFromOptions(fdcoloring);CHKERRQ(ierr);
-    //ierr = MatFDColoringSetUp(Jpre,iscoloring,fdcoloring);CHKERRQ(ierr);
 
     /*
       Generate seed matrix
@@ -538,7 +534,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
     myfree2(Seed);
 
-    //ierr = MatFDColoringDestroy(&fdcoloring);CHKERRQ(ierr);
     ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
     ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
 
@@ -554,6 +549,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
     /* Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil */
+    ierr = MatZeroEntries(J);CHKERRQ(ierr);
     for (k=0; k<L; k++) {
       for (j=gys; j<gys+gym; j++) {
         for (i=gxs; i<gxs+gxm; i++) {
@@ -574,7 +570,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
             loc = i+j*ym;
           }
           if (fabs(Jac[k][w_ghost])!=0.)
-            ierr = MatSetValues(J,1,&k,1,&loc,&Jac[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
+            ierr = MatSetValues(J,1,&k,1,&loc,&Jac[k][w_ghost],ADD_VALUES);CHKERRQ(ierr);
           w_ghost++;
         }
       }

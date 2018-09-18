@@ -875,7 +875,8 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   jacobian(1,L,G,u_vec,J);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-  /* Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil */
+  /* Add entries one-by-one. TODO: better to add row-by-row, similarly as with the stencil */
+  ierr = MatZeroEntries(J);CHKERRQ(ierr);
   for (k=0; k<L; k++) {
     for (j=gys; j<gys+gym; j++) {
       for (i=gxs; i<gxs+gxm; i++) {
@@ -921,7 +922,7 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
           } else
             loc = d+dofs*(i+j*ym);
           if (fabs(J[k][w_ghost])!=0.)
-            ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
+            ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],ADD_VALUES);CHKERRQ(ierr);
           w_ghost++;
         }
       }

@@ -509,10 +509,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,w_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G;
-  PetscInt       nnz,options[4] = {0,0,0,0},loc,d,dofs = 2;
-  unsigned int   *rind = NULL,*cind = NULL;
-  PetscScalar    *u_vec,**J = NULL,norm=0.,diff=0.,*fz,*values = NULL;
+  PetscInt       i,j,k = 0,w_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G,loc,d,dofs = 2;
+  PetscScalar    *u_vec,**J = NULL,norm=0.,diff=0.,*fz;
   Field          **u,**frhs;
   Vec            localU;
 
@@ -583,20 +581,11 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   /*
     Calculate Jacobian using ADOL-C
   */
-  if (appctx->sparse) {  // TODO: First need to link properly with ColPack
+  if (appctx->sparse) {
 
-    if (appctx->sparse_row) {
-      options[3] = 1;
-    }
-
-    sparse_jac(1,L,G,0,u_vec,&nnz,&rind,&cind,&values,options);	// TODO: Consider separate drivers
-    for (k=0; k<nnz; k++){
-      j = rind[k];i = cind[k]; // TODO: These need adjustment for ghost points, as below.
-      ierr = MatSetValues(A,1,&j,1,&i,&values[k],INSERT_VALUES);CHKERRQ(ierr);
-    }
-    free(rind);rind = NULL;
-    free(cind);cind = NULL;
-    free(values);values = NULL;
+    // TODO: See ex13
+    ierr = PetscPrintf(MPI_COMM_WORLD,"Exiting. Sparse driver not yet complete.\n");CHKERRQ(ierr);
+    exit(0);
 
   } else {
 
@@ -604,7 +593,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     jacobian(1,L,G,u_vec,J);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-    /* Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil */
+    /* Add entries one-by-one. TODO: better to add row-by-row, similarly as with the stencil */
+    ierr = MatZeroEntries(A);CHKERRQ(ierr);
     for (k=0; k<L; k++) {
       for (j=gys; j<gys+gym; j++) {
         for (i=gxs; i<gxs+gxm; i++) {
@@ -650,7 +640,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
             } else
               loc = d+dofs*(i+j*ym);
             if (fabs(J[k][w_ghost])!=0.)
-              ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],INSERT_VALUES);CHKERRQ(ierr);
+              ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],ADD_VALUES);CHKERRQ(ierr);
             w_ghost++;
           }
         }
