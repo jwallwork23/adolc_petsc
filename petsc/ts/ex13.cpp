@@ -387,7 +387,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       i,j,k = 0,w_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G,loc;
+  PetscInt       i,j,k = 0,l = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,loc;
   PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.;
   Vec            localU;
 
@@ -412,8 +412,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
   /* Convert 2-array to a 1-array, so this can be read by ADOL-C */
-  L = xm*ym;G = gxm*gym;
-  ierr = PetscMalloc1(G,&u_vec);CHKERRQ(ierr);
+  m = xm*ym;    // Number of dependent variables / globally owned points
+  n = gxm*gym;  // Number of independent variables / locally owned points
+  ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
       u_vec[k++] = u[j][i];
@@ -423,8 +424,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   /* Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive */
   if (appctx->zos) {
     k = 0;
-    ierr = PetscMalloc1(L,&fz);CHKERRQ(ierr);
-    zos_forward(tag,L,G,0,u_vec,fz);
+    ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
+    zos_forward(tag,m,n,0,u_vec,fz);
     frhs = new PetscScalar*[ym];
     for (j=ys; j<ys+ym; j++)
       frhs[j] = new PetscScalar[xm];
@@ -461,16 +462,16 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     unsigned int **JP = NULL;
     PetscInt     ctrl[3] = {0,0,0},p = 0;
 
-    JP = (unsigned int **) malloc(L*sizeof(unsigned int*));
-    jac_pat(tag,L,G,u_vec,JP,ctrl);
+    JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
+    jac_pat(tag,m,n,u_vec,JP,ctrl);
 
-    for (i=0;i<L;i++) {
+    for (i=0;i<m;i++) {
       if ((PetscInt) JP[i][0] > p)
         p = (PetscInt) JP[i][0];
     }
 
     if (appctx->sparse_view) {
-      for (i=0;i<L;i++) {
+      for (i=0;i<m;i++) {
         ierr = PetscPrintf(PETSC_COMM_WORLD," %d: ",i);CHKERRQ(ierr);
         for (j=1;j<= (PetscInt) JP[i][0];j++)
           ierr = PetscPrintf(PETSC_COMM_WORLD," %d ",JP[i][j]);CHKERRQ(ierr);
@@ -478,7 +479,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       }
       ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
     }
-    for (i=0;i<L;i++)
+    for (i=0;i<m;i++)
       free(JP[i]);
     free(JP);
 
@@ -503,7 +504,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     PetscInt       nis,size;
     const PetscInt *indices;
 
-    Seed = myalloc2(G,p);
+    Seed = myalloc2(n,p);
     ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
     for (i=0;i<p;i++) {
       is = *(isp+i);
@@ -521,11 +522,11 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     */
     PetscScalar **Jcomp;
 
-    ierr = PetscMalloc1(L,&fz);CHKERRQ(ierr);
-    zos_forward(tag,L,G,0,u_vec,fz);
+    ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
+    zos_forward(tag,m,n,0,u_vec,fz);
 
-    Jcomp = myalloc2(L,p);
-    fov_forward(tag,L,G,p,u_vec,Seed,fz,Jcomp);
+    Jcomp = myalloc2(n,p);
+    fov_forward(tag,m,n,p,u_vec,Seed,fz,Jcomp);
     ierr = PetscFree(fz);CHKERRQ(ierr);
 
     /*
@@ -544,37 +545,37 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
   } else {
 
-    Jac = myalloc2(L,G);
-    jacobian(tag,L,G,u_vec,Jac);
+    Jac = myalloc2(m,n);
+    jacobian(tag,m,n,u_vec,Jac);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
     /* Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil */
     ierr = MatZeroEntries(J);CHKERRQ(ierr);
-    for (k=0; k<L; k++) {
+    for (k=0; k<m; k++) {
       for (j=gys; j<gys+gym; j++) {
         for (i=gxs; i<gxs+gxm; i++) {
           if (j < ys) {
-            //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 1\n");
-            loc = i+xm*(ym+j);		// TODO: Test this
+            //if (fabs(Jac[k][l])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 1\n");
+            loc = i+j*ym;		// TODO: Test this
           } else if (j >= ym) {
-            //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 2\n");
-            loc = i;			// TODO: Test this
+            //if (fabs(Jac[k][l])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 2\n");
+            loc = i+j*ym;		// TODO: Test this
           } else if (i < xs) {
-            //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 3\n");
-            loc = j*ym+xm+2*i;		// TODO: Test this
+            //if (fabs(Jac[k][l])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 3\n");
+            loc = i+j*ym;		// TODO: Test this
           } else if (i >= xm) {
-            //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 4\n");
-            loc = i+j*ym+i-2*xm;	// TODO: Test this
+            //if (fabs(Jac[k][l])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 4\n");
+            loc = i+j*ym;		// TODO: Test this
           } else {
-            //if (fabs(Jac[k][w_ghost])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 5\n");
+            //if (fabs(Jac[k][l])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 5\n");
             loc = i+j*ym;
           }
-          if (fabs(Jac[k][w_ghost])!=0.)
-            ierr = MatSetValues(J,1,&k,1,&loc,&Jac[k][w_ghost],ADD_VALUES);CHKERRQ(ierr);
-          w_ghost++;
+          if (fabs(Jac[k][l])!=0.)
+            ierr = MatSetValues(J,1,&k,1,&loc,&Jac[k][l],ADD_VALUES);CHKERRQ(ierr);
+          l++; // Index including ghost points
         }
       }
-      w_ghost = 0;
+      l = 0;
     }
     myfree2(Jac);
   }

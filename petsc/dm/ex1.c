@@ -31,7 +31,7 @@ int main(int argc,char **argv)
       if ((i == xs) || (i == xm-1)) n++;
       if ((j == ys) || (j == ym-1)) n++;
       ierr = VecSetValue(scaling,k,n,INSERT_VALUES);CHKERRQ(ierr);
-      ierr = VecSetValue(global,k,k+1,INSERT_VALUES);CHKERRQ(ierr);
+      ierr = VecSetValue(global,k,k,INSERT_VALUES);CHKERRQ(ierr);
       k++;
     }
   }
