@@ -509,7 +509,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,w_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G,loc,d,dofs = 2;
+  PetscInt       i,j,ii,jj,k = 0,l = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,loc,d,dofs = 2;
   PetscScalar    *u_vec,**J = NULL,norm=0.,diff=0.,*fz;
   Field          **u,**frhs;
   Vec            localU;
@@ -535,8 +535,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
   /* Convert array of structs to a 1-array, so this can be read by ADOL-C */
-  L = dofs*xm*ym;G = dofs*gxm*gym;
-  ierr = PetscMalloc1(G,&u_vec);CHKERRQ(ierr);
+  m = dofs*xm*ym;    // Number of dependent variables / globally owned points
+  n = dofs*gxm*gym;  // Number of independent variables / locally owned points
+  ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
       u_vec[k++] = u[j][i].u;u_vec[k++] = u[j][i].v;
@@ -546,8 +547,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   /* Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive */
   if (appctx->zos) {
     k = 0;
-    ierr = PetscMalloc1(L,&fz);CHKERRQ(ierr);
-    zos_forward(1,L,G,0,u_vec,fz);
+    ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
+    zos_forward(1,m,n,0,u_vec,fz);
     frhs = new Field*[ym];
     for (j=ys; j<ys+ym; j++)
       frhs[j] = new Field[xm];
@@ -589,63 +590,72 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 
   } else {
 
-    J = myalloc2(L,G);
-    jacobian(1,L,G,u_vec,J);
+    J = myalloc2(m,n);
+    jacobian(1,m,n,u_vec,J);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
+
+    PetscMPIInt rank;
+    MPI_Comm_rank(PETSC_COMM_WORLD,&rank);
 
     /* Add entries one-by-one. TODO: better to add row-by-row, similarly as with the stencil */
     ierr = MatZeroEntries(A);CHKERRQ(ierr);
-    for (k=0; k<L; k++) {
-      for (j=gys; j<gys+gym; j++) {
-        for (i=gxs; i<gxs+gxm; i++) {
-          for (d=0; d<dofs; d++) {
+    k = 0;
+    for (jj=ys; jj<ys+ym; jj++) {
+      for (ii=xs; ii<xs+xm; ii++) {
+        for (j=gys; j<gys+gym; j++) {
+          for (i=gxs; i<gxs+gxm; i++) {
+            for (d=0; d<dofs; d++) {
 
-            // CASE 1: ghost point below local region
-            if (j < ys) {
+              // CASE 1: ghost point below local region
+              if (j < ys) {
 
-              // Bottom boundary
-              if ((j < 0) && (i >= 0) && (i < appctx->Mx))
-                loc = d+dofs*(i+appctx->Mx*(appctx->My+j));
-              else
-                loc = d+dofs*(i+j*ym);	// TODO: Test this
+                // Bottom boundary
+                if ((j < 0) && (i >= 0) && (i < appctx->Mx))
+                  loc = d+dofs*(i+appctx->Mx*(appctx->My+j));
+                else
+                  loc = d+dofs*(i+j*appctx->My);	// TODO: Test this
 
-            // CASE 2: ghost point above local region
-            } else if (j >= ym) {
+              // CASE 2: ghost point above local region
+              } else if (j >= ym) {
 
-              // Top boundary
-              if ((j >= appctx->My) && (i >= 0) && (i < appctx->Mx))
-                loc = d+dofs*i;
-              else
-                loc = d+dofs*(i+j*ym);	// TODO: Test this
+                // Top boundary
+                if ((j >= appctx->My) && (i >= 0) && (i < appctx->Mx))
+                  loc = d+dofs*i;
+                else
+                  loc = d+dofs*(i+j*appctx->My);	// TODO: Test this
 
-            // CASE 3: ghost point left of local region
-            } else if (i < xs) {
+              // CASE 3: ghost point left of local region
+              } else if (i < xs) {
 
-              // Left boundary
-              if ((i < 0) && (j >= 0) && (j < appctx->My))
-                loc = d+dofs*(1+j*ym+appctx->Mx+2*i);
-              else
-                loc = d+dofs*(i+j*ym);	// TODO: Test this
+                // Left boundary
+                if ((i < 0) && (j >= 0) && (j < appctx->My))
+                  loc = d+dofs*(1+j*appctx->My+appctx->Mx+2*i);
+                else
+                  loc = d+dofs*(i+j*appctx->My);	// TODO: Test this
 
-            // CASE 4: ghost point right of local region
-            } else if (i >= xm) {
+              // CASE 4: ghost point right of local region
+              } else if (i >= xm) {
 
-              // Right boundary
-              if ((i >= appctx->Mx) && (j >= 0) && (j < appctx->My))
-                loc = d+dofs*(j*ym-2*appctx->Mx+2*i);
-              else
-                loc = d+dofs*(i+j*ym);	// TODO: Test this
+                // Right boundary
+                if ((i >= appctx->Mx) && (j >= 0) && (j < appctx->My))
+                  loc = d+dofs*(j*appctx->My-2*appctx->Mx+2*i);
+                else
+                  loc = d+dofs*(i+j*appctx->My);	// TODO: Test this
 
-            // CASE 5: Interior points of local region
-            } else
-              loc = d+dofs*(i+j*ym);
-            if (fabs(J[k][w_ghost])!=0.)
-              ierr = MatSetValues(A,1,&k,1,&loc,&J[k][w_ghost],ADD_VALUES);CHKERRQ(ierr);
-            w_ghost++;
+              // CASE 5: Interior points of local region
+              } else
+                loc = d+dofs*(i+j*appctx->My);
+              if (fabs(J[k][l]) > 1.e-16) {
+                ierr = PetscPrintf(PETSC_COMM_SELF,"RANK %d: i=%2d j=%2d k=%3d l=%3d loc=%3d J=%+.4e\n",rank,i,j,k,l,loc,J[k][l]);CHKERRQ(ierr);
+                ierr = MatSetValues(A,1,&k,1,&loc,&J[k][l],ADD_VALUES);CHKERRQ(ierr);
+              }
+              l++;
+            }
           }
         }
+        l = 0;
+        k++;
       }
-      w_ghost = 0;
     }
     myfree2(J);
   }

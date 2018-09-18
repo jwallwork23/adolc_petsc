@@ -387,7 +387,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       i,j,k = 0,l = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,loc;
+  PetscInt       i,j,ii,jj,k = 0,l = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,loc;
   PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.;
   Vec            localU;
 
@@ -549,33 +549,38 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     jacobian(tag,m,n,u_vec,Jac);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
+    PetscMPIInt rank;
+    MPI_Comm_rank(PETSC_COMM_WORLD,&rank);
+
     /* Insert entries one-by-one. TODO: better to insert row-by-row, similarly as with the stencil */
     ierr = MatZeroEntries(J);CHKERRQ(ierr);
-    for (k=0; k<m; k++) {
-      for (j=gys; j<gys+gym; j++) {
-        for (i=gxs; i<gxs+gxm; i++) {
-          if (j < ys) {
-            //if (fabs(Jac[k][l])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 1\n");
-            loc = i+j*ym;		// TODO: Test this
-          } else if (j >= ym) {
-            //if (fabs(Jac[k][l])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 2\n");
-            loc = i+j*ym;		// TODO: Test this
-          } else if (i < xs) {
-            //if (fabs(Jac[k][l])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 3\n");
-            loc = i+j*ym;		// TODO: Test this
-          } else if (i >= xm) {
-            //if (fabs(Jac[k][l])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 4\n");
-            loc = i+j*ym;		// TODO: Test this
-          } else {
-            //if (fabs(Jac[k][l])!=0.) PetscPrintf(MPI_COMM_WORLD,"CASE 5\n");
-            loc = i+j*ym;
+    k = 0;
+
+    for (jj=ys; jj<ys+ym; jj++) {
+      for (ii=xs; ii<xs+xm; ii++) {
+        for (j=gys; j<gys+gym; j++) {
+          for (i=gxs; i<gxs+gxm; i++) {
+            if (j < ys) {
+              loc = i+j*appctx->My;		// TODO: Test this
+            } else if (j >= ym) {
+              loc = i+j*appctx->My;		// TODO: Test this
+            } else if (i < xs) {
+              loc = i+j*appctx->My;		// TODO: Test this
+            } else if (i >= xm) {
+              loc = i+j*appctx->My;		// TODO: Test this
+            } else {
+              loc = i+j*appctx->My;
+            }
+            if (fabs(Jac[k][l])!=0.) {
+              ierr = PetscPrintf(PETSC_COMM_WORLD,"RANK %d: i=%2d j=%2d k=%3d l=%3d loc=%3d J=%+.4e\n",rank,i,j,k,l,loc,Jac[k][l]);CHKERRQ(ierr);
+              ierr = MatSetValues(J,1,&k,1,&loc,&Jac[k][l],ADD_VALUES);CHKERRQ(ierr);
+            }
+            l++; // Index including ghost points
           }
-          if (fabs(Jac[k][l])!=0.)
-            ierr = MatSetValues(J,1,&k,1,&loc,&Jac[k][l],ADD_VALUES);CHKERRQ(ierr);
-          l++; // Index including ghost points
         }
+        l = 0;
+        k++;
       }
-      l = 0;
     }
     myfree2(Jac);
   }
