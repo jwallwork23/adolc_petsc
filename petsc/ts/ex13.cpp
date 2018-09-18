@@ -25,7 +25,7 @@ static char help[] = "Time-dependent PDE in 2d. Simplified from ex7.c for illust
 */
 typedef struct {
   PetscReal c;
-  PetscBool zos,zos_view,no_an,sparse,sparse_row,sparse_view;
+  PetscBool zos,zos_view,no_an,sparse,sparse_view;
   PetscInt  Mx,My;
   adouble   **u_a,**f_a;
 } AppCtx;
@@ -55,13 +55,12 @@ int main(int argc,char **argv)
   PetscBool      byhand = PETSC_FALSE;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
-  user.no_an = PETSC_FALSE;user.zos = PETSC_FALSE;user.zos_view = PETSC_FALSE;user.sparse = PETSC_FALSE;user.sparse_row = PETSC_FALSE;user.sparse_view = PETSC_FALSE;
+  user.no_an = PETSC_FALSE;user.zos = PETSC_FALSE;user.zos_view = PETSC_FALSE;user.sparse = PETSC_FALSE;user.sparse_view = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&user.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&user.zos_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&user.no_an,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&user.sparse,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-sparse_row",&user.sparse_row,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse_view",&user.sparse_view,NULL);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -387,7 +386,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       i,j,ii,jj,k = 0,l = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,loc;
+  PetscInt       i,j,ii,jj,k = 0,l = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,loc,My = appctx->My;
   PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.;
   Vec            localU;
 
@@ -558,20 +557,25 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
     for (jj=ys; jj<ys+ym; jj++) {
       for (ii=xs; ii<xs+xm; ii++) {
+        k = ii+jj*My;
         for (j=gys; j<gys+gym; j++) {
           for (i=gxs; i<gxs+gxm; i++) {
             if (j < ys) {
-              loc = i+j*appctx->My;		// TODO: Test this
+              loc = i+j*My;		// TODO: Test this
             } else if (j >= ym) {
-              loc = i+j*appctx->My;		// TODO: Test this
+              loc = i+j*My;		// TODO: Test this
             } else if (i < xs) {
-              loc = i+j*appctx->My;		// TODO: Test this
+              loc = i+j*My;		// TODO: Test this
             } else if (i >= xm) {
-              loc = i+j*appctx->My;		// TODO: Test this
+              loc = i+j*My;		// TODO: Test this
             } else {
-              loc = i+j*appctx->My;
+              loc = i+j*My;
             }
             if (fabs(Jac[k][l])!=0.) {
+              //if ((i<xs)&&(j<ys)) ierr = PetscPrintf(PETSC_COMM_WORLD,"Bottom left!\n");CHKERRQ(ierr);
+              //if ((i<xs)&&(j>=ys+ym)) ierr = PetscPrintf(PETSC_COMM_WORLD,"Top left!\n");CHKERRQ(ierr);
+              //if ((i>=xs+xm)&&(j<ys)) ierr = PetscPrintf(PETSC_COMM_WORLD,"Bottom right!\n");CHKERRQ(ierr);
+              //if ((i>=xs+xm)&&(j>=ys+ym)) ierr = PetscPrintf(PETSC_COMM_WORLD,"Top right!\n");CHKERRQ(ierr);
               ierr = PetscPrintf(PETSC_COMM_WORLD,"RANK %d: i=%2d j=%2d k=%3d l=%3d loc=%3d J=%+.4e\n",rank,i,j,k,l,loc,Jac[k][l]);CHKERRQ(ierr);
               ierr = MatSetValues(J,1,&k,1,&loc,&Jac[k][l],ADD_VALUES);CHKERRQ(ierr);
             }
@@ -579,7 +583,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
           }
         }
         l = 0;
-        k++;
+        //k++;
       }
     }
     myfree2(Jac);
@@ -605,6 +609,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     ierr = MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
     ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   }
+
   PetscFunctionReturn(0);
 }
 

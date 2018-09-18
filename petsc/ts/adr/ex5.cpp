@@ -11,9 +11,9 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
            -ts_monitor_draw_solution
            -draw_save -draw_save_movie
            -jacobian_by_hand - use a hand-coded Jacobian
-           -no_annotations   - do not annotate using ADOL-C
+           -no_annotation    - do not annotate using ADOL-C
            -sparse           - generate Jacobian using ADOL-C sparse Jacobian driver
-           -sparse_row       - use row compression, rather than column compression
+           -sparse_view      - view matrices involved in sparse Jacobian computation
 
       Helpful ADOL-C debugging options:
            -adolc_test_zos      - test Zero Order Scalar evaluation
@@ -46,6 +46,8 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
 #include <adolc/adolc.h>	// Include ADOL-C
 #include <adolc/adolc_sparse.h> // Include ADOL-C sparse drivers
 
+#define tag 1
+
 typedef struct {
   PetscScalar u,v;
 } Field;
@@ -56,7 +58,7 @@ typedef struct {
 
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
-  PetscBool zos,zos_view,no_an,sparse,sparse_row;
+  PetscBool zos,zos_view,no_an,sparse,sparse_view;
   PetscInt  Mx,My;
   AField    **u_a,**f_a;
 } AppCtx;
@@ -182,13 +184,13 @@ int main(int argc,char **argv)
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   PetscFunctionBeginUser;
-  appctx.zos = PETSC_FALSE;appctx.zos_view = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_row = PETSC_FALSE;
+  appctx.zos = PETSC_FALSE;appctx.zos_view = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_view = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&appctx.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&appctx.zos_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-sparse_row",&appctx.sparse_row,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-sparse_view",&appctx.sparse_view,NULL);CHKERRQ(ierr);
   appctx.D1     = 8.0e-5;
   appctx.D2     = 4.0e-5;
   appctx.gamma  = .024;
@@ -510,6 +512,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   DM             da;
   PetscErrorCode ierr;
   PetscInt       i,j,ii,jj,k = 0,l = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,loc,d,dofs = 2;
+  PetscInt       Mx = appctx->Mx,My = appctx->My;
   PetscScalar    *u_vec,**J = NULL,norm=0.,diff=0.,*fz;
   Field          **u,**frhs;
   Vec            localU;
@@ -584,7 +587,90 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   */
   if (appctx->sparse) {
 
-    // TODO: See ex13
+    /*
+      Generate sparsity pattern TODO: This only need be done once
+    */
+    unsigned int **JP = NULL;
+    PetscInt     ctrl[3] = {0,0,0},p=0;
+
+    JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
+    jac_pat(tag,m,n,u_vec,JP,ctrl);
+
+    for (i=0;i<m;i++) {
+      if ((PetscInt) JP[i][0] > p)
+        p = (PetscInt) JP[i][0];
+    }
+
+    if (appctx->sparse_view) {
+      for (i=0;i<m;i++) {
+        ierr = PetscPrintf(PETSC_COMM_WORLD," %d: ",i);CHKERRQ(ierr);
+        for (j=1;j<= (PetscInt) JP[i][0];j++)
+          ierr = PetscPrintf(PETSC_COMM_WORLD," %d ",JP[i][j]);CHKERRQ(ierr);
+        ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+      }
+      ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+    }
+    for (i=0;i<m;i++)
+      free(JP[i]);
+    free(JP);
+
+    /*
+      Colour Jacobian
+    */
+
+    ISColoring     iscoloring;
+    MatColoring    coloring;
+
+    ierr = MatColoringCreate(A,&coloring);CHKERRQ(ierr);
+    ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // 'Smallest last' default
+    ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
+    ierr = MatColoringApply(coloring,&iscoloring);CHKERRQ(ierr);
+
+    /*
+      Generate seed matrix
+    */
+
+    IS             *isp,is;
+    PetscScalar    **Seed = NULL;
+    PetscInt       nis,size;
+    const PetscInt *indices;
+
+    Seed = myalloc2(n,p);
+    ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
+    for (i=0;i<p;i++) {
+      is = *(isp+i);
+      ierr = ISGetLocalSize(is,&size);CHKERRQ(ierr);
+      ierr = ISGetIndices(is,&indices);CHKERRQ(ierr);
+      for (j=0;j<size;j++) {
+        Seed[indices[j]][i] = 1.;
+      }
+      ierr = ISRestoreIndices(is,&indices);CHKERRQ(ierr);
+    }
+    ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
+
+    /*
+      Form compressed Jacobian
+    */
+    PetscScalar **Jcomp;
+
+    ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
+    zos_forward(tag,m,n,0,u_vec,fz);
+
+    Jcomp = myalloc2(n,p);
+    fov_forward(tag,m,n,p,u_vec,Seed,fz,Jcomp);
+    ierr = PetscFree(fz);CHKERRQ(ierr);
+
+    /*
+      Free workspace
+    */
+
+    myfree2(Seed);
+
+    ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
+    ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+
+    // TODO: Use colouring in compressed format
+
     ierr = PetscPrintf(MPI_COMM_WORLD,"Exiting. Sparse driver not yet complete.\n");CHKERRQ(ierr);
     exit(0);
 
@@ -602,6 +688,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     k = 0;
     for (jj=ys; jj<ys+ym; jj++) {
       for (ii=xs; ii<xs+xm; ii++) {
+        k = ii+jj*My;
         for (j=gys; j<gys+gym; j++) {
           for (i=gxs; i<gxs+gxm; i++) {
             for (d=0; d<dofs; d++) {
@@ -610,41 +697,41 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
               if (j < ys) {
 
                 // Bottom boundary
-                if ((j < 0) && (i >= 0) && (i < appctx->Mx))
-                  loc = d+dofs*(i+appctx->Mx*(appctx->My+j));
+                if ((j < 0) && (i >= 0) && (i < Mx))
+                  loc = d+dofs*(i+Mx*(My+j));
                 else
-                  loc = d+dofs*(i+j*appctx->My);	// TODO: Test this
+                  loc = d+dofs*(i+j*My);	// TODO: Test this
 
               // CASE 2: ghost point above local region
               } else if (j >= ym) {
 
                 // Top boundary
-                if ((j >= appctx->My) && (i >= 0) && (i < appctx->Mx))
+                if ((j >= My) && (i >= 0) && (i < Mx))
                   loc = d+dofs*i;
                 else
-                  loc = d+dofs*(i+j*appctx->My);	// TODO: Test this
+                  loc = d+dofs*(i+j*My);	// TODO: Test this
 
               // CASE 3: ghost point left of local region
               } else if (i < xs) {
 
                 // Left boundary
-                if ((i < 0) && (j >= 0) && (j < appctx->My))
-                  loc = d+dofs*(1+j*appctx->My+appctx->Mx+2*i);
+                if ((i < 0) && (j >= 0) && (j < My))
+                  loc = d+dofs*(1+j*My+Mx+2*i);
                 else
-                  loc = d+dofs*(i+j*appctx->My);	// TODO: Test this
+                  loc = d+dofs*(i+j*My);	// TODO: Test this
 
               // CASE 4: ghost point right of local region
               } else if (i >= xm) {
 
                 // Right boundary
-                if ((i >= appctx->Mx) && (j >= 0) && (j < appctx->My))
-                  loc = d+dofs*(j*appctx->My-2*appctx->Mx+2*i);
+                if ((i >= Mx) && (j >= 0) && (j < My))
+                  loc = d+dofs*(j*My-2*Mx+2*i);
                 else
-                  loc = d+dofs*(i+j*appctx->My);	// TODO: Test this
+                  loc = d+dofs*(i+j*My);	// TODO: Test this
 
               // CASE 5: Interior points of local region
               } else
-                loc = d+dofs*(i+j*appctx->My);
+                loc = d+dofs*(i+j*My);
               if (fabs(J[k][l]) > 1.e-16) {
                 ierr = PetscPrintf(PETSC_COMM_SELF,"RANK %d: i=%2d j=%2d k=%3d l=%3d loc=%3d J=%+.4e\n",rank,i,j,k,l,loc,J[k][l]);CHKERRQ(ierr);
                 ierr = MatSetValues(A,1,&k,1,&loc,&J[k][l],ADD_VALUES);CHKERRQ(ierr);
@@ -654,7 +741,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
           }
         }
         l = 0;
-        k++;
+        //k++;
       }
     }
     myfree2(J);
