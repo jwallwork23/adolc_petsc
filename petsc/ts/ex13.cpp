@@ -25,7 +25,7 @@ static char help[] = "Time-dependent PDE in 2d. Simplified from ex7.c for illust
 */
 typedef struct {
   PetscReal c;
-  PetscBool zos,zos_view,no_an,sparse,sparse_row;
+  PetscBool zos,zos_view,no_an,sparse,sparse_row,sparse_view;
   PetscInt  Mx,My;
   adouble   **u_a,**f_a;
 } AppCtx;
@@ -55,13 +55,14 @@ int main(int argc,char **argv)
   PetscBool      byhand = PETSC_FALSE;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
-  user.no_an = PETSC_FALSE;user.zos = PETSC_FALSE;user.zos_view = PETSC_FALSE;user.sparse = PETSC_FALSE;user.sparse_row = PETSC_FALSE;
+  user.no_an = PETSC_FALSE;user.zos = PETSC_FALSE;user.zos_view = PETSC_FALSE;user.sparse = PETSC_FALSE;user.sparse_row = PETSC_FALSE;user.sparse_view = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&user.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&user.zos_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&user.no_an,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&user.sparse,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-sparse_row",&user.sparse_row,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-sparse_view",&user.sparse_view,NULL);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
@@ -456,65 +457,70 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   */
   if (appctx->sparse) {
 
-    // Generate sparsity pattern  TODO: This only need be done once
-    unsigned int   **JP = NULL;
-    PetscInt     ctrl[3] = {0,0,0};
+    /*
+      Generate sparsity pattern  TODO: This only need be done once
+    */
+    unsigned int **JP = NULL;
+    PetscInt     ctrl[3] = {0,0,0},p = 0;
 
     JP = (unsigned int **) malloc(L*sizeof(unsigned int*));
     jac_pat(tag,L,G,u_vec,JP,ctrl);
 
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"\nSparsity pattern of Jacobian: \n");CHKERRQ(ierr);
     for (i=0;i<L;i++) {
-      ierr = PetscPrintf(PETSC_COMM_WORLD," %d: ",i);CHKERRQ(ierr);
-      for (j=1;j<= (int) JP[i][0];j++)
-        ierr = PetscPrintf(PETSC_COMM_WORLD," %d ",JP[i][j]);CHKERRQ(ierr);
+      if ((PetscInt) JP[i][0] > p)
+        p = (PetscInt) JP[i][0];
+    }
+
+    if (appctx->sparse_view) {
+      for (i=0;i<L;i++) {
+        ierr = PetscPrintf(PETSC_COMM_WORLD," %d: ",i);CHKERRQ(ierr);
+        for (j=1;j<= (PetscInt) JP[i][0];j++)
+          ierr = PetscPrintf(PETSC_COMM_WORLD," %d ",JP[i][j]);CHKERRQ(ierr);
+        ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+      }
       ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
     }
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
-
-    ierr = PetscPrintf(MPI_COMM_WORLD,"Successfully generated sparsity pattern.\n");CHKERRQ(ierr);
-
-    // TODO: Use sparsity pattern
-/*
-    PetscScalar one = 1.;
-    PetscInt    max = JP[0][0],nis=0;
-
-    // Create Jacobian object, assembling with preallocated nonzeros as ones
-    for (i=0;i<L;i++) {
-      if ((int) JP[i][0] > max)
-        nis = JP[i][0];
-      for (j=1;j<= (int) JP[i][0];j++) {
-        k = JP[i][j];
-        ierr = MatSetValues(Jpre,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
-      }
-    }
-    ierr = MatAssemblyBegin(Jpre,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-    ierr = MatAssemblyEnd(Jpre,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-*/
     for (i=0;i<L;i++)
       free(JP[i]);
     free(JP);
 
+    /*
+      Colour Jacobian
+    */
 
     ISColoring     iscoloring;
     MatColoring    coloring;
-    MatFDColoring  fdcoloring;
+    //MatFDColoring  fdcoloring;
 
-    // Colour Jacobian
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"Creating colouring of J...\n");CHKERRQ(ierr);
     ierr = MatColoringCreate(Jpre,&coloring);CHKERRQ(ierr);
-    ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // Use 'smallest last' method
+    ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // 'Smallest last' default
     ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
     ierr = MatColoringApply(coloring,&iscoloring);CHKERRQ(ierr);
-    ierr = MatFDColoringCreate(Jpre,iscoloring,&fdcoloring);CHKERRQ(ierr);
-    ierr = MatFDColoringSetFromOptions(fdcoloring);CHKERRQ(ierr);
-    ierr = MatFDColoringSetUp(Jpre,iscoloring,fdcoloring);CHKERRQ(ierr);
+    //ierr = MatFDColoringCreate(Jpre,iscoloring,&fdcoloring);CHKERRQ(ierr);
+    //ierr = MatFDColoringSetFromOptions(fdcoloring);CHKERRQ(ierr);
+    //ierr = MatFDColoringSetUp(Jpre,iscoloring,fdcoloring);CHKERRQ(ierr);
 
-    //ierr = MatColoringView(coloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-    //ierr = ISColoringView(iscoloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-    ierr = MatFDColoringView(fdcoloring,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+    /*
+      Generate seed matrix
+    */
 
-    ierr = MatFDColoringDestroy(&fdcoloring);CHKERRQ(ierr);
+    IS             *isp;
+    PetscScalar    **Seed = NULL;
+    PetscInt       nis,size;
+
+//    Seed = myalloc2(G,p);
+//    ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
+
+
+//    ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
+
+    /*
+      Free workspace
+    */
+
+//    myfree2(Seed);
+
+    //ierr = MatFDColoringDestroy(&fdcoloring);CHKERRQ(ierr);
     ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
     ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
 

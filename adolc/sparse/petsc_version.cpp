@@ -61,7 +61,7 @@ int main(int argc,char **args)
 /*--------------------------------------------------------------------------*/
 
   unsigned int  **JP = NULL;                /* compressed block row storage */
-  PetscInt ctrl[3];
+  PetscInt      ctrl[3];
 
   JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
   ctrl[0] = 0;
@@ -105,12 +105,8 @@ int main(int argc,char **args)
   ISColoring      iscoloring;
   MatColoring     coloring;
   Mat             J;
-  PetscInt        k,p = (int) JP[0][0];
+  PetscInt        k,p = 0;
   PetscScalar     one = 1.;
-
-  PetscScalar     **Seed = NULL;
-  IS              *isp,is;
-  const PetscInt  *indices;
 
   // Create Jacobian object, assembling with preallocated nonzeros as ones
   ierr = MatCreate(PETSC_COMM_WORLD,&J);CHKERRQ(ierr);
@@ -118,9 +114,9 @@ int main(int argc,char **args)
   ierr = MatSetFromOptions(J);CHKERRQ(ierr);
   ierr = MatSetUp(J);CHKERRQ(ierr);
   for (i=0;i<m;i++) {
-    if ((int) JP[i][0] > p)
-      p = JP[i][0];
-    for (j=1;j<= (int) JP[i][0];j++) {
+    if ((PetscInt) JP[i][0] > p)
+      p = (PetscInt) JP[i][0];
+    for (j=1;j<= (PetscInt) JP[i][0];j++) {
       k = JP[i][j];
       ierr = MatSetValues(J,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
     }
@@ -128,7 +124,14 @@ int main(int argc,char **args)
   ierr = MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
-  // Colour Jacobian using 'smallest last' method TODO: Experiment with other methods
+  /*
+    Colour Jacobian using 'smallest last' method
+
+    NOTE: Other methods may be selected from the command line using
+          -mat_coloring_type <sl,lf,natural,id,greedy,jp>
+
+          TODO: Fix seg fault in natural,id,greedy,jp cases
+  */
   ierr = MatColoringCreate(J,&coloring);CHKERRQ(ierr);
   ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);
   ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
@@ -138,16 +141,17 @@ int main(int argc,char **args)
 /*                                                              seed matrix */
 /*--------------------------------------------------------------------------*/
 
-  PetscInt nis,size;
-
-  nis = 4; // TODO: How do we extract this from the colouring?
+  PetscScalar     **Seed = NULL;
+  PetscInt        nis,size;
+  IS              *isp,is;
+  const PetscInt  *indices;
 
   Seed = myalloc2(n,p);
 
   ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
   for (i=0;i<p;i++) {
     is = *(isp+i);
-    ierr = ISGetLocalSize(is,&size);CHKERRQ(ierr);
+    ierr = ISGetLocalSize(is,&size);CHKERRQ(ierr);  // FIXME sometimes comes up as an invalid pointer
     ierr = ISGetIndices(is,&indices);CHKERRQ(ierr);
     for (j=0;j<size;j++)
       Seed[indices[j]][i] = 1.;
@@ -193,7 +197,7 @@ PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,Pet
   ierr = PetscPrintf(comm,"%s \n",name);CHKERRQ(ierr);
   for(i=0; i<m ;i++) {
     ierr = PetscPrintf(comm,"\n %d: ",i);CHKERRQ(ierr);
-    for(j=0;j<n ;j++)
+    for(j=0; j<n ;j++)
       ierr = PetscPrintf(comm," %10.4f ", M[i][j]);CHKERRQ(ierr);
   }
   ierr = PetscPrintf(comm,"\n\n");CHKERRQ(ierr);
