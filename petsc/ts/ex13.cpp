@@ -388,9 +388,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   PetscErrorCode ierr;
   DM             da;
   PetscInt       i,j,k = 0,w_ghost = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,L,G,loc;
-  //PetscInt       nnz,options[4] = {0,0,0,0};
-  //unsigned int   *rind = NULL,*cind = NULL;
-  PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.;//,*values = NULL;
+  PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.;
   Vec            localU;
 
   PetscFunctionBeginUser;
@@ -426,7 +424,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   if (appctx->zos) {
     k = 0;
     ierr = PetscMalloc1(L,&fz);CHKERRQ(ierr);
-    zos_forward(1,L,G,0,u_vec,fz);
+    zos_forward(tag,L,G,0,u_vec,fz);
     frhs = new PetscScalar*[ym];
     for (j=ys; j<ys+ym; j++)
       frhs[j] = new PetscScalar[xm];
@@ -504,21 +502,41 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       Generate seed matrix
     */
 
-    IS             *isp;
+    IS             *isp,is;
     PetscScalar    **Seed = NULL;
     PetscInt       nis,size;
+    const PetscInt *indices;
 
-//    Seed = myalloc2(G,p);
-//    ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
+    Seed = myalloc2(G,p);
+    ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
+    for (i=0;i<p;i++) {
+      is = *(isp+i);
+      ierr = ISGetLocalSize(is,&size);CHKERRQ(ierr);
+      ierr = ISGetIndices(is,&indices);CHKERRQ(ierr);
+      for (j=0;j<size;j++) {
+        Seed[indices[j]][i] = 1.;
+      }
+      ierr = ISRestoreIndices(is,&indices);CHKERRQ(ierr);
+    }
+    ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
 
+    /*
+      Form compressed Jacobian
+    */
+    PetscScalar **Jcomp;
 
-//    ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
+    ierr = PetscMalloc1(L,&fz);CHKERRQ(ierr);
+    zos_forward(tag,L,G,0,u_vec,fz);
+
+    Jcomp = myalloc2(L,p);
+    fov_forward(tag,L,G,p,u_vec,Seed,fz,Jcomp);
+    ierr = PetscFree(fz);CHKERRQ(ierr);
 
     /*
       Free workspace
     */
 
-//    myfree2(Seed);
+    myfree2(Seed);
 
     //ierr = MatFDColoringDestroy(&fdcoloring);CHKERRQ(ierr);
     ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);

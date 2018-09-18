@@ -164,7 +164,8 @@ int main(int argc,char **args)
 /*                                                      compressed Jacobian */
 /*--------------------------------------------------------------------------*/
 
-  double **Jcomp;
+  PetscScalar **Jcomp;
+
   Jcomp = myalloc2(m,p);
 
   fov_forward(tag,m,n,p,x,Seed,c,Jcomp);
