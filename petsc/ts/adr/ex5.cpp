@@ -417,7 +417,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,ii,jj,k = 0,l = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,loc,d,dofs = 2,Mx,My;
+  PetscInt       i,j,k = 0,l = 0,d,ii,jj,kk,ll,dd,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2,Mx,My;
   PetscScalar    *u_vec,**J = NULL,norm=0.,diff=0.,*fz;
   Field          **u,**frhs;
   Vec            localU;
@@ -595,60 +595,61 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     k = 0;
     for (jj=ys; jj<ys+ym; jj++) {
       for (ii=xs; ii<xs+xm; ii++) {
-        k = ii+jj*Mx;
-        for (j=gys; j<gys+gym; j++) {
-          for (i=gxs; i<gxs+gxm; i++) {
-            for (d=0; d<dofs; d++) {
+        for (dd=0; dd<dofs; dd++) {
+          kk = dd+dofs*(ii+jj*Mx);
+          for (j=gys; j<gys+gym; j++) {
+            for (i=gxs; i<gxs+gxm; i++) {
+              for (d=0; d<dofs; d++) {
 
-              // CASE 1: ghost point below local region
-              if (j < ys) {
+                // CASE 1: ghost point below local region
+                if (j < ys) {
 
-                // Bottom boundary
-                if ((j < 0) && (i >= 0) && (i < Mx))
-                  loc = d+dofs*(i+Mx*(My+j));
-                else
-                  loc = d+dofs*(i+j*Mx);	// TODO: Test this
+                  // Bottom boundary
+                  if ((j < 0) && (i >= 0) && (i < Mx))
+                    ll = d+dofs*(i+Mx*(My+j));
+                  else
+                    ll = d+dofs*(i+j*Mx);	// TODO: Test this
 
-              // CASE 2: ghost point above local region
-              } else if (j >= ym) {
+                // CASE 2: ghost point above local region
+                } else if (j >= ym) {
 
-                // Top boundary
-                if ((j >= My) && (i >= 0) && (i < Mx))
-                  loc = d+dofs*i;
-                else
-                  loc = d+dofs*(i+j*Mx);	// TODO: Test this
+                  // Top boundary
+                  if ((j >= My) && (i >= 0) && (i < Mx))
+                    ll = d+dofs*i;
+                  else
+                    ll = d+dofs*(i+j*Mx);	// TODO: Test this
 
-              // CASE 3: ghost point left of local region
-              } else if (i < xs) {
+                // CASE 3: ghost point left of local region
+                } else if (i < xs) {
 
-                // Left boundary
-                if ((i < 0) && (j >= 0) && (j < My))
-                  loc = d+dofs*(1+j*Mx+My+2*i);
-                else
-                  loc = d+dofs*(i+j*Mx);	// TODO: Test this
+                  // Left boundary
+                  if ((i < 0) && (j >= 0) && (j < My))
+                    ll = d+dofs*(1+j*Mx+My+2*i);
+                  else
+                    ll = d+dofs*(i+j*Mx);	// TODO: Test this
 
-              // CASE 4: ghost point right of local region
-              } else if (i >= xm) {
+                // CASE 4: ghost point right of local region
+                } else if (i >= xm) {
 
-                // Right boundary
-                if ((i >= Mx) && (j >= 0) && (j < My))
-                  loc = d+dofs*(j*Mx-2*My+2*i);
-                else
-                  loc = d+dofs*(i+j*Mx);	// TODO: Test this
+                  // Right boundary
+                  if ((i >= Mx) && (j >= 0) && (j < My))
+                    ll = d+dofs*(j*Mx-2*My+2*i);
+                  else
+                    ll = d+dofs*(i+j*Mx);	// TODO: Test this
 
-              // CASE 5: Interior points of local region
-              } else
-                loc = d+dofs*(i+j*Mx);
-              if (fabs(J[k][l]) > 1.e-16) {
-                //ierr = PetscPrintf(PETSC_COMM_SELF,"RANK %d: i=%2d j=%2d k=%3d l=%3d loc=%3d J=%+.4e\n",rank,i,j,k,l,loc,J[k][l]);CHKERRQ(ierr);
-                ierr = MatSetValues(A,1,&k,1,&loc,&J[k][l],ADD_VALUES);CHKERRQ(ierr);
+                // CASE 5: Interior points of local region
+                } else
+                  ll = d+dofs*(i+j*Mx);
+                if (fabs(J[k][l]) > 1.e-16) {
+                  ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],ADD_VALUES);CHKERRQ(ierr);
+                }
+                l++;
               }
-              l++;
             }
           }
+          l = 0;
+          k++;
         }
-        l = 0;
-        //k++;
       }
     }
     myfree2(J);
