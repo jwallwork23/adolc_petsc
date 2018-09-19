@@ -72,101 +72,10 @@ extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr);
 extern PetscErrorCode RHSLocalPassive(DM da,Field **f,Field **u,void *ptr);
 
-/*
-  Set up AField, including ghost points.
-
-  FIXME: How to do this properly?
-*/
-PetscErrorCode AFieldCreate2d(DM da,AField *cgs,AField **a2d)
-{
-  PetscErrorCode ierr;
-  PetscInt       gxs,gys,gxm,gym;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  cgs = new AField[gxm*gym];	// Contiguous 1-arrays of AFields
-  a2d = new AField*[gym];	// Corresponding 2-arrays of AFields
-  PetscFunctionReturn(0);
-}
-
-/*
-  Shift indices in AField to endow it with ghost points.
-*/
-PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
-{
-  PetscErrorCode ierr;
-  PetscInt       gxs,gys,gxm,gym,j;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  for (j=0; j<gym; j++) {
-    (*a2d)[j] = cgs + j*gxm - gxs;
-  }
-  *a2d -= gys;
-  PetscFunctionReturn(0);
-}
-
-/*
-  Insert ghost point values into AField.
-*/
-PetscErrorCode AFieldInsertGhostValues2d(DM da,Field **u,AField **u_a)
-{
-  PetscErrorCode  ierr;
-  PetscInt        i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,lower,upper;
-  DMDAStencilType st;
-  DMBoundaryType  xbc,ybc;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&xbc,&ybc,PETSC_IGNORE,&st);CHKERRQ(ierr);
-
-  // Ghost points need to be present, even if unused, as with DM_BOUNDARY_GHOSTED.
-  if ((xbc != DM_BOUNDARY_NONE) && (ybc != DM_BOUNDARY_NONE)) {
-    lower = ys;upper = ys+ym;
-    if (st == DMDA_STENCIL_BOX) {
-      lower += gys;upper -= gys;
-    }
-    for (j=lower; j<upper; j++) {
-      for (i=0; i<2; i++) {
-        u_a[j][gxs+i*(gxm-1)].u = u[j][gxs+i*(gxm-1)].u;
-        u_a[j][gxs+i*(gxm-1)].v = u[j][gxs+i*(gxm-1)].v;
-      }
-    }
-    lower = xs;upper = xs+xm;
-    if (st == DMDA_STENCIL_BOX) {
-      lower += gxs;upper -= gxs;
-    }
-    for (i=lower; i<upper; i++) {
-      for (j=0; j<2; j++) {
-        u_a[gys+j*(gym-1)][i].u = u[gys+j*(gym-1)][i].u;
-        u_a[gys+j*(gym-1)][i].v = u[gys+j*(gym-1)][i].v;
-      }
-    }
-  } else {
-    SETERRQ(PETSC_COMM_SELF,1,"Ghost points required on boundary.");
-  }
-  PetscFunctionReturn(0);
-}
-
-/*
-  Destroy AField.
-
-  FIXME: How to do this properly?
-*/
-PetscErrorCode AFieldDestroy2d(DM da,AField *cgs[],AField **a2d[])
-{
-  PetscErrorCode ierr;
-  PetscInt       gys;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetGhostCorners(da,NULL,&gys,NULL,NULL,NULL,NULL);CHKERRQ(ierr);
-  *a2d += gys;
-  delete[] a2d;
-  delete[] cgs;
-
-  PetscFunctionReturn(0);
-}
+extern PetscErrorCode AFieldCreate2d(DM da,AField *cgs,AField **a2d);
+extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]);
+extern PetscErrorCode AFieldInsertGhostValues2d(DM da,Field **u,AField **u_a);
+extern PetscErrorCode AFieldDestroy2d(DM da,AField *cgs[],AField **a2d[]);
 
 int main(int argc,char **argv)
 {
@@ -414,7 +323,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   AppCtx         *appctx = (AppCtx*)ptr;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       xs,ys,xm,ym;
+  PetscInt       xm,ym;
   Field          **u,**f;
   Vec            localU;
 
@@ -440,7 +349,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   /*
      Get local grid boundaries
   */
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetCorners(da,NULL,NULL,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
   /*
      Compute function over the locally owned part of the grid
@@ -543,7 +452,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
-      u_vec[k++] = u[j][i].u;u_vec[k++] = u[j][i].v;
+      u_vec[k++] = u[j][i].u;
+      u_vec[k++] = u[j][i].v;
     }
   }
 
@@ -869,6 +779,102 @@ PetscErrorCode RHSJacobianByHand(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Set up AField, including ghost points.
+
+  FIXME: How to do this properly?
+*/
+PetscErrorCode AFieldCreate2d(DM da,AField *cgs,AField **a2d)
+{
+  PetscErrorCode ierr;
+  PetscInt       gxs,gys,gxm,gym;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  cgs = new AField[gxm*gym];	// Contiguous 1-arrays of AFields
+  a2d = new AField*[gym];	// Corresponding 2-arrays of AFields
+  PetscFunctionReturn(0);
+}
+
+/*
+  Shift indices in AField to endow it with ghost points.
+*/
+PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
+{
+  PetscErrorCode ierr;
+  PetscInt       gxs,gys,gxm,gym,j;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  for (j=0; j<gym; j++) {
+    (*a2d)[j] = cgs + j*gxm - gxs;
+  }
+  *a2d -= gys;
+  PetscFunctionReturn(0);
+}
+
+/*
+  Insert ghost point values into AField.
+*/
+PetscErrorCode AFieldInsertGhostValues2d(DM da,Field **u,AField **u_a)
+{
+  PetscErrorCode  ierr;
+  PetscInt        i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,lower,upper;
+  DMDAStencilType st;
+  DMBoundaryType  xbc,ybc;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&xbc,&ybc,PETSC_IGNORE,&st);CHKERRQ(ierr);
+
+  // Ghost points need to be present, even if unused, as with DM_BOUNDARY_GHOSTED.
+  if ((xbc != DM_BOUNDARY_NONE) && (ybc != DM_BOUNDARY_NONE)) {
+    lower = ys;upper = ys+ym;
+    if (st == DMDA_STENCIL_BOX) {
+      lower += gys;upper -= gys;
+    }
+    for (j=lower; j<upper; j++) {
+      for (i=0; i<2; i++) {
+        u_a[j][gxs+i*(gxm-1)].u = u[j][gxs+i*(gxm-1)].u;
+        u_a[j][gxs+i*(gxm-1)].v = u[j][gxs+i*(gxm-1)].v;
+      }
+    }
+    lower = xs;upper = xs+xm;
+    if (st == DMDA_STENCIL_BOX) {
+      lower += gxs;upper -= gxs;
+    }
+    for (i=lower; i<upper; i++) {
+      for (j=0; j<2; j++) {
+        u_a[gys+j*(gym-1)][i].u = u[gys+j*(gym-1)][i].u;
+        u_a[gys+j*(gym-1)][i].v = u[gys+j*(gym-1)][i].v;
+      }
+    }
+  } else {
+    SETERRQ(PETSC_COMM_SELF,1,"Ghost points required on boundary.");
+  }
+  PetscFunctionReturn(0);
+}
+
+/*
+  Destroy AField.
+
+  FIXME: How to do this properly?
+*/
+PetscErrorCode AFieldDestroy2d(DM da,AField *cgs[],AField **a2d[])
+{
+  PetscErrorCode ierr;
+  PetscInt       gys;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetGhostCorners(da,NULL,&gys,NULL,NULL,NULL,NULL);CHKERRQ(ierr);
+  *a2d += gys;
+  delete[] a2d;
+  delete[] cgs;
+
   PetscFunctionReturn(0);
 }
 
