@@ -496,7 +496,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   if (appctx->sparse) {
 
     /*
-      Generate sparsity pattern TODO: This only need be done once
+      Generate sparsity pattern
+
+      TODO: This only need be done once
     */
     unsigned int **JP = NULL;
     PetscInt     ctrl[3] = {0,0,0},p=0;
@@ -524,6 +526,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 
     /*
       Colour Jacobian
+
+      TODO: Above sparsity pattern is not currently used.
     */
 
     ISColoring     iscoloring;
@@ -602,48 +606,27 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
             for (i=gxs; i<gxs+gxm; i++) {
               for (d=0; d<dofs; d++) {
 
-                // CASE 1: ghost point below local region
-                if (j < ys) {
+                // CASE 1: Bottom boundary
+                if ((j < 0) && (i >= 0) && (i < Mx))
+                  ll = d+dofs*(i+Mx*(My+j));
 
-                  // Bottom boundary
-                  if ((j < 0) && (i >= 0) && (i < Mx))
-                    ll = d+dofs*(i+Mx*(My+j));
-                  else
-                    ll = d+dofs*(i+j*Mx);	// TODO: Test this
+                // CASE 2: Top boundary
+                else if ((j >= My) && (i >= 0) && (i < Mx))
+                  ll = d+dofs*i;
 
-                // CASE 2: ghost point above local region
-                } else if (j >= ym) {
+                // CASE 3: Left boundary
+                else if ((i < 0) && (j >= 0) && (j < My))
+                  ll = d+dofs*(1+j*Mx+My+2*i);
 
-                  // Top boundary
-                  if ((j >= My) && (i >= 0) && (i < Mx))
-                    ll = d+dofs*i;
-                  else
-                    ll = d+dofs*(i+j*Mx);	// TODO: Test this
-
-                // CASE 3: ghost point left of local region
-                } else if (i < xs) {
-
-                  // Left boundary
-                  if ((i < 0) && (j >= 0) && (j < My))
-                    ll = d+dofs*(1+j*Mx+My+2*i);
-                  else
-                    ll = d+dofs*(i+j*Mx);	// TODO: Test this
-
-                // CASE 4: ghost point right of local region
-                } else if (i >= xm) {
-
-                  // Right boundary
-                  if ((i >= Mx) && (j >= 0) && (j < My))
-                    ll = d+dofs*(j*Mx-2*My+2*i);
-                  else
-                    ll = d+dofs*(i+j*Mx);	// TODO: Test this
+                // CASE 4: Right boundary
+                else if ((i >= Mx) && (j >= 0) && (j < My))
+                  ll = d+dofs*(j*Mx-2*My+2*i);
 
                 // CASE 5: Interior points of local region
-                } else
+                 else
                   ll = d+dofs*(i+j*Mx);		// Column index in global Jacobian
-                if (fabs(J[k][l]) > 1.e-16) {
+                if (fabs(J[k][l]) > 1.e-16)
                   ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],ADD_VALUES);CHKERRQ(ierr);
-                }
                 l++;	// Column index in local part of Jacobian (including ghost points)
               }
             }

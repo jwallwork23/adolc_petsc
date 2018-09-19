@@ -507,6 +507,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
     /*
       Colour Jacobian
+
+      TODO: Above sparsity pattern is not currently used.
     */
 
     ISColoring     iscoloring;
