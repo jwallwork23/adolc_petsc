@@ -232,7 +232,7 @@ PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
   hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
   hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
 
-  trace_on(1);  // ----------------------------------------------- Start of active section
+  trace_on(tag);  // ----------------------------------------------- Start of active section
 
   /*
     Mark independence
@@ -418,7 +418,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   DM             da;
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,l = 0,d,ii,jj,kk,ll,dd,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2,Mx,My;
-  PetscScalar    *u_vec,**J = NULL,norm=0.,diff=0.,*fz;
+  PetscScalar    *u_vec,**J = NULL,norm = 0.,diff = 0.,*fz;
   Field          **u,**frhs;
   Vec            localU;
 
@@ -453,12 +453,12 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
       u_vec[k++] = u[j][i].v;
     }
   }
+  k = 0;
 
   /* Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive */
   if (appctx->zos) {
-    k = 0;
     ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
-    zos_forward(1,m,n,0,u_vec,fz);
+    zos_forward(tag,m,n,0,u_vec,fz);
     frhs = new Field*[ym];
     for (j=ys; j<ys+ym; j++)
       frhs[j] = new Field[xm];
@@ -487,6 +487,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     delete[] frhs;
     PetscPrintf(MPI_COMM_WORLD,"    ----- Testing Zero Order evaluation -----\n");
     PetscPrintf(MPI_COMM_WORLD,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",sqrt(diff/norm));
+    k = 0;
   }
 
   /*
@@ -584,19 +585,19 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   } else {
 
     J = myalloc2(m,n);
-    jacobian(1,m,n,u_vec,J);
+    jacobian(tag,m,n,u_vec,J);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-    PetscMPIInt rank;
-    MPI_Comm_rank(PETSC_COMM_WORLD,&rank);
+    /*
+      Add entries into the global Jacobian one-by-one.
 
-    /* Add entries one-by-one. TODO: better to add row-by-row, similarly as with the stencil */
+      TODO: better to add row-by-row, similarly as with the stencil
+    */
     ierr = MatZeroEntries(A);CHKERRQ(ierr);
-    k = 0;
     for (jj=ys; jj<ys+ym; jj++) {
       for (ii=xs; ii<xs+xm; ii++) {
         for (dd=0; dd<dofs; dd++) {
-          kk = dd+dofs*(ii+jj*Mx);
+          kk = dd+dofs*(ii+jj*Mx);		// Row index in global Jacobian
           for (j=gys; j<gys+gym; j++) {
             for (i=gxs; i<gxs+gxm; i++) {
               for (d=0; d<dofs; d++) {
@@ -639,16 +640,16 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 
                 // CASE 5: Interior points of local region
                 } else
-                  ll = d+dofs*(i+j*Mx);
+                  ll = d+dofs*(i+j*Mx);		// Column index in global Jacobian
                 if (fabs(J[k][l]) > 1.e-16) {
                   ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],ADD_VALUES);CHKERRQ(ierr);
                 }
-                l++;
+                l++;	// Column index in local part of Jacobian (including ghost points)
               }
             }
           }
           l = 0;
-          k++;
+          k++;		// Row index in local part of Jacobian
         }
       }
     }

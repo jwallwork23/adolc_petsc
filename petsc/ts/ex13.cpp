@@ -571,18 +571,19 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
     /*
-      Insert entries one-by-one.
+      Add entries into the global Jacobian one-by-one.
 
       TODO: better to insert row-by-row, similarly as with the stencil
     */
     ierr = MatZeroEntries(J);CHKERRQ(ierr);
+    //ierr = MatSetOption(J,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr);
     for (jj=ys; jj<ys+ym; jj++) {
       for (ii=xs; ii<xs+xm; ii++) {
-        kk = ii+jj*Mx;                  // Row index in global Jacobian
+        kk = ii+jj*Mx;                    // Row index in global Jacobian
         for (j=gys; j<gys+gym; j++) {
           for (i=gxs; i<gxs+gxm; i++) {
-            ll = i+j*Mx;		// Column index in global Jacobian
-            if (fabs(Jac[k][l])!=0.)
+            ll = i+j*Mx;		  // Column index in global Jacobian
+            if (fabs(Jac[k][l]) > 1.e-16)
               ierr = MatSetValues(J,1,&kk,1,&ll,&Jac[k][l],ADD_VALUES);CHKERRQ(ierr);
             l++; // Column index in local part of Jacobian (including ghost points)
           }
