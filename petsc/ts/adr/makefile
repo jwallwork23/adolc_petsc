@@ -6,25 +6,12 @@ CPPFLAGS		=
 FPPFLAGS		=
 CLEANFILES		= ex1 ex5 ex5adj binaryoutput *.tap *.info
 
-INCLUDES	= -I./
-INCLUDES	+= -I${ADOLC_HOME}/ADOL-C/include
-INCLUDES	+= -I${ADOLC_BUILDDIR}/ADOL-C/include
-INCLUDES	+= -I${COLPACK_HOME}/include/ColPack
-INCLUDES        += -I${COLPACK_HOME}/Main
-INCLUDES        += -I${COLPACK_HOME}/GraphColoring
-INCLUDES        += -I${COLPACK_HOME}/BipartiteGraphColoring
-INCLUDES        += -I${COLPACK_HOME}/BipartiteGraphPartialColoring
-INCLUDES        += -I${COLPACK_HOME}/Utilities
-INCLUDES        += -I${COLPACK_HOME}/Recovery
+INCLUDES		= -I./
+INCLUDES		+= -I${ADOLC_HOME}/ADOL-C/include
+INCLUDES		+= -I${ADOLC_BUILDDIR}/ADOL-C/include
 
-LIB 		= ${PETSC_TS_LIB}
-LIB		+= -L${ADOLC_HOME}/build -ladolc
-#LIB		+= -ldl ${COLPACK_INSTALL_PATH}
-
-# TODO: link ColPack properly - the below is currently ineffective
-COLPACK_INSTALL_PATH 	= ${COLPACK_HOME}/lib/libColPack.so
-OMP_FLAG		= -fopenmp
-LDFLAGS 		= -Wall -std=c++11 $(OMP_FLAG) -O3 -ldl ${COLPACK_INSTALL_PATH}
+LIB 			= ${PETSC_TS_LIB}
+LIB			+= -L${ADOLC_HOME}/build -ladolc
 
 CC 			= g++
 

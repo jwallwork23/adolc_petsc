@@ -10,24 +10,26 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
       Helpful runtime monitor options:
            -ts_monitor_draw_solution
            -draw_save -draw_save_movie
-           -jacobian_by_hand - use a hand-coded Jacobian
-           -no_annotation    - do not annotate using ADOL-C
-           -sparse           - generate Jacobian using ADOL-C sparse Jacobian driver
-           -sparse_view      - view matrices involved in sparse Jacobian computation
-
-      Helpful ADOL-C debugging options:
-           -adolc_test_zos      - test Zero Order Scalar evaluation
-           -adolc_test_zos_view - view each nonzero contribution to check validity
 
       Helpful runtime monitor options for debugging:
            -da_grid_x 12 -da_grid_y 12 -ts_max_steps 1 -snes_test_jacobian
            -da_grid_x 12 -da_grid_y 12 -ts_max_steps 1 -snes_test_jacobian -snes_test_jacobian_view
 
-      Helpful runtime linear solver options:
-           -pc_type mg -pc_mg_galerkin pmat -da_refine 1 -snes_monitor -ksp_monitor -ts_view  (note that these Jacobians are so well-conditioned multigrid may not be the best solver)
+      Command line arguments to test different aspects of the automatic
+      differentiation process.
 
-      Point your browser to localhost:8080 to monitor the simulation
-           ./ex5  -ts_view_pre saws  -stack_view saws -draw_save -draw_save_single_file -x_virtual -ts_monitor_draw_solution -saws_root .
+      -adolc_test_zos      : Verify zero order evalutation in ADOL-C gives
+                             the same result as evalutating the RHS.
+      -adolc_test_zos_view : View the zero order evaluation component-by-
+                             component.
+      -adolc_sparse        : Assemble the Jacobian using ADOL-C sparse
+                             drivers and PETSc colouring routines.
+      -adolc_sparse_view   : Print the matrices involved in the sparse
+                             Jacobian computation.
+      -jacobian_by_hand    : Use the hand-coded Jacobian of ex13.c, rather
+                             than generating it automatically.
+      -no_annotation       : Do not annotate ADOL-C active variables.
+                             (Should be used alongside -jacobian_by_hand.)
 */
 
 /*
@@ -59,22 +61,21 @@ typedef struct {
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
   PetscBool zos,zos_view,no_an,sparse,sparse_view;
-  PetscInt  Mx,My;
   AField    **u_a,**f_a;
 } AppCtx;
 
-/*
-   User-defined routines
-*/
+/* (Slightly modified) functions included in original code of ex13.c */
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
-extern PetscErrorCode RHSJacobianADOLC(TS,PetscReal,Vec,Mat,Mat,void*);
-extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
-extern PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr);
 extern PetscErrorCode RHSLocalPassive(DM da,Field **f,Field **u,void *ptr);
+extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
 
+/* Problem specific functions for the purpose of automatic Jacobian computation */
+extern PetscErrorCode RHSJacobianADOLC(TS,PetscReal,Vec,Mat,Mat,void*);
+extern PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr);
+
+/* Utility functions for automatic Jacobian computation */
 extern PetscErrorCode AFieldCreate2d(DM da,AField *cgs,AField **a2d);
 extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]);
-extern PetscErrorCode AFieldInsertGhostValues2d(DM da,Field **u,AField **u_a);
 extern PetscErrorCode AFieldDestroy2d(DM da,AField *cgs[],AField **a2d[]);
 
 int main(int argc,char **argv)
@@ -84,8 +85,8 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
-  AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
   PetscInt       gxs,gys,gxm,gym;
+  AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
   PetscBool      byhand = PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -96,10 +97,10 @@ int main(int argc,char **argv)
   appctx.zos = PETSC_FALSE;appctx.zos_view = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_view = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&appctx.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&appctx.zos_view,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse_view",&appctx.sparse_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-sparse_view",&appctx.sparse_view,NULL);CHKERRQ(ierr);
   appctx.D1     = 8.0e-5;
   appctx.D2     = 4.0e-5;
   appctx.gamma  = .024;
@@ -113,7 +114,6 @@ int main(int argc,char **argv)
   ierr = DMSetUp(da);CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,0,"u");CHKERRQ(ierr);
   ierr = DMDASetFieldName(da,1,"v");CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&appctx.Mx,&appctx.My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
 
   /*  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Extract global vectors from DMDA; then duplicate for remaining
@@ -194,17 +194,10 @@ int main(int argc,char **argv)
   ierr = TSSolve(ts,x);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Free work space.  All PETSc objects should be destroyed when they
-     are no longer needed.
+     Free work space and call destructors for AFields.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
-  ierr = DMDestroy(&da);CHKERRQ(ierr);
-
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Call destructors for active fields, freeing associated memory in the
-     process.
-   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if (!appctx.no_an) {
 /*
     ierr = AFieldDestroy2d(da,f_c,f_a);CHKERRQ(ierr);
@@ -216,8 +209,8 @@ int main(int argc,char **argv)
     delete[] u_a;
     delete[] f_c;
     delete[] u_c;
-
   }
+  ierr = DMDestroy(&da);CHKERRQ(ierr);
 
   ierr = PetscFinalize();
   return ierr;
@@ -227,7 +220,7 @@ PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
 {
   PetscErrorCode  ierr;
   AppCtx          *appctx = (AppCtx*)ptr;
-  PetscInt        i,j,xs,ys,xm,ym,gxs,gys,gxm,gym;
+  PetscInt        i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,Mx,My;
   PetscReal       hx,hy,sx,sy;
   AField          **f_a = appctx->f_a,**u_a = appctx->u_a;
   adouble         uc,uxx,uyy,vc,vxx,vyy;
@@ -235,8 +228,9 @@ PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
   PetscFunctionBeginUser;
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  hx = 2.50/(PetscReal)(appctx->Mx);sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)(appctx->My);sy = 1.0/(hy*hy);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
 
   trace_on(1);  // ----------------------------------------------- Start of active section
 
@@ -249,7 +243,8 @@ PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
   */
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
-      u_a[j][i].u <<= u[j][i].u;u_a[j][i].v <<= u[j][i].v;
+      u_a[j][i].u <<= u[j][i].u;
+      u_a[j][i].v <<= u[j][i].v;
     }
   }
 
@@ -267,7 +262,8 @@ PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
       f_a[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
 
       // Mark dependence
-      f_a[j][i].u >>= f[j][i].u;f_a[j][i].v >>= f[j][i].v;
+      f_a[j][i].u >>= f[j][i].u;
+      f_a[j][i].v >>= f[j][i].v;
     }
   }
   trace_off();  // ----------------------------------------------- End of active section
@@ -279,14 +275,15 @@ PetscErrorCode RHSLocalPassive(DM da,Field **f,Field **u,void *ptr)
 {
   PetscErrorCode ierr;
   AppCtx         *appctx = (AppCtx*)ptr;
-  PetscInt       i,j,xs,ys,xm,ym;
+  PetscInt       i,j,xs,ys,xm,ym,Mx,My;
   PetscReal      hx,hy,sx,sy;
   PetscScalar    uc,uxx,uyy,vc,vxx,vyy;
 
   PetscFunctionBeginUser;
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-  hx = 2.50/(PetscReal)(appctx->Mx);sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)(appctx->My);sy = 1.0/(hy*hy);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
       uc        = u[j][i].u;
@@ -420,14 +417,14 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,ii,jj,k = 0,l = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,loc,d,dofs = 2;
-  PetscInt       Mx = appctx->Mx,My = appctx->My;
+  PetscInt       i,j,ii,jj,k = 0,l = 0,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,loc,d,dofs = 2,Mx,My;
   PetscScalar    *u_vec,**J = NULL,norm=0.,diff=0.,*fz;
   Field          **u,**frhs;
   Vec            localU;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
 
   /*
@@ -598,7 +595,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     k = 0;
     for (jj=ys; jj<ys+ym; jj++) {
       for (ii=xs; ii<xs+xm; ii++) {
-        k = ii+jj*My;
+        k = ii+jj*Mx;
         for (j=gys; j<gys+gym; j++) {
           for (i=gxs; i<gxs+gxm; i++) {
             for (d=0; d<dofs; d++) {
@@ -610,7 +607,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
                 if ((j < 0) && (i >= 0) && (i < Mx))
                   loc = d+dofs*(i+Mx*(My+j));
                 else
-                  loc = d+dofs*(i+j*My);	// TODO: Test this
+                  loc = d+dofs*(i+j*Mx);	// TODO: Test this
 
               // CASE 2: ghost point above local region
               } else if (j >= ym) {
@@ -619,31 +616,31 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
                 if ((j >= My) && (i >= 0) && (i < Mx))
                   loc = d+dofs*i;
                 else
-                  loc = d+dofs*(i+j*My);	// TODO: Test this
+                  loc = d+dofs*(i+j*Mx);	// TODO: Test this
 
               // CASE 3: ghost point left of local region
               } else if (i < xs) {
 
                 // Left boundary
                 if ((i < 0) && (j >= 0) && (j < My))
-                  loc = d+dofs*(1+j*My+Mx+2*i);
+                  loc = d+dofs*(1+j*Mx+My+2*i);
                 else
-                  loc = d+dofs*(i+j*My);	// TODO: Test this
+                  loc = d+dofs*(i+j*Mx);	// TODO: Test this
 
               // CASE 4: ghost point right of local region
               } else if (i >= xm) {
 
                 // Right boundary
                 if ((i >= Mx) && (j >= 0) && (j < My))
-                  loc = d+dofs*(j*My-2*Mx+2*i);
+                  loc = d+dofs*(j*Mx-2*My+2*i);
                 else
-                  loc = d+dofs*(i+j*My);	// TODO: Test this
+                  loc = d+dofs*(i+j*Mx);	// TODO: Test this
 
               // CASE 5: Interior points of local region
               } else
-                loc = d+dofs*(i+j*My);
+                loc = d+dofs*(i+j*Mx);
               if (fabs(J[k][l]) > 1.e-16) {
-                ierr = PetscPrintf(PETSC_COMM_SELF,"RANK %d: i=%2d j=%2d k=%3d l=%3d loc=%3d J=%+.4e\n",rank,i,j,k,l,loc,J[k][l]);CHKERRQ(ierr);
+                //ierr = PetscPrintf(PETSC_COMM_SELF,"RANK %d: i=%2d j=%2d k=%3d l=%3d loc=%3d J=%+.4e\n",rank,i,j,k,l,loc,J[k][l]);CHKERRQ(ierr);
                 ierr = MatSetValues(A,1,&k,1,&loc,&J[k][l],ADD_VALUES);CHKERRQ(ierr);
               }
               l++;
@@ -666,10 +663,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 
   /*
     Assemble local matrix
-
-    NOTE (from Vec ex2): Each processor can contribute any vector entries, regardless of which
-         processor "owns" them; any nonlocal contributions will be transferred to the appropriate
-         processor during the assembly process.
   */
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
@@ -813,49 +806,6 @@ PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
     (*a2d)[j] = cgs + j*gxm - gxs;
   }
   *a2d -= gys;
-  PetscFunctionReturn(0);
-}
-
-/*
-  Insert ghost point values into AField.
-*/
-PetscErrorCode AFieldInsertGhostValues2d(DM da,Field **u,AField **u_a)
-{
-  PetscErrorCode  ierr;
-  PetscInt        i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,lower,upper;
-  DMDAStencilType st;
-  DMBoundaryType  xbc,ybc;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&xbc,&ybc,PETSC_IGNORE,&st);CHKERRQ(ierr);
-
-  // Ghost points need to be present, even if unused, as with DM_BOUNDARY_GHOSTED.
-  if ((xbc != DM_BOUNDARY_NONE) && (ybc != DM_BOUNDARY_NONE)) {
-    lower = ys;upper = ys+ym;
-    if (st == DMDA_STENCIL_BOX) {
-      lower += gys;upper -= gys;
-    }
-    for (j=lower; j<upper; j++) {
-      for (i=0; i<2; i++) {
-        u_a[j][gxs+i*(gxm-1)].u = u[j][gxs+i*(gxm-1)].u;
-        u_a[j][gxs+i*(gxm-1)].v = u[j][gxs+i*(gxm-1)].v;
-      }
-    }
-    lower = xs;upper = xs+xm;
-    if (st == DMDA_STENCIL_BOX) {
-      lower += gxs;upper -= gxs;
-    }
-    for (i=lower; i<upper; i++) {
-      for (j=0; j<2; j++) {
-        u_a[gys+j*(gym-1)][i].u = u[gys+j*(gym-1)][i].u;
-        u_a[gys+j*(gym-1)][i].v = u[gys+j*(gym-1)][i].v;
-      }
-    }
-  } else {
-    SETERRQ(PETSC_COMM_SELF,1,"Ghost points required on boundary.");
-  }
   PetscFunctionReturn(0);
 }
 

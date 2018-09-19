@@ -10,6 +10,22 @@ static char help[] = "Demonstrates automatic Jacobian computation using ADOL-C f
     mpiexec -n 2 ./ex13 -da_grid_x 40 -da_grid_y 40 -ts_max_steps 2 -snes_monitor -ksp_monitor
     mpiexec -n 1 ./ex13 -snes_fd_color -ts_monitor_draw_solution
     mpiexec -n 2 ./ex13 -ts_type sundials -ts_monitor 
+
+   Command line arguments to test different aspects of the automatic
+   differentiation process.
+
+   -adolc_test_zos      : Verify zero order evalutation in ADOL-C gives
+                          the same result as evalutating the RHS.
+   -adolc_test_zos_view : View the zero order evaluation component-by-
+                          component.
+   -adolc_sparse        : Assemble the Jacobian using ADOL-C sparse
+                          drivers and PETSc colouring routines.
+   -adolc_sparse_view   : Print the matrices involved in the sparse
+                          Jacobian computation.
+   -jacobian_by_hand    : Use the hand-coded Jacobian of ex13.c, rather
+                          than generating it automatically.
+   -no_annotation       : Do not annotate ADOL-C active variables.
+                          (Should be used alongside -jacobian_by_hand.)
 */
 
 #include <petscdm.h>
@@ -21,7 +37,7 @@ static char help[] = "Demonstrates automatic Jacobian computation using ADOL-C f
 #define tag 1
 
 /*
-   User-defined data structures and routines
+   User-defined data structures
 */
 typedef struct {
   PetscReal c;
@@ -56,24 +72,6 @@ int main(int argc,char **argv)
   PetscBool      byhand = PETSC_FALSE;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
-
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Command line arguments to test different aspects of the automatic
-     differentiation process.
-
-     -adolc_test_zos      : Verify zero order evalutation in ADOL-C gives
-                            the same result as evalutating the RHS.
-     -adolc_test_zos_view : View the zero order evaluation component-by-
-                            component.
-     -adolc_sparse        : Assemble the Jacobian using ADOL-C sparse
-                            drivers and PETSc colouring routines.
-     -adolc_sparse_view   : Print the matrices involved in the sparse
-                            Jacobian computation.
-     -jacobian_by_hand    : Use the hand-coded Jacobian of ex13.c, rather
-                            than generating it automatically.
-     -no_annotation       : Do not annotate ADOL-C active variables.
-                            (Should be used alongside -jacobian_by_hand.)
-  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   user.no_an = PETSC_FALSE;user.zos = PETSC_FALSE;user.zos_view = PETSC_FALSE;user.sparse = PETSC_FALSE;user.sparse_view = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&user.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&user.zos_view,NULL);CHKERRQ(ierr);
@@ -294,7 +292,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   AppCtx         *user=(AppCtx*)ptr;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       xs,ys,xm,ym;
+  PetscInt       xm,ym;
   PetscScalar    **uarray,**f;
   Vec            localU;
 
@@ -316,7 +314,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   ierr = DMDAVecGetArray(da,F,&f);CHKERRQ(ierr);
 
   /* Get local grid boundaries */
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetCorners(da,NULL,NULL,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
   /* Compute function over the locally owned part of the grid */
   if (!user->no_an) {
@@ -329,7 +327,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   ierr = DMDAVecRestoreArrayRead(da,localU,&uarray);CHKERRQ(ierr);
   ierr = DMDAVecRestoreArray(da,F,&f);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
-  ierr = PetscLogFlops(11.0*ym*xm);CHKERRQ(ierr);
+  ierr = PetscLogFlops(11.0*xm*ym);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
