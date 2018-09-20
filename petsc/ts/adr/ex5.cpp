@@ -593,30 +593,26 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
     /*
-      Add entries into the global Jacobian one-by-one.
+      Insert entries into the global Jacobian one-by-one.
 
       TODO: better to add row-by-row, similarly as with the stencil
     */
-    ierr = MatZeroEntries(A);CHKERRQ(ierr);
-    for (jj=ys; jj<ys+ym; jj++) {
-      for (ii=xs; ii<xs+xm; ii++) {
+    for (jjj=ys; jjj<ys+ym; jjj++) {
+      for (iii=xs; iii<xs+xm; iii++) {
         for (dd=0; dd<dofs; dd++) {
-          kk = dd+dofs*(ii+jj*Mx);		// Row index in global Jacobian
-          for (jjj=gys; jjj<gys+gym; jjj++) {
-            for (iii=gxs; iii<gxs+gxm; iii++) {
+          kk = dd+dofs*(iii+jjj*Mx);		// Row index in global Jacobian
+          for (jj=gys; jj<gys+gym; jj++) {
+            for (ii=gxs; ii<gxs+gxm; ii++) {
               for (d=0; d<dofs; d++) {
-                i = iii;j = jjj;
-                if (j < 0)			// CASE 1: Bottom boundary
-                  j = My-1;
-                else if (j >= My)		// CASE 2: Top boundary
-                  j = 0;
-                else if (i < 0)			// CASE 3: Left boundary
-                  i = Mx-1;
-                else if (i >= Mx)		// CASE 4: Right boundary
-                  i = 0;
-                ll = d+dofs*(i+j*Mx);		// Column index in global Jacobian
-                if (fabs(J[k][l]) > 1.e-16)
+                if (fabs(J[k][l]) > 1.e-16) {
+                  i = ii;j = jj;
+                  if (j < 0) j = My-1;		// CASE 1: Bottom boundary
+                  else if (j >= My) j = 0;	// CASE 2: Top boundary
+                  else if (i < 0) i = Mx-1;	// CASE 3: Left boundary
+                  else if (i >= Mx) i = 0;	// CASE 4: Right boundary
+                  ll = d+dofs*(i+j*Mx);		// Column index in global Jacobian
                   ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
+                }
                 l++;	// Column index in local part of Jacobian (including ghost points)
               }
             }
