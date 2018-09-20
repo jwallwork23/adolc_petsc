@@ -64,7 +64,7 @@ typedef struct {
   AField    **u_a,**f_a;
 } AppCtx;
 
-/* (Slightly modified) functions included in original code of ex13.c */
+/* (Slightly modified) functions included in original code of ex5.c */
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
 extern PetscErrorCode RHSLocalPassive(DM da,Field **f,Field **u,void *ptr);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
@@ -623,7 +623,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
                   ll = d+dofs*(j*Mx-2*My+2*i);
 
                 // CASE 5: Interior points of local region
-                 else
+                else
                   ll = d+dofs*(i+j*Mx);		// Column index in global Jacobian
                 if (fabs(J[k][l]) > 1.e-16)
                   ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],ADD_VALUES);CHKERRQ(ierr);
