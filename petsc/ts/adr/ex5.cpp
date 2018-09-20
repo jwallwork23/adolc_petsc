@@ -605,28 +605,18 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
           for (j=gys; j<gys+gym; j++) {
             for (i=gxs; i<gxs+gxm; i++) {
               for (d=0; d<dofs; d++) {
-
-                // CASE 1: Bottom boundary
-                if ((j < 0) && (i >= 0) && (i < Mx))
+                if (j < 0)			// CASE 1: Bottom boundary
                   ll = d+dofs*(i+Mx*(My+j));
-
-                // CASE 2: Top boundary
-                else if ((j >= My) && (i >= 0) && (i < Mx))
+                else if (j >= My)		// CASE 2: Top boundary
                   ll = d+dofs*i;
-
-                // CASE 3: Left boundary
-                else if ((i < 0) && (j >= 0) && (j < My))
+                else if (i < 0)			// CASE 3: Left boundary
                   ll = d+dofs*(1+j*Mx+My+2*i);
-
-                // CASE 4: Right boundary
-                else if ((i >= Mx) && (j >= 0) && (j < My))
+                else if (i >= Mx)		// CASE 4: Right boundary
                   ll = d+dofs*(j*Mx-2*My+2*i);
-
-                // CASE 5: Interior points of local region
-                else
+                else				// CASE 5: Interior points of local region
                   ll = d+dofs*(i+j*Mx);		// Column index in global Jacobian
                 if (fabs(J[k][l]) > 1.e-16)
-                  ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],ADD_VALUES);CHKERRQ(ierr);
+                  ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
                 l++;	// Column index in local part of Jacobian (including ghost points)
               }
             }
