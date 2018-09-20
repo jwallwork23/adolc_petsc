@@ -473,7 +473,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 
               // CASE 1: Bottom boundary
               if ((j < 0) && (i >= 0) && (i < Mx))
-                ll = d+dofs*(i+Mx*(My+j));
+                ll = d+dofs*(i+Mx*(My+j));	// Column index in global Jacobian
 
               // CASE 2: Top boundary
               else if ((j >= My) && (i >= 0) && (i < Mx))
@@ -823,7 +823,7 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
 
               // CASE 1: Bottom boundary
               if ((j < 0) && (i >= 0) && (i < Mx))
-                ll = d+dofs*(i+Mx*(My+j));
+                ll = d+dofs*(i+Mx*(My+j));	// Column index in global Jacobian
 
               // CASE 2: Top boundary
               else if ((j >= My) && (i >= 0) && (i < Mx))

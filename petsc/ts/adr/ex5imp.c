@@ -5,13 +5,9 @@ static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equ
 
   Here implicit Crank-Nicolson timestepping is used to solve the same problem as in ex5.c. Another key difference is that functions and Jacobians are calculated in a local sense, using DMTSSetIFunctionLocal and DMTSSetIJacobianLocal.
 
-  TODO: Use DMTSSetIFunctionLocal and DMTSSetIJacobianLocal
-
-  Runtime options:
-    -aijpc        - set the preconditioner matrix to be aij (the Jacobian matrix can be of a different type such as ELL)
+  TODO: Write DMTSComputeIFunction and DMTSComputeIJacobian
  */
 
-#include <petscsys.h>
 #include <petscdm.h>
 #include <petscdmda.h>
 #include <petscts.h>
@@ -22,7 +18,6 @@ typedef struct {
 
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
-  PetscBool aijpc;
 } AppCtx;
 
 /*
@@ -30,6 +25,8 @@ typedef struct {
 */
 extern PetscErrorCode IFunction(TS,PetscReal,Vec,Vec,Vec,void*),InitialConditions(DM,Vec);
 extern PetscErrorCode IJacobian(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
+extern PetscErrorCode DMTSComputeIFunction(DM,PetscReal,Vec,Vec,Vec,void*);
+extern PetscErrorCode DMTSComputeIJacobian(DM,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
 
 int main(int argc,char **argv)
 {
@@ -38,13 +35,13 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
+  PetscBool      local = PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
-  appctx.aijpc = PETSC_FALSE;
-  ierr = PetscOptionsGetBool(NULL,NULL,"-aijpc",&appctx.aijpc,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-local",&local,NULL);CHKERRQ(ierr);
   PetscFunctionBeginUser;
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
@@ -73,19 +70,13 @@ int main(int argc,char **argv)
   ierr = TSSetType(ts,TSCN);CHKERRQ(ierr);
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
-  ierr = TSSetIFunction(ts,NULL,IFunction,&appctx);CHKERRQ(ierr);
-  if (appctx.aijpc) {
-    Mat                    A,B;
-
-    ierr = DMSetMatType(da,MATSELL);CHKERRQ(ierr);
-    ierr = DMCreateMatrix(da,&A);CHKERRQ(ierr);
-    ierr = MatConvert(A,MATAIJ,MAT_INITIAL_MATRIX,&B);CHKERRQ(ierr);
-    /* FIXME do we need to change viewer to display matrix in natural ordering as DMCreateMatrix_DA does? */
-    ierr = TSSetIJacobian(ts,A,B,IJacobian,&appctx);CHKERRQ(ierr);
-    ierr = MatDestroy(&A);CHKERRQ(ierr);
-    ierr = MatDestroy(&B);CHKERRQ(ierr);
-  } else {
+  if (!local) {
+    ierr = TSSetIFunction(ts,NULL,IFunction,&appctx);CHKERRQ(ierr);
     ierr = TSSetIJacobian(ts,NULL,NULL,IJacobian,&appctx);CHKERRQ(ierr);
+  }
+  else {
+    ierr = DMTSSetIFunctionLocal(da,DMTSComputeIFunction,&appctx);CHKERRQ(ierr);
+    ierr = DMTSSetIJacobianLocal(da,DMTSComputeIJacobian,&appctx);CHKERRQ(ierr);
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -320,9 +311,6 @@ PetscErrorCode IJacobian(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat 
       rowstencil.i = i; rowstencil.c = 0;
 
       ierr = MatSetValuesStencil(A,1,&rowstencil,6,stencil,entries,INSERT_VALUES);CHKERRQ(ierr);
-      if (appctx->aijpc) {
-        ierr = MatSetValuesStencil(BB,1,&rowstencil,6,stencil,entries,INSERT_VALUES);CHKERRQ(ierr);
-      }
       stencil[0].c = 1; entries[0] = -appctx->D2*sy;
       stencil[1].c = 1; entries[1] = -appctx->D2*sy;
       stencil[2].c = 1; entries[2] = -appctx->D2*sx;
@@ -332,9 +320,6 @@ PetscErrorCode IJacobian(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat 
       rowstencil.c = 1;
 
       ierr = MatSetValuesStencil(A,1,&rowstencil,6,stencil,entries,INSERT_VALUES);CHKERRQ(ierr);
-      if (appctx->aijpc) {
-        ierr = MatSetValuesStencil(BB,1,&rowstencil,6,stencil,entries,INSERT_VALUES);CHKERRQ(ierr);
-      }
       /* f[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc; */
     }
   }
@@ -348,14 +333,22 @@ PetscErrorCode IJacobian(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat 
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
-  if (appctx->aijpc) {
-    ierr = MatAssemblyBegin(BB,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-    ierr = MatAssemblyEnd(BB,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-    ierr = MatSetOption(BB,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
-  }
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode DMTSComputeIFunction(DM da,PetscReal t,Vec x,Vec y,Vec z,void *ctx)
+{
+  PetscFunctionBegin;
+
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode DMTSComputeIJacobian(DM da,PetscReal t,Vec x,Vec y,PetscReal s,Mat A,Mat B,void *ctx)
+{
+  PetscFunctionBegin;
+
+  PetscFunctionReturn(0);
+}
 
 /*TEST
 
