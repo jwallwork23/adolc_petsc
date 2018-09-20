@@ -405,13 +405,12 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       i,j,k = 0,l = 0,ii,jj,kk,ll,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,Mx,xproc;
+  PetscInt       i,j,k = 0,l,kk,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n;
   PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.;
   Vec            localU;
 
   PetscFunctionBeginUser;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,PETSC_IGNORE,&xproc,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
 
   /*
@@ -572,26 +571,17 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     jacobian(tag,m,n,u_vec,Jac);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-    if (xproc > 1) // FIXME: It doesn't seem right that this is necessary
-      ierr = MatSetOption(J,MAT_NEW_NONZERO_LOCATIONS,PETSC_TRUE);CHKERRQ(ierr);
-
     /* Loop over global points (i.e. rows of the Jacobian) */
-    for (jj=ys; jj<ys+ym; jj++) {
-      for (ii=xs; ii<xs+xm; ii++) {
-        kk = ii+jj*Mx;
+    for (j=ys; j<ys+ym; j++) {
+      for (i=xs; i<xs+xm; i++) {
+        kk = i-gxs+(j-gys)*gxm;		// Index in local space (inc. ghost points)
 
         /* Loop over local points (i.e. columns of the Jacobian) */
-        for (j=gys; j<gys+gym; j++) {
-          for (i=gxs; i<gxs+gxm; i++) {
-            if (fabs(Jac[k][l]) > 1.e-16) {
-              ll = i+j*Mx;
-              ierr = MatSetValues(J,1,&kk,1,&ll,&Jac[k][l],INSERT_VALUES);CHKERRQ(ierr);
-            }
-            l++;
-          }
+        for (l=0; l<n; l++) {
+          if (fabs(Jac[k][l]) > 1.e-16)
+            ierr = MatSetValuesLocal(J,1,&kk,1,&l,&Jac[k][l],INSERT_VALUES);CHKERRQ(ierr);
         }
-        l = 0;
-        k++;
+        k++;	// Row index of ADOL-C generated Jacobian
       }
     }
     myfree2(Jac);

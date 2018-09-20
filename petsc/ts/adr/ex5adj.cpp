@@ -405,14 +405,13 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 {
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,l = 0,d,ii,jj,kk,ll,dd,iii,jjj,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2,Mx,My,xproc;
+  PetscInt       i,j,k = 0,l = 0,d,kk,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2;
   PetscScalar    *u_vec,**J = NULL;
   Field          **u;
   Vec            localU;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,&xproc,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
 
   /*
@@ -457,39 +456,18 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   jacobian(tag,m,n,u_vec,J);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-  if (xproc > 1) // FIXME: It doesn't seem right that this is necessary
-    ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATIONS,PETSC_TRUE);CHKERRQ(ierr);
-
   /* Loop over global points (i.e. rows of the Jacobian) */
-  ierr = MatZeroEntries(A);CHKERRQ(ierr);
-  for (jjj=ys; jjj<ys+ym; jjj++) {
-    for (iii=xs; iii<xs+xm; iii++) {
-      for (dd=0; dd<dofs; dd++) {
-        kk = dd+dofs*(iii+jjj*Mx);
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      for (d=0; d<dofs; d++) {
+        kk = d+dofs*(i-gxs+(j-gys)*gxm);	// Index in local space (inc. ghost points)
 
         /* Loop over local points (i.e. columns of the Jacobian) */
-        for (jj=gys; jj<gys+gym; jj++) {
-          for (ii=gxs; ii<gxs+gxm; ii++) {
-            for (d=0; d<dofs; d++) {
-              if (fabs(J[k][l]) > 1.e-16) {
-
-                /* Consider boundary cases */
-                i  = ii;j = jj;
-                if (j < 0) j = My-1;          // CASE 1: Bottom boundary
-                else if (j >= My) j = 0;      // CASE 2: Top boundary
-                else if (i < 0) i = Mx-1;     // CASE 3: Left boundary
-                else if (i >= Mx) i = 0;      // CASE 4: Right boundary
-                ll = d+dofs*(i+j*Mx);
-
-                /* Insert entries into the global Jacobian one-by-one. */
-                ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
-              }
-              l++;
-            }
-          }
+        for (l=0; l<n; l++) {
+          if (fabs(J[k][l]) > 1.e-16)
+            ierr = MatSetValuesLocal(A,1,&kk,1,&l,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
         }
-        l = 0;
-        k++;
+        k++;	// Row index of ADOL-C generated Jacobian
       }
     }
   }
@@ -748,14 +726,13 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
 {
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,l = 0,d,ii,jj,kk,ll,dd,iii,jjj,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2,Mx,My,xproc;
+  PetscInt       i,j,k = 0,l,d,kk,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2;
   PetscScalar    *u_vec,**J;
   Field          **u;
   Vec            localU,D;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,&xproc,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
 
   /*
@@ -799,38 +776,18 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   jacobian(tag,m,n,u_vec,J);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-  if (xproc > 1) // FIXME: It doesn't seem right that this is necessary
-    ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATIONS,PETSC_TRUE);CHKERRQ(ierr);
-
   /* Loop over global points (i.e. rows of the Jacobian)  */
-  for (jjj=ys; jjj<ys+ym; jjj++) {
-    for (iii=xs; iii<xs+xm; iii++) {
-      for (dd=0; dd<dofs; dd++) {
-        kk = dd+dofs*(iii+jjj*Mx);
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      for (d=0; d<dofs; d++) {
+        kk = d+dofs*(i-gxs+(j-gys)*gxm);	// Index in local space (inc. ghost points)
 
         /* Loop over local points (i.e. columns of the Jacobian) */
-        for (jj=gys; jj<gys+gym; jj++) {
-          for (ii=gxs; ii<gxs+gxm; ii++) {
-            for (d=0; d<dofs; d++) {
-              if (fabs(J[k][l]) > 1.e-16) {
-
-                /* Consider boundary cases */
-                i = ii;j = jj;
-                if (j < 0) j = My-1;          // CASE 1: Bottom boundary
-                else if (j >= My) j = 0;      // CASE 2: Top boundary
-                else if (i < 0) i = Mx-1;     // CASE 3: Left boundary
-                else if (i >= Mx) i = 0;      // CASE 4: Right boundary
-                ll = d+dofs*(i+j*Mx);
-
-                /* Insert entries into the global Jacobian one-by-one. */
-                ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
-              }
-              l++;
-            }
-          }
+        for (l=0; l<n; l++) {
+          if (fabs(J[k][l]) > 1.e-16)
+            ierr = MatSetValuesLocal(A,1,&kk,1,&l,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
         }
-        l = 0;
-        k++;
+        k++;	// Row index of ADOL-C generated Jacobian
       }
     }
   }
