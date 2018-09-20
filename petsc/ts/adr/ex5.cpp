@@ -571,17 +571,15 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     fov_forward(tag,m,n,p,u_vec,Seed,fz,Jcomp);
     ierr = PetscFree(fz);CHKERRQ(ierr);
 
+    // TODO: Use colouring in compressed format
+
     /*
       Free workspace
     */
 
     myfree2(Seed);
-
     ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
     ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
-
-    // TODO: Use colouring in compressed format
-
     ierr = PetscPrintf(MPI_COMM_WORLD,"Exiting. Sparse driver not yet complete.\n");CHKERRQ(ierr);
     exit(0);
 
@@ -591,7 +589,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     jacobian(tag,m,n,u_vec,J);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-    /* Loop over global points (i.e. rows of the Jacobian) */
+    /* Loop over local points not including ghost points (i.e. rows of the Jacobian) */
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
         for (d=0; d<dofs; d++) {

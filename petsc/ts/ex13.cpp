@@ -571,7 +571,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     jacobian(tag,m,n,u_vec,Jac);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-    /* Loop over global points (i.e. rows of the Jacobian) */
+    /* Loop over local points not including ghost points (i.e. rows of the Jacobian) */
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
         kk = i-gxs+(j-gys)*gxm;		// Index in local space (inc. ghost points)

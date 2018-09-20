@@ -456,7 +456,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   jacobian(tag,m,n,u_vec,J);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-  /* Loop over global points (i.e. rows of the Jacobian) */
+  /* Loop over local points not including ghost points (i.e. rows of the Jacobian) */
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
       for (d=0; d<dofs; d++) {
@@ -776,7 +776,7 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   jacobian(tag,m,n,u_vec,J);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-  /* Loop over global points (i.e. rows of the Jacobian)  */
+  /* Loop over local points not including ghost points (i.e. rows of the Jacobian)  */
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
       for (d=0; d<dofs; d++) {
