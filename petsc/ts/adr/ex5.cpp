@@ -417,7 +417,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,l = 0,d,ii,jj,kk,ll,dd,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2,Mx,My;
+  PetscInt       i,j,k = 0,l = 0,d,ii,jj,kk,ll,dd,iii,jjj,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2,Mx,My;
   PetscScalar    *u_vec,**J = NULL,norm = 0.,diff = 0.,*fz;
   Field          **u,**frhs;
   Vec            localU;
@@ -602,19 +602,19 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
       for (ii=xs; ii<xs+xm; ii++) {
         for (dd=0; dd<dofs; dd++) {
           kk = dd+dofs*(ii+jj*Mx);		// Row index in global Jacobian
-          for (j=gys; j<gys+gym; j++) {
-            for (i=gxs; i<gxs+gxm; i++) {
+          for (jjj=gys; jjj<gys+gym; jjj++) {
+            for (iii=gxs; iii<gxs+gxm; iii++) {
               for (d=0; d<dofs; d++) {
+                i = iii;j = jjj;
                 if (j < 0)			// CASE 1: Bottom boundary
-                  ll = d+dofs*(i+Mx*(My+j));
+                  j = My-1;
                 else if (j >= My)		// CASE 2: Top boundary
-                  ll = d+dofs*i;
+                  j = 0;
                 else if (i < 0)			// CASE 3: Left boundary
-                  ll = d+dofs*(1+j*Mx+My+2*i);
+                  i = Mx-1;
                 else if (i >= Mx)		// CASE 4: Right boundary
-                  ll = d+dofs*(j*Mx-2*My+2*i);
-                else				// CASE 5: Interior points of local region
-                  ll = d+dofs*(i+j*Mx);		// Column index in global Jacobian
+                  i = 0;
+                ll = d+dofs*(i+j*Mx);		// Column index in global Jacobian
                 if (fabs(J[k][l]) > 1.e-16)
                   ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
                 l++;	// Column index in local part of Jacobian (including ghost points)
