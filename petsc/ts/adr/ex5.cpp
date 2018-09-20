@@ -417,14 +417,14 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,l = 0,d,ii,jj,kk,ll,dd,iii,jjj,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2,Mx,My;
+  PetscInt       i,j,k = 0,l = 0,d,ii,jj,kk,ll,dd,iii,jjj,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2,Mx,My,xproc;
   PetscScalar    *u_vec,**J = NULL,norm = 0.,diff = 0.,*fz;
   Field          **u,**frhs;
   Vec            localU;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,&xproc,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
 
   /*
@@ -592,6 +592,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     jacobian(tag,m,n,u_vec,J);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
+    if (xproc > 1) // FIXME: It doesn't seem right that this is necessary
+      ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATIONS,PETSC_TRUE);CHKERRQ(ierr);
+
     /* Loop over global points (i.e. rows of the Jacobian) */
     for (jjj=ys; jjj<ys+ym; jjj++) {
       for (iii=xs; iii<xs+xm; iii++) {
@@ -606,10 +609,10 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 
                   /* Consider boundary cases. */
                   i = ii;j = jj;
-                  if (j < 0) j = My-1;		// CASE 1: Bottom boundary
-                  else if (j >= My) j = 0;	// CASE 2: Top boundary
-                  else if (i < 0) i = Mx-1;	// CASE 3: Left boundary
-                  else if (i >= Mx) i = 0;	// CASE 4: Right boundary
+                  if (j < 0) j = My+j;		// CASE 1: Bottom boundary
+                  else if (j >= My) j = j-My;	// CASE 2: Top boundary
+                  else if (i < 0) i = Mx+i;	// CASE 3: Left boundary
+                  else if (i >= Mx) i = j-Mx;	// CASE 4: Right boundary
                   ll = d+dofs*(i+j*Mx);
 
                   /* Insert entries into the global Jacobian one-by-one. */

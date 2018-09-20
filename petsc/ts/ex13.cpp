@@ -405,13 +405,13 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       i,j,k = 0,l = 0,ii,jj,kk,ll,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,Mx;
+  PetscInt       i,j,k = 0,l = 0,ii,jj,kk,ll,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,Mx,xproc;
   PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.;
   Vec            localU;
 
   PetscFunctionBeginUser;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,PETSC_IGNORE,&xproc,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
 
   /*
@@ -572,26 +572,26 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     jacobian(tag,m,n,u_vec,Jac);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-    /*
-      Add entries into the global Jacobian one-by-one.
+    if (xproc > 1) // FIXME: It doesn't seem right that this is necessary
+      ierr = MatSetOption(J,MAT_NEW_NONZERO_LOCATIONS,PETSC_TRUE);CHKERRQ(ierr);
 
-      TODO: better to insert row-by-row, similarly as with the stencil
-    */
-    ierr = MatZeroEntries(J);CHKERRQ(ierr);
-    //ierr = MatSetOption(J,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr);
+    /* Loop over global points (i.e. rows of the Jacobian) */
     for (jj=ys; jj<ys+ym; jj++) {
       for (ii=xs; ii<xs+xm; ii++) {
-        kk = ii+jj*Mx;                    // Row index in global Jacobian
+        kk = ii+jj*Mx;
+
+        /* Loop over local points (i.e. columns of the Jacobian) */
         for (j=gys; j<gys+gym; j++) {
           for (i=gxs; i<gxs+gxm; i++) {
-            ll = i+j*Mx;		  // Column index in global Jacobian
-            if (fabs(Jac[k][l]) > 1.e-16)
-              ierr = MatSetValues(J,1,&kk,1,&ll,&Jac[k][l],ADD_VALUES);CHKERRQ(ierr);
-            l++; // Column index in local part of Jacobian (including ghost points)
+            if (fabs(Jac[k][l]) > 1.e-16) {
+              ll = i+j*Mx;
+              ierr = MatSetValues(J,1,&kk,1,&ll,&Jac[k][l],INSERT_VALUES);CHKERRQ(ierr);
+            }
+            l++;
           }
         }
         l = 0;
-        k++;     // Row index in local part of Jacobian
+        k++;
       }
     }
     myfree2(Jac);

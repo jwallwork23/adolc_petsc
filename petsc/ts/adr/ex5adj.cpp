@@ -405,14 +405,14 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 {
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,l = 0,d,ii,jj,kk,ll,dd,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2,Mx,My;
+  PetscInt       i,j,k = 0,l = 0,d,ii,jj,kk,ll,dd,iii,jjj,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2,Mx,My,xproc;
   PetscScalar    *u_vec,**J = NULL;
   Field          **u;
   Vec            localU;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,&xproc,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
 
   /*
@@ -457,47 +457,39 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   jacobian(tag,m,n,u_vec,J);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-  /*
-    Add entries one-by-one.
+  if (xproc > 1) // FIXME: It doesn't seem right that this is necessary
+    ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATIONS,PETSC_TRUE);CHKERRQ(ierr);
 
-    TODO: better to add row-by-row, similarly as with the stencil
-  */
+  /* Loop over global points (i.e. rows of the Jacobian) */
   ierr = MatZeroEntries(A);CHKERRQ(ierr);
-  for (jj=ys; jj<ys+ym; jj++) {
-    for (ii=xs; ii<xs+xm; ii++) {
+  for (jjj=ys; jjj<ys+ym; jjj++) {
+    for (iii=xs; iii<xs+xm; iii++) {
       for (dd=0; dd<dofs; dd++) {
-        kk = dd+dofs*(ii+jj*Mx);		// Row index in global Jacobian
-        for (j=gys; j<gys+gym; j++) {
-          for (i=gxs; i<gxs+gxm; i++) {
+        kk = dd+dofs*(iii+jjj*Mx);
+
+        /* Loop over local points (i.e. columns of the Jacobian) */
+        for (jj=gys; jj<gys+gym; jj++) {
+          for (ii=gxs; ii<gxs+gxm; ii++) {
             for (d=0; d<dofs; d++) {
+              if (fabs(J[k][l]) > 1.e-16) {
 
-              // CASE 1: Bottom boundary
-              if ((j < 0) && (i >= 0) && (i < Mx))
-                ll = d+dofs*(i+Mx*(My+j));	// Column index in global Jacobian
+                /* Consider boundary cases */
+                i  = ii;j = jj;
+                if (j < 0) j = My-1;          // CASE 1: Bottom boundary
+                else if (j >= My) j = 0;      // CASE 2: Top boundary
+                else if (i < 0) i = Mx-1;     // CASE 3: Left boundary
+                else if (i >= Mx) i = 0;      // CASE 4: Right boundary
+                ll = d+dofs*(i+j*Mx);
 
-              // CASE 2: Top boundary
-              else if ((j >= My) && (i >= 0) && (i < Mx))
-                ll = d+dofs*i;
-
-              // CASE 3: Left boundary
-              else if ((i < 0) && (j >= 0) && (j < My))
-                ll = d+dofs*(1+j*Mx+My+2*i);
-
-              // CASE 4: Right boundary
-              else if ((i >= Mx) && (j >= 0) && (j < My))
-                ll = d+dofs*(j*Mx-2*My+2*i);
-
-              // CASE 5: Interior points of local region
-              else
-                ll = d+dofs*(i+j*Mx);		// Column index in global Jacobian
-              if (fabs(J[k][l]) > 1.e-16)
-                ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],ADD_VALUES);CHKERRQ(ierr);
-              l++;	// Column index in local part of Jacobian (including ghost points)
+                /* Insert entries into the global Jacobian one-by-one. */
+                ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
+              }
+              l++;
             }
           }
         }
         l = 0;
-        k++;		// Row index in local part of Jacobian
+        k++;
       }
     }
   }
@@ -756,14 +748,14 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
 {
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,l = 0,d,ii,jj,kk,ll,dd,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2,Mx,My;
+  PetscInt       i,j,k = 0,l = 0,d,ii,jj,kk,ll,dd,iii,jjj,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2,Mx,My,xproc;
   PetscScalar    *u_vec,**J;
   Field          **u;
   Vec            localU,D;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,&xproc,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
 
   /*
@@ -807,47 +799,38 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   jacobian(tag,m,n,u_vec,J);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-  /*
-    Add entries one-by-one.
+  if (xproc > 1) // FIXME: It doesn't seem right that this is necessary
+    ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATIONS,PETSC_TRUE);CHKERRQ(ierr);
 
-    TODO: better to add row-by-row, similarly as with the stencil
-  */
-  ierr = MatZeroEntries(A);CHKERRQ(ierr);
-  for (jj=ys; jj<ys+ym; jj++) {
-    for (ii=xs; ii<xs+xm; ii++) {
+  /* Loop over global points (i.e. rows of the Jacobian)  */
+  for (jjj=ys; jjj<ys+ym; jjj++) {
+    for (iii=xs; iii<xs+xm; iii++) {
       for (dd=0; dd<dofs; dd++) {
-        kk = dd+dofs*(ii+jj*Mx);                // Row index in global Jacobian
-        for (j=gys; j<gys+gym; j++) {
-          for (i=gxs; i<gxs+gxm; i++) {
+        kk = dd+dofs*(iii+jjj*Mx);
+
+        /* Loop over local points (i.e. columns of the Jacobian) */
+        for (jj=gys; jj<gys+gym; jj++) {
+          for (ii=gxs; ii<gxs+gxm; ii++) {
             for (d=0; d<dofs; d++) {
+              if (fabs(J[k][l]) > 1.e-16) {
 
-              // CASE 1: Bottom boundary
-              if ((j < 0) && (i >= 0) && (i < Mx))
-                ll = d+dofs*(i+Mx*(My+j));	// Column index in global Jacobian
+                /* Consider boundary cases */
+                i = ii;j = jj;
+                if (j < 0) j = My-1;          // CASE 1: Bottom boundary
+                else if (j >= My) j = 0;      // CASE 2: Top boundary
+                else if (i < 0) i = Mx-1;     // CASE 3: Left boundary
+                else if (i >= Mx) i = 0;      // CASE 4: Right boundary
+                ll = d+dofs*(i+j*Mx);
 
-              // CASE 2: Top boundary
-              else if ((j >= My) && (i >= 0) && (i < Mx))
-                ll = d+dofs*i;
-
-              // CASE 3: Left boundary
-              else if ((i < 0) && (j >= 0) && (j < My))
-                ll = d+dofs*(1+j*Mx+My+2*i);
-
-              // CASE 4: Right boundary
-              else if ((i >= Mx) && (j >= 0) && (j < My))
-                ll = d+dofs*(j*Mx-2*My+2*i);
-
-              // CASE 5: Interior points of local region
-              else
-                ll = d+dofs*(i+j*Mx);           // Column index in global Jacobian
-              if (fabs(J[k][l]) > 1.e-16)
-                ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],ADD_VALUES);CHKERRQ(ierr);
-              l++;      // Column index in local part of Jacobian (including ghost points)
+                /* Insert entries into the global Jacobian one-by-one. */
+                ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
+              }
+              l++;
             }
           }
         }
         l = 0;
-        k++;            // Row index in local part of Jacobian
+        k++;
       }
     }
   }
