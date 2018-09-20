@@ -592,33 +592,35 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     jacobian(tag,m,n,u_vec,J);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
-    /*
-      Insert entries into the global Jacobian one-by-one.
-
-      TODO: better to add row-by-row, similarly as with the stencil
-    */
+    /* Loop over global points (i.e. rows of the Jacobian) */
     for (jjj=ys; jjj<ys+ym; jjj++) {
       for (iii=xs; iii<xs+xm; iii++) {
         for (dd=0; dd<dofs; dd++) {
-          kk = dd+dofs*(iii+jjj*Mx);		// Row index in global Jacobian
+          kk = dd+dofs*(iii+jjj*Mx);
+
+          /* Loop over local points (i.e. columns of the Jacobian) */
           for (jj=gys; jj<gys+gym; jj++) {
             for (ii=gxs; ii<gxs+gxm; ii++) {
               for (d=0; d<dofs; d++) {
                 if (fabs(J[k][l]) > 1.e-16) {
+
+                  /* Consider boundary cases. */
                   i = ii;j = jj;
                   if (j < 0) j = My-1;		// CASE 1: Bottom boundary
                   else if (j >= My) j = 0;	// CASE 2: Top boundary
                   else if (i < 0) i = Mx-1;	// CASE 3: Left boundary
                   else if (i >= Mx) i = 0;	// CASE 4: Right boundary
-                  ll = d+dofs*(i+j*Mx);		// Column index in global Jacobian
+                  ll = d+dofs*(i+j*Mx);
+
+                  /* Insert entries into the global Jacobian one-by-one. */
                   ierr = MatSetValues(A,1,&kk,1,&ll,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
                 }
-                l++;	// Column index in local part of Jacobian (including ghost points)
+                l++;
               }
             }
           }
           l = 0;
-          k++;		// Row index in local part of Jacobian
+          k++;
         }
       }
     }
