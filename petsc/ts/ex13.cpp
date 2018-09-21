@@ -612,11 +612,11 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     /* Loop over local points not including ghost points (i.e. rows of the Jacobian) */
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
-        kk = i-xs+(j-ys)*xm;		// Index in local space (which includes ghost points)
+        kk = i-gxs+(j-gys)*gxm;		// Index in local space (which includes ghost points)
 
         /* Loop over local points (i.e. columns of the Jacobian) */
         for (l=0; l<n; l++) {
-          if (fabs(Jac[k][l]) > 1.e-16)
+          if (fabs(Jac[k][l]) > 1.e-16)	// TODO: Instead use where nonzeros expected
             ierr = MatSetValuesLocal(J,1,&kk,1,&l,&Jac[k][l],INSERT_VALUES);CHKERRQ(ierr);
         }
         k++;	// Row index of ADOL-C generated Jacobian
