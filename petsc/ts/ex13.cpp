@@ -579,9 +579,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
         /* Loop over colours (i.e. columns of the compressed Jacobian) */
         for (colour=0;colour<p;colour++) {
           for (idx=1;idx<=(PetscInt) JP[i][0];idx++) {
-            l = (PetscInt) JP[kk][idx];
+            l = (PetscInt) JP[k][idx];
             if (Seed[l][colour] == 1.) {
-              ierr = PetscPrintf(comm,"l=%2d  kk=%2d  colour=%2d  J=%+4e\n",l,kk,colour,Jcomp[k][colour]);
+              ierr = PetscPrintf(comm,"kk=%2d  l=%2d  colour=%2d  J=%+4e\n",kk,l,colour,Jcomp[k][colour]);
               ierr = MatSetValuesLocal(J,1,&kk,1,&l,&Jcomp[k][colour],INSERT_VALUES);CHKERRQ(ierr);
               break;
             }
@@ -640,6 +640,10 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     ierr = MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
     ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   }
+  if (appctx->sparse_view) {
+    ierr = MatView(J,0);CHKERRQ(ierr);	// TODO: TEMP
+  }
+
   PetscFunctionReturn(0);
 }
 
