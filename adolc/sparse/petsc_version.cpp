@@ -175,7 +175,7 @@ int main(int argc,char **args)
 /*                                                      decompress Jacobian */
 /*--------------------------------------------------------------------------*/
 
-  PetscInt colour;
+  PetscInt    colour;
   PetscScalar **Jdecomp;
 
   Jdecomp = myalloc2(m,n);
@@ -185,8 +185,8 @@ int main(int argc,char **args)
       for (k=1;k<=(PetscInt) JP[i][0];k++) {
         j = (PetscInt) JP[i][k];
         if (Seed[j][colour] == 1.) {
-          printf("i=%d, j=%d\n",i,j);
           Jdecomp[i][j] = Jcomp[i][colour];
+          break;
         }
       }
     }

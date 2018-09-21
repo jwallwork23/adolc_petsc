@@ -55,8 +55,9 @@ extern PetscErrorCode FormInitialSolution(DM,Vec,void*);
 extern PetscErrorCode RHSJacobianADOLC(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *ptr);
 
-/* Utility functions for automatic Jacobian computation */
+/* Utility functions for automatic Jacobian computation and printing */
 extern PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[]);
+extern PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M);
 
 int main(int argc,char **argv)
 {
@@ -512,14 +513,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       }
       ierr = PetscPrintf(comm,"\n");CHKERRQ(ierr);
     }
-    for (i=0;i<m;i++)
-      free(JP[i]);
-    free(JP);
 
     /*
       Colour Jacobian
-
-      TODO: Above sparsity pattern is not currently used.
     */
 
     ISColoring     iscoloring;
@@ -551,6 +547,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       ierr = ISRestoreIndices(is,&indices);CHKERRQ(ierr);
     }
     ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
+    if (appctx->sparse_view)
+      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
 
     /*
       Form compressed Jacobian
@@ -561,21 +559,40 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
     zos_forward(tag,m,n,0,u_vec,fz);
 
-    Jcomp = myalloc2(n,p);
+    Jcomp = myalloc2(m,p);
     fov_forward(tag,m,n,p,u_vec,Seed,fz,Jcomp);
     ierr = PetscFree(fz);CHKERRQ(ierr);
+    if (appctx->sparse_view)
+      ierr = PrintMat(comm,"Compressed Jacobian:",m,p,Jcomp);CHKERRQ(ierr);
 
-    // TODO: Use compressed format
+    /*
+      Decompress Jacobian
+    */
+
+    PetscInt    colour;
+
+    for (i=0;i<m;i++) {				// TODO: Loop over i and j indices, inc. ghost points
+      for (colour=0;colour<p;colour++) {
+        for (k=1;k<=(PetscInt) JP[i][0];k++) {
+          j = (PetscInt) JP[i][k];
+          if (Seed[j][colour] == 1.) {
+            ierr = MatSetValues(J,1,&i,1,&j,&Jcomp[i][colour],INSERT_VALUES);CHKERRQ(ierr);
+            break;
+          }
+        }
+      }
+    }
 
     /*
       Free workspace
     */
 
+    for (i=0;i<m;i++)
+      free(JP[i]);
+    free(JP);
     myfree2(Seed);
     ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
     ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
-    ierr = PetscPrintf(MPI_COMM_WORLD,"Exiting. Sparse driver not yet complete.\n");CHKERRQ(ierr);
-    exit(0);
 
   } else {
 
@@ -670,6 +687,26 @@ PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[])
   *a2d -= gys;
   PetscFunctionReturn(0);
 }
+
+/*
+  Print matrices involved in sparse computations.
+*/
+PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M)
+{
+  PetscErrorCode ierr;
+  PetscInt       i,j;
+
+  PetscFunctionBegin;
+  ierr = PetscPrintf(comm,"%s \n",name);CHKERRQ(ierr);
+  for(i=0; i<m ;i++) {
+    ierr = PetscPrintf(comm,"\n %d: ",i);CHKERRQ(ierr);
+    for(j=0; j<n ;j++)
+      ierr = PetscPrintf(comm," %10.4f ", M[i][j]);CHKERRQ(ierr);
+  }
+  ierr = PetscPrintf(comm,"\n\n");CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
 
 /*TEST
 
