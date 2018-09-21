@@ -408,6 +408,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   PetscInt       i,j,k = 0,l,kk,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n;
   PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.;
   Vec            localU;
+  MPI_Comm       comm = PETSC_COMM_WORLD;
 
   PetscFunctionBeginUser;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
@@ -434,9 +435,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   n = gxm*gym;  // Number of independent variables / locally owned points
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
+    for (i=gxs; i<gxs+gxm; i++)
       u_vec[k++] = u[j][i];
-    }
   }
   k = 0;
 
@@ -444,6 +444,14 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   if (appctx->zos) {
     ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
     zos_forward(tag,m,n,0,u_vec,fz);
+
+    //PetscScalar *frhs_c;
+    //ierr = PetscMalloc1(xm*ym,&frhs_c);CHKERRQ(ierr);
+    //ierr = PetscMalloc1(ym,&frhs);CHKERRQ(ierr);
+    //for (j=0; j<ym; j++)
+    //  frhs[j] = frhs_c + j*xm - xs;
+    //frhs -= ys;
+
     frhs = new PetscScalar*[ym];
     for (j=ys; j<ys+ym; j++)
       frhs[j] = new PetscScalar[xm];
@@ -451,22 +459,26 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
-        if (appctx->zos_view) {
-          if ((fabs(frhs[j][i]) > 1.e-16) && (fabs(fz[k]) > 1.e-16)) {
-            PetscPrintf(MPI_COMM_WORLD,"F_rhs[%2d,%2d] = %+.4e, ",j,i,frhs[j][i]);
-            PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d] = %+.4e\n",j,i,fz[k]);
-          }
-        }
+        if ((appctx->zos_view) && (fabs(frhs[j][i]) > 1.e-16) && (fabs(fz[k]) > 1.e-16))
+          PetscPrintf(comm,"(%2d,%2d): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,frhs[j][i],fz[k]);
         diff += (frhs[j][i]-fz[k])*(frhs[j][i]-fz[k]);k++;
         norm += frhs[j][i]*frhs[j][i];
       }
     }
-    ierr = PetscFree(fz);CHKERRQ(ierr);
+    norm = sqrt(diff/norm);
+    PetscPrintf(comm,"    ----- Testing Zero Order evaluation -----\n");
+    PetscPrintf(comm,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",norm);
+
+    //frhs += ys;
+    //for (j=0; j<ym; j++)
+    //  ierr = PetscFree(frhs[j]);CHKERRQ(ierr);
+    //ierr = PetscFree(frhs);CHKERRQ(ierr);
+    //ierr = PetscFree(frhs_c);CHKERRQ(ierr);
+
     for (j=ys; j<ys+ym; j++)
       delete[] frhs[j];
     delete[] frhs;
-    PetscPrintf(MPI_COMM_WORLD,"    ----- Testing Zero Order evaluation -----\n");
-    PetscPrintf(MPI_COMM_WORLD,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",sqrt(diff/norm));
+    ierr = PetscFree(fz);CHKERRQ(ierr);
     k = 0;
   }
 
@@ -493,12 +505,12 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
     if (appctx->sparse_view) {
       for (i=0;i<m;i++) {
-        ierr = PetscPrintf(PETSC_COMM_WORLD," %d: ",i);CHKERRQ(ierr);
+        ierr = PetscPrintf(comm," %d: ",i);CHKERRQ(ierr);
         for (j=1;j<= (PetscInt) JP[i][0];j++)
-          ierr = PetscPrintf(PETSC_COMM_WORLD," %d ",JP[i][j]);CHKERRQ(ierr);
-        ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+          ierr = PetscPrintf(comm," %d ",JP[i][j]);CHKERRQ(ierr);
+        ierr = PetscPrintf(comm,"\n");CHKERRQ(ierr);
       }
-      ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+      ierr = PetscPrintf(comm,"\n");CHKERRQ(ierr);
     }
     for (i=0;i<m;i++)
       free(JP[i]);
@@ -553,7 +565,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     fov_forward(tag,m,n,p,u_vec,Seed,fz,Jcomp);
     ierr = PetscFree(fz);CHKERRQ(ierr);
 
-    // TODO: Use colouring in compressed format
+    // TODO: Use compressed format
 
     /*
       Free workspace
@@ -653,9 +665,8 @@ PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[])
 
   PetscFunctionBegin;
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  for (j=0; j<gym; j++) {
+  for (j=0; j<gym; j++)
     (*a2d)[j] = cgs + j*gxm - gxs;
-  }
   *a2d -= gys;
   PetscFunctionReturn(0);
 }

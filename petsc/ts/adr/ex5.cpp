@@ -571,7 +571,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     fov_forward(tag,m,n,p,u_vec,Seed,fz,Jcomp);
     ierr = PetscFree(fz);CHKERRQ(ierr);
 
-    // TODO: Use colouring in compressed format
+    // TODO: Use compressed format
 
     /*
       Free workspace
