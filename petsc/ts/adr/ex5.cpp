@@ -590,20 +590,37 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
     /* Loop over local points not including ghost points (i.e. rows of the Jacobian) */
-    for (j=ys; j<ys+ym; j++) {
-      for (i=xs; i<xs+xm; i++) {
-        for (d=0; d<dofs; d++) {
-          kk = d+dofs*(i-gxs+(j-gys)*gxm);	// Index in local space (inc. ghost points)
+  //  for (j=ys; j<ys+ym; j++) {
+     // for (i=xs; i<xs+xm; i++) {
+       // for (d=0; d<dofs; d++) {
+         // kk = d+dofs*(i-gxs+(j-gys)*gxm);	// Index in local space (inc. ghost points)
+
+          //printf("i = %d, j = %d, k = %d, kk = %d\n",i,j,k,kk);
 
           /* Loop over local points (i.e. columns of the Jacobian) */
-          for (l=0; l<n; l++) {
-            if (fabs(J[k][l]) > 1.e-16)
-              ierr = MatSetValuesLocal(A,1,&kk,1,&l,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
-          }
-          k++;	// Row index of ADOL-C generated Jacobian (runs from 0 to m)
-        }
-      }
-    }
+         // for (l=0; l<m; l++) {
+          //  if (fabs(J[k][l]) > 1.e-16)
+          //    ierr = MatSetValuesLocal(A,1,&kk,1,&l,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
+        //  }
+      //    k++;	// Row index of ADOL-C generated Jacobian (runs from 0 to m)
+    //    }
+  //    }
+//    }
+
+  ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr); // FIXME
+  kk = 0;l=0;
+  J[0][0] = 1100.;
+  MatSetValuesLocal(A,1,&kk,1,&l,&J[0][0],INSERT_VALUES);
+  kk = 1;l=0;
+  J[0][0] = 2200.;
+  MatSetValuesLocal(A,1,&kk,1,&l,&J[0][0],INSERT_VALUES);
+  kk = 2;l=0;
+  J[0][0] = 3300.;
+  MatSetValuesLocal(A,1,&kk,1,&l,&J[0][0],INSERT_VALUES);
+  kk = 3;l=0;
+  J[0][0] = 4400.;
+  MatSetValuesLocal(A,1,&kk,1,&l,&J[0][0],INSERT_VALUES);
+
     myfree2(J);
   }
 
@@ -619,7 +636,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   */
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
+  MatView(A,0);
   PetscFunctionReturn(0);
 }
 

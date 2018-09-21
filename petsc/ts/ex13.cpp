@@ -569,19 +569,28 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       Decompress Jacobian
     */
 
-    PetscInt    colour;
+    PetscInt    colour,idx;
 
-    for (i=0;i<m;i++) {				// TODO: Loop over i and j indices, inc. ghost points
-      for (colour=0;colour<p;colour++) {
-        for (k=1;k<=(PetscInt) JP[i][0];k++) {
-          j = (PetscInt) JP[i][k];
-          if (Seed[j][colour] == 1.) {
-            ierr = MatSetValues(J,1,&i,1,&j,&Jcomp[i][colour],INSERT_VALUES);CHKERRQ(ierr);
-            break;
+    /* Loop over local points not including ghost points (i.e. rows of the Jacobian) */
+    for (j=ys; j<ys+ym; j++) {
+      for (i=xs; i<xs+xm; i++) {
+        kk = i-gxs+(j-gys)*gxm;		// Index in local space (which includes ghost points)
+
+        /* Loop over colours (i.e. columns of the compressed Jacobian) */
+        for (colour=0;colour<p;colour++) {
+          for (idx=1;idx<=(PetscInt) JP[i][0];idx++) {
+            l = (PetscInt) JP[kk][idx];
+            if (Seed[l][colour] == 1.) {
+              ierr = PetscPrintf(comm,"l=%2d  kk=%2d  colour=%2d  J=%+4e\n",l,kk,colour,Jcomp[k][colour]);
+              ierr = MatSetValuesLocal(J,1,&kk,1,&l,&Jcomp[k][colour],INSERT_VALUES);CHKERRQ(ierr);
+              break;
+            }
           }
         }
+        k++;
       }
     }
+    k = 0;
 
     /*
       Free workspace
@@ -603,7 +612,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     /* Loop over local points not including ghost points (i.e. rows of the Jacobian) */
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
-        kk = i-gxs+(j-gys)*gxm;		// Index in local space (inc. ghost points)
+        kk = i-xs+(j-ys)*xm;		// Index in local space (which includes ghost points)
 
         /* Loop over local points (i.e. columns of the Jacobian) */
         for (l=0; l<n; l++) {
