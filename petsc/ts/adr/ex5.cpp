@@ -600,7 +600,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
             if (fabs(J[k][l]) > 1.e-16)
               ierr = MatSetValuesLocal(A,1,&kk,1,&l,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
           }
-          k++;	// Row index of ADOL-C generated Jacobian
+          k++;	// Row index of ADOL-C generated Jacobian (runs from 0 to m)
         }
       }
     }

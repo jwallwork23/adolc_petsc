@@ -171,10 +171,33 @@ int main(int argc,char **args)
   fov_forward(tag,m,n,p,x,Seed,c,Jcomp);
   ierr = PrintMat(PETSC_COMM_WORLD," Compressed Jacobian:",m,p,Jcomp);CHKERRQ(ierr);
 
+/*--------------------------------------------------------------------------*/
+/*                                                      decompress Jacobian */
+/*--------------------------------------------------------------------------*/
+
+  PetscInt colour;
+  PetscScalar **Jdecomp;
+
+  Jdecomp = myalloc2(m,n);
+
+  for (i=0;i<m;i++) {
+    for (colour=0;colour<p;colour++) {
+      for (k=1;k<=(PetscInt) JP[i][0];k++) {
+        j = (PetscInt) JP[i][k];
+        if (Seed[j][colour] == 1.) {
+          printf("i=%d, j=%d\n",i,j);
+          Jdecomp[i][j] = Jcomp[i][colour];
+        }
+      }
+    }
+  }
+  ierr = PrintMat(PETSC_COMM_WORLD," Decompressed Jacobian:",m,n,Jdecomp);CHKERRQ(ierr);
+
 /****************************************************************************/
 /*******       free workspace and finalise                    ***************/
 /****************************************************************************/
 
+  myfree2(Jdecomp);
   myfree2(Jcomp);
   myfree2(Seed);
   myfree2(Jdense);
