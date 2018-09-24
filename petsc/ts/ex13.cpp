@@ -429,13 +429,15 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   PetscErrorCode ierr;
   DM             da;
   PetscInt       i,j,k = 0,l,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n;
-  PetscScalar    **u,*u_vec,**Jac = NULL,**frhs,*fz,norm=0.,diff=0.;
-  Vec            localU;
+  PetscScalar    **u,*u_vec,**Jac = NULL,**f,*fz,norm=0.,diff=0.;
+  Vec            localU,localF,F;
   MPI_Comm       comm = MPI_COMM_WORLD;
 
   PetscFunctionBeginUser;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localF);CHKERRQ(ierr);
+  ierr = VecDuplicate(U,&F);CHKERRQ(ierr);
 
   /*
      Scatter ghost points to local vector,using the 2-step process
@@ -445,9 +447,12 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   */
   ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
 
   /* Get pointers to vector data */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);
 
   /* Get local and ghosted grid boundaries */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
@@ -464,43 +469,24 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   k = 0;
 
   /* Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive */
-  if (appctx->zos) { // FIXME: Needs to run over ghost points too now
+
+  if (appctx->zos) {
     ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
     zos_forward(tag,m,n,0,u_vec,fz);
 
-    //PetscScalar *frhs_c;
-    //ierr = PetscMalloc1(xm*ym,&frhs_c);CHKERRQ(ierr);
-    //ierr = PetscMalloc1(ym,&frhs);CHKERRQ(ierr);
-    //for (j=0; j<ym; j++)
-    //  frhs[j] = frhs_c + j*xm - xs;
-    //frhs -= ys;
-
-    frhs = new PetscScalar*[ym];
-    for (j=ys; j<ys+ym; j++)
-      frhs[j] = new PetscScalar[xm];
-    RHSLocalPassive(da,frhs,u,appctx);
+    RHSLocalPassive(da,f,u,appctx);
 
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
-        if ((appctx->zos_view) && (fabs(frhs[j][i]) > 1.e-16) && (fabs(fz[k]) > 1.e-16))
-          PetscPrintf(comm,"(%2d,%2d): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,frhs[j][i],fz[k]);
-        diff += (frhs[j][i]-fz[k])*(frhs[j][i]-fz[k]);k++;
-        norm += frhs[j][i]*frhs[j][i];
+        if ((appctx->zos_view) && (fabs(f[j][i]) > 1.e-16) && (fabs(fz[k]) > 1.e-16))
+          PetscPrintf(comm,"(%2d,%2d): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,f[j][i],fz[k]);
+        diff += (f[j][i]-fz[k])*(f[j][i]-fz[k]);k++;
+        norm += f[j][i]*f[j][i];
       }
     }
     norm = sqrt(diff/norm);
     PetscPrintf(comm,"    ----- Testing Zero Order evaluation -----\n");
     PetscPrintf(comm,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",norm);
-
-    //frhs += ys;
-    //for (j=0; j<ym; j++)
-    //  ierr = PetscFree(frhs[j]);CHKERRQ(ierr);
-    //ierr = PetscFree(frhs);CHKERRQ(ierr);
-    //ierr = PetscFree(frhs_c);CHKERRQ(ierr);
-
-    for (j=ys; j<ys+ym; j++)
-      delete[] frhs[j];
-    delete[] frhs;
     ierr = PetscFree(fz);CHKERRQ(ierr);
     k = 0;
   }
@@ -517,6 +503,17 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     PetscInt     ctrl[3] = {0,0,0},p = 0,colour;
     ISColoring   iscoloring;
     PetscScalar  **Seed = NULL,**Jcomp = NULL,**Rec = NULL;
+
+    /*
+      Get independent vector
+    */
+    ierr = RHSLocalActive(da,f,u,appctx);
+    for (j=gys; j<gys+gym; j++) {
+      for (i=gxs; i<gxs+gxm; i++) {
+        u_vec[k++] = u[j][i];
+      }
+    }
+    k = 0;
 
     /*
       Generate sparsity pattern
@@ -610,10 +607,21 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   }
 
   /*
+     Gather global vector, using the 2-step process
+        DMLocalToGlobalBegin(),DMLocalToGlobalEnd().
+  */
+  ierr = DMLocalToGlobalBegin(da,localF,INSERT_VALUES,F);CHKERRQ(ierr);
+  ierr = DMLocalToGlobalEnd(da,localF,INSERT_VALUES,F);CHKERRQ(ierr);
+
+  /*
     Restore vectors
   */
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,localF,&f);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
+
+  ierr = VecDestroy(&F);CHKERRQ(ierr);
 
   /*
     Assemble local matrix
