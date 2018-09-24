@@ -168,6 +168,7 @@ int main(int argc,char **args)
 
   Jcomp = myalloc2(m,p);
 
+  // zos_forward(tag,m,n,0,x,c);
   fov_forward(tag,m,n,p,x,Seed,c,Jcomp);
   ierr = PrintMat(PETSC_COMM_WORLD," Compressed Jacobian:",m,p,Jcomp);CHKERRQ(ierr);
 

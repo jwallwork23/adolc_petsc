@@ -505,6 +505,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     }
 
     if (appctx->sparse_view) {
+      ierr = PetscPrintf(comm,"\nSparsity pattern:\n");CHKERRQ(ierr);
       for (i=0;i<m;i++) {
         ierr = PetscPrintf(comm," %d: ",i);CHKERRQ(ierr);
         for (j=1;j<= (PetscInt) JP[i][0];j++)
@@ -515,7 +516,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     }
 
     /*
-      Colour Jacobian
+      Colour Jacobian  TODO: This only need be done once
     */
 
     ISColoring     iscoloring;
@@ -527,7 +528,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     ierr = MatColoringApply(coloring,&iscoloring);CHKERRQ(ierr);
 
     /*
-      Generate seed matrix
+      Generate seed matrix  TODO: This only need be done once
     */
 
     IS             *isp,is;
@@ -557,7 +558,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     PetscScalar **Jcomp;
 
     ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
-    zos_forward(tag,m,n,0,u_vec,fz);
+    zos_forward(tag,m,n,0,u_vec,fz);		// FIXME: Temporary recomputation of dependent vector
 
     Jcomp = myalloc2(m,p);
     fov_forward(tag,m,n,p,u_vec,Seed,fz,Jcomp);
