@@ -61,6 +61,7 @@ extern PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscIn
 extern PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP);
 extern PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring);
 extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed);
+extern PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp);
 
 int main(int argc,char **argv)
 {
@@ -571,15 +572,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     /*
       Recover Jacobian from compressed format
     */
-
-    for (k=0;k<m;k++) {
-      for (colour=0;colour<p;colour++) {
-        l = (PetscInt) Rec[k][colour];
-        if (l != -1)
-          ierr = MatSetValuesLocal(J,1,&k,1,&l,&Jcomp[k][colour],INSERT_VALUES);CHKERRQ(ierr);
-      }
-    }
-    k = 0;
+    ierr = RecoverJacobian(J,m,p,Rec,Jcomp);CHKERRQ(ierr);
 
     /*
       Free workspace
@@ -758,7 +751,7 @@ PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP
   ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
-  // Obtain colouring
+  // Extract colouring
   ierr = MatColoringCreate(S,&coloring);CHKERRQ(ierr);
   ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // 'Smallest last' default
   ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
@@ -793,6 +786,23 @@ PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,Pe
   }
   ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
 
+  PetscFunctionReturn(0);
+}
+
+
+PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp)
+{
+  PetscErrorCode ierr;
+  PetscInt       i,j,colour;
+
+  PetscFunctionBegin;
+  for (i=0; i<m; i++) {
+    for (colour=0;colour<p;colour++) {
+      j = (PetscInt) Rec[i][colour];
+      if (j != -1)
+        ierr = MatSetValuesLocal(J,1,&i,1,&j,&Jcomp[i][colour],INSERT_VALUES);CHKERRQ(ierr);
+    }
+  }
   PetscFunctionReturn(0);
 }
 
