@@ -274,21 +274,7 @@ PetscErrorCode RHSLocalPassive(DM da,PetscScalar **f,PetscScalar **uarray,void *
       f[j][i] = uxx + uyy;
     }
   }
-/*
-  // TODO: Why won't this work?
 
-  PetscInt gxs,gys,gxm,gym;
-
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  for (j=ys; j<ys+ym; j++) {
-    f[j][gys] = 0.;
-    f[j][gys+gym-1] = 0.;
-  }
-  for (i=xs; i<xs+xm; i++) {
-    f[gxs][i] = 0.;
-    f[gxs+gxm-1][i] = 0.;
-  }
-*/
   PetscFunctionReturn(0);
 }
 
@@ -311,12 +297,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   PetscErrorCode ierr;
   PetscInt       xm,ym;
   PetscScalar    **u,**f;
-  Vec            localU;//,localF;
+  Vec            localU,localF;
 
   PetscFunctionBeginUser;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
-  //ierr = DMGetLocalVector(da,&localF);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localF);CHKERRQ(ierr);
 
   /*
      Scatter ghost points to local vector,using the 2-step process
@@ -326,13 +312,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
-  //ierr = DMGlobalToLocalBegin(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
-  //ierr = DMGlobalToLocalEnd(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
 
   /* Get pointers to vector data */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
   ierr = DMDAVecGetArray(da,F,&f);CHKERRQ(ierr);
-  //ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);   // FIXME
+  ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);
 
   /* Get local grid boundaries */
   ierr = DMDAGetCorners(da,NULL,NULL,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
@@ -344,11 +330,17 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
     ierr = RHSLocalPassive(da,f,u,user);CHKERRQ(ierr);
   }
 
+  /*
+     Gather global vector, using the 2-step process
+        DMLocalToGlobalBegin(),DMLocalToGlobalEnd().
+  */
+  ierr = DMLocalToGlobalBegin(da,localF,INSERT_VALUES,F);CHKERRQ(ierr);
+  ierr = DMLocalToGlobalEnd(da,localF,INSERT_VALUES,F);CHKERRQ(ierr);
+
   /* Restore vectors */
-  ierr = DMDAVecRestoreArray(da,F,&f);CHKERRQ(ierr);
-  //ierr = DMDAVecRestoreArray(da,localF,&f);CHKERRQ(ierr);	// FIXME
+  ierr = DMDAVecRestoreArray(da,localF,&f);CHKERRQ(ierr);
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
-  //ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   ierr = PetscLogFlops(11.0*xm*ym);CHKERRQ(ierr);
   PetscFunctionReturn(0);
