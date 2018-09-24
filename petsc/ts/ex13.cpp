@@ -516,16 +516,38 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     }
 
     /*
-      Colour Jacobian  TODO: This only need be done once
+      Colour Jacobian
     */
 
     ISColoring     iscoloring;
     MatColoring    coloring;
+    PetscScalar    one = 1.;
+    Mat            S;
 
-    ierr = MatColoringCreate(Jpre,&coloring);CHKERRQ(ierr);
+    // Create Jacobian sparsity pattern object, assembling with preallocated nonzeros as ones
+    ierr = MatCreate(PETSC_COMM_WORLD,&S);CHKERRQ(ierr);
+    ierr = MatSetSizes(S,PETSC_DECIDE,PETSC_DECIDE,m,n);CHKERRQ(ierr);
+    ierr = MatSetFromOptions(S);CHKERRQ(ierr);
+    ierr = MatSetUp(S);CHKERRQ(ierr);
+    for (i=0;i<m;i++) {
+      if ((PetscInt) JP[i][0] > p)
+        p = (PetscInt) JP[i][0];
+      for (j=1;j<= (PetscInt) JP[i][0];j++) {
+        k = JP[i][j];
+        ierr = MatSetValues(S,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
+      }
+    }
+    k = 0;
+    ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+    ierr = MatAssemblyEnd(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+    // Obtain colouring
+    ierr = MatColoringCreate(S,&coloring);CHKERRQ(ierr);
     ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // 'Smallest last' default
     ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
     ierr = MatColoringApply(coloring,&iscoloring);CHKERRQ(ierr);
+
+    ierr = MatDestroy(&S);CHKERRQ(ierr);
 
     /*
       Generate seed matrix  TODO: This only need be done once
