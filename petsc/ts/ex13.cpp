@@ -61,6 +61,7 @@ extern PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscIn
 extern PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP);
 extern PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring);
 extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed);
+extern PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec);
 extern PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp);
 
 int main(int argc,char **argv)
@@ -501,7 +502,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     // ------------------- TODO: Move the below out of the TS loop --------------------
 
     unsigned int **JP = NULL;
-    PetscInt     ctrl[3] = {0,0,0},p = 0,colour;
+    PetscInt     ctrl[3] = {0,0,0},p;
     ISColoring   iscoloring;
     PetscScalar  **Seed = NULL,**Jcomp = NULL,**Rec = NULL;
 
@@ -534,27 +535,13 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       Generate recovery matrix
     */
     Rec = myalloc2(m,p);
-    for (k=0;k<m;k++) {
-      for (colour=0;colour<p;colour++) {
-        Rec[k][colour] = -1.;
-        for (i=1;i<=(PetscInt) JP[k][0];i++) {
-          l = (PetscInt) JP[k][i];
-          if (Seed[l][colour] == 1.) {
-            Rec[k][colour] = l;
-            break;
-          }
-        }
-      }
-    }
-
+    ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
     if (appctx->sparse_view) {
       ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
       ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
     }
 
     // ------------------- TODO: Move the above out of the TS loop --------------------
-
-    //PetscInt    colour;
 
     /*
       Compute Jacobian in compressed format
@@ -789,6 +776,25 @@ PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,Pe
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec)
+{
+  PetscInt i,j,k,colour;
+
+  PetscFunctionBegin;
+  for (i=0;i<m;i++) {
+    for (colour=0;colour<p;colour++) {
+      Rec[i][colour] = -1.;
+      for (k=1;k<=(PetscInt) JP[i][0];k++) {
+        j = (PetscInt) JP[i][k];
+        if (Seed[j][colour] == 1.) {
+          Rec[i][colour] = j;
+          break;
+        }
+      }
+    }
+  }
+  PetscFunctionReturn(0);
+}
 
 PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp)
 {
