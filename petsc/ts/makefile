@@ -4,7 +4,7 @@ FFLAGS		=
 CXXFLAGS	= -std=c++11
 CPPFLAGS	=
 FPPFLAGS	=
-CLEANFILES	= ex13 ex16adj ex16opt_ic ex20adj *.tap
+CLEANFILES	= ex13 ex16adj ex16opt_ic ex20adj *.tap *.txt
 CC		= g++
 
 INCLUDES	=

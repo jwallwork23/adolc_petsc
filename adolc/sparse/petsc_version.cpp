@@ -177,27 +177,38 @@ int main(int argc,char **args)
 /*--------------------------------------------------------------------------*/
 
   PetscInt    colour;
-  PetscScalar **Jdecomp;
+  PetscScalar **Jdecomp,**Rec;
 
   Jdecomp = myalloc2(m,n);
+  Rec = myalloc2(m,p);
 
   for (i=0;i<m;i++) {
     for (colour=0;colour<p;colour++) {
+      Rec[i][colour] = -1.;
       for (k=1;k<=(PetscInt) JP[i][0];k++) {
         j = (PetscInt) JP[i][k];
         if (Seed[j][colour] == 1.) {
-          Jdecomp[i][j] = Jcomp[i][colour];
+          Rec[i][colour] = j;
           break;
         }
       }
     }
   }
+  for (i=0;i<m;i++) {
+    for (colour=0;colour<p;colour++) {
+      j = (PetscInt) Rec[i][colour];
+      if (j != -1)
+        Jdecomp[i][j] = Jcomp[i][colour];
+    }
+  }
+
   ierr = PrintMat(PETSC_COMM_WORLD," Decompressed Jacobian:",m,n,Jdecomp);CHKERRQ(ierr);
 
 /****************************************************************************/
 /*******       free workspace and finalise                    ***************/
 /****************************************************************************/
 
+  myfree2(Rec);
   myfree2(Jdecomp);
   myfree2(Jcomp);
   myfree2(Seed);
