@@ -58,6 +58,7 @@ extern PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,
 /* Utility functions for automatic Jacobian computation and printing */
 extern PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[]);
 extern PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M);
+extern PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP);
 
 int main(int argc,char **argv)
 {
@@ -504,16 +505,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
         p = (PetscInt) JP[i][0];
     }
 
-    if (appctx->sparse_view) {
-      ierr = PetscPrintf(comm,"\nSparsity pattern:\n");CHKERRQ(ierr);
-      for (i=0;i<m;i++) {
-        ierr = PetscPrintf(comm," %d: ",i);CHKERRQ(ierr);
-        for (j=1;j<= (PetscInt) JP[i][0];j++)
-          ierr = PetscPrintf(comm," %d ",JP[i][j]);CHKERRQ(ierr);
-        ierr = PetscPrintf(comm,"\n");CHKERRQ(ierr);
-      }
-      ierr = PetscPrintf(comm,"\n");CHKERRQ(ierr);
-    }
+    if (appctx->sparse_view)
+      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
 
     /*
       Colour Jacobian
@@ -737,6 +730,25 @@ PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,Pet
     ierr = PetscPrintf(comm,"\n %d: ",i);CHKERRQ(ierr);
     for(j=0; j<n ;j++)
       ierr = PetscPrintf(comm," %10.4f ", M[i][j]);CHKERRQ(ierr);
+  }
+  ierr = PetscPrintf(comm,"\n\n");CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Print sparsity pattern.
+*/
+PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP)
+{
+  PetscErrorCode ierr;
+  PetscInt       i,j;
+
+  PetscFunctionBegin;
+  ierr = PetscPrintf(comm,"Sparsity pattern:\n");CHKERRQ(ierr);
+  for(i=0; i<m ;i++) {
+    ierr = PetscPrintf(comm,"\n %2d: ",i);CHKERRQ(ierr);
+    for(j=1; j<= (PetscInt) JP[i][0] ;j++)
+      ierr = PetscPrintf(comm," %2d ", JP[i][j]);CHKERRQ(ierr);
   }
   ierr = PetscPrintf(comm,"\n\n");CHKERRQ(ierr);
   PetscFunctionReturn(0);
