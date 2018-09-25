@@ -266,12 +266,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   PetscInt       i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,Mx,My;
   PetscReal      hx,hy,sx,sy;
   Field          **u,**f;
-  Vec            localU;
+  Vec            localU,localF;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localF);CHKERRQ(ierr);
   hx = 2.50/(PetscReal)Mx; sx = 1.0/(hx*hx);
   hy = 2.50/(PetscReal)My; sy = 1.0/(hy*hy);
 
@@ -283,12 +284,15 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = VecZeroEntries(F);CHKERRQ(ierr); // NOTE (1): See (2) below
+  ierr = DMGlobalToLocalBegin(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
 
   /*
      Get pointers to vector data
   */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da,F,&f);CHKERRQ(ierr);
+  ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);
 
   /*
      Get local grid boundaries
@@ -304,13 +308,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 
     trace_on(tag);  // ----------------------------------------------- Start of active section
 
-  /*
-    Mark independence
+    /*
+      Mark independence
 
-    NOTE: Ghost points are marked as independent at this stage, but their contributions to
-          the Jacobian will be added to the corresponding rows on other processes, meaning
-          the Jacobian remains square.
-  */
+      NOTE: Ghost points are marked as independent at this stage, but their contributions to
+            the Jacobian will be added to the corresponding rows on other processes, meaning
+            the Jacobian remains square.
+    */
     for (j=gys; j<gys+gym; j++) {
       for (i=gxs; i<gxs+gxm; i++) {
         appctx->u_a[j][i].u <<= u[j][i].u;
@@ -330,14 +334,25 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
         vyy         = (-2.0*vc + appctx->u_a[j-1][i].v + appctx->u_a[j+1][i].v)*sy;
         appctx->f_a[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
         appctx->f_a[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
+      }
+    }
 
-        // Mark dependence
+    /*
+      Mark dependence
+
+      NOTE: Ghost points are marked as dependent in order to vastly simplify index notation
+            during Jacobian assembly.
+    */
+    for (j=gys; j<gys+gym; j++) {
+      for (i=gxs; i<gxs+gxm; i++) {
         appctx->f_a[j][i].u >>= f[j][i].u;
         appctx->f_a[j][i].v >>= f[j][i].v;
       }
     }
     trace_off();  // ----------------------------------------------- End of active section
+
   } else {
+
     PetscScalar    uc,uxx,uyy,vc,vxx,vyy;
 
     for (j=ys; j<ys+ym; j++) {
@@ -356,10 +371,21 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
 
   /*
+     Gather global vector, using the 2-step process
+        DMLocalToGlobalBegin(),DMLocalToGlobalEnd().
+
+     NOTE (2): We need to use ADD_VALUES if boundaries are not of type DM_BOUNDARY_NONE or 
+               DM_BOUNDARY_GHOSTED, meaning we should also zero F before addition (see (1) above).
+  */
+  ierr = DMLocalToGlobalBegin(da,localF,ADD_VALUES,F);CHKERRQ(ierr);
+  ierr = DMLocalToGlobalEnd(da,localF,ADD_VALUES,F);CHKERRQ(ierr);
+
+  /*
      Restore vectors
   */
+  ierr = DMDAVecRestoreArray(da,localF,&f);CHKERRQ(ierr);
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArray(da,F,&f);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
@@ -413,7 +439,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 {
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,l = 0,d,kk,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2;
+  PetscInt       i,j,k = 0,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2;
   PetscScalar    *u_vec,**J = NULL;
   Field          **u;
   Vec            localU;
@@ -439,14 +465,14 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   /*
      Get local grid boundaries and total degrees of freedom on this process
   */
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetCorners(da,NULL,NULL,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
   /*
     Convert array of structs to a 1-array, so this can be read by ADOL-C
   */
-  m = dofs*xm*ym;    // Number of dependent variables / globally owned points
-  n = dofs*gxm*gym;  // Number of independent variables / locally owned points
+  m = dofs*gxm*gym;  // Number of dependent variables
+  n = m;             // Number of independent variables
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
@@ -454,7 +480,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
       u_vec[k++] = u[j][i].v;
     }
   }
-  k = 0;
 
   /*
     Calculate Jacobian using ADOL-C
@@ -463,19 +488,10 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   J = myalloc2(m,n);
   jacobian(tag,m,n,u_vec,J);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
-
-  /* Loop over local points not including ghost points (i.e. rows of the Jacobian) */
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      for (d=0; d<dofs; d++) {
-        kk = d+dofs*(i-gxs+(j-gys)*gxm);	// Index in local space (inc. ghost points)
-
-        /* Loop over local points (i.e. columns of the Jacobian) */
-        for (l=0; l<n; l++) {
-          if (fabs(J[k][l]) > 1.e-16)
-            ierr = MatSetValuesLocal(A,1,&kk,1,&l,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
-        }
-        k++;	// Row index of ADOL-C generated Jacobian
+  for (i=0; i<m; i++) {
+    for (j=0; j<n; j++) {
+      if (fabs(J[i][j]) > 1.e-16) {
+        ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
       }
     }
   }
@@ -493,7 +509,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   */
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -633,12 +648,13 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   PetscInt       i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,Mx,My;
   PetscReal      hx,hy,sx,sy;
   Field          **u,**f,**udot;
-  Vec            localU;
+  Vec            localU,localF;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localF);CHKERRQ(ierr);
   hx = 2.50/(PetscReal)Mx; sx = 1.0/(hx*hx);
   hy = 2.50/(PetscReal)My; sy = 1.0/(hy*hy);
 
@@ -650,12 +666,15 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   */
   ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = VecZeroEntries(F);CHKERRQ(ierr); // NOTE (1): see (2) below
+  ierr = DMGlobalToLocalBegin(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
 
   /*
      Get pointers to vector data
   */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da,F,&f);CHKERRQ(ierr);
+  ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);
   ierr = DMDAVecGetArrayRead(da,Udot,&udot);CHKERRQ(ierr);
 
   /*
@@ -695,8 +714,17 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
         vyy         = (-2.0*vc + appctx->u_a[j-1][i].v + appctx->u_a[j+1][i].v)*sy;
         appctx->f_a[j][i].u = udot[j][i].u - ( appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc) );
         appctx->f_a[j][i].v = udot[j][i].v - ( appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc );
+      }
+    }
 
-        // Mark dependence
+    /*
+      Mark dependence
+
+      NOTE: Ghost points are marked as dependent in order to vastly simplify index notation
+            during Jacobian assembly.
+    */
+    for (j=gys; j<gys+gym; j++) {
+      for (i=gxs; i<gxs+gxm; i++) {
         appctx->f_a[j][i].u >>= f[j][i].u;
         appctx->f_a[j][i].v >>= f[j][i].v;
       }
@@ -721,11 +749,22 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
 
   /*
+     Gather global vector, using the 2-step process
+        DMLocalToGlobalBegin(),DMLocalToGlobalEnd().
+
+     NOTE (2): We need to use ADD_VALUES if boundaries are not of type DM_BOUNDARY_NONE or 
+               DM_BOUNDARY_GHOSTED, meaning we should also zero F before addition (see (1) above).
+  */
+  ierr = DMLocalToGlobalBegin(da,localF,ADD_VALUES,F);CHKERRQ(ierr);
+  ierr = DMLocalToGlobalEnd(da,localF,ADD_VALUES,F);CHKERRQ(ierr);
+
+  /*
      Restore vectors
   */
+  ierr = DMDAVecRestoreArray(da,localF,&f);CHKERRQ(ierr);
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArray(da,F,&f);CHKERRQ(ierr);
   ierr = DMDAVecRestoreArrayRead(da,Udot,&udot);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
@@ -734,7 +773,7 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
 {
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,l,d,kk,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2;
+  PetscInt       i,j,k = 0,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2;
   PetscScalar    *u_vec,**J;
   Field          **u;
   Vec            localU,D;
@@ -756,12 +795,12 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
 
   /* Get local and ghosted grid boundaries */
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetCorners(da,NULL,NULL,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
   /* Convert array of structs to a 2-array, so this can be read by ADOL-C */
-  m = dofs*xm*ym;    // Number of dependent variables / globally owned points
-  n = dofs*gxm*gym;  // Number of independent variables / locally owned points
+  m = dofs*gxm*gym;  // Number of dependent variables
+  n = m;             // Number of independent variables
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
@@ -769,7 +808,6 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
       u_vec[k++] = u[j][i].v;
     }
   }
-  k = 0;
 
   /*
     For an implicit Jacobian we may use the rule that
@@ -783,19 +821,10 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   J = myalloc2(m,n);
   jacobian(tag,m,n,u_vec,J);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
-
-  /* Loop over local points not including ghost points (i.e. rows of the Jacobian)  */
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      for (d=0; d<dofs; d++) {
-        kk = d+dofs*(i-gxs+(j-gys)*gxm);	// Index in local space (inc. ghost points)
-
-        /* Loop over local points (i.e. columns of the Jacobian) */
-        for (l=0; l<n; l++) {
-          if (fabs(J[k][l]) > 1.e-16)
-            ierr = MatSetValuesLocal(A,1,&kk,1,&l,&J[k][l],INSERT_VALUES);CHKERRQ(ierr);
-        }
-        k++;	// Row index of ADOL-C generated Jacobian
+  for (i=0; i<m; i++) {
+    for (j=0; j<n; j++) {
+      if (fabs(J[i][j]) > 1.e-16) {
+        ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
       }
     }
   }
@@ -821,7 +850,6 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatDiagonalSet(A,D,ADD_VALUES);     /* Combine a*M and -df/dx parts */
   ierr = VecDestroy(&D);CHKERRQ(ierr);
-  ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
