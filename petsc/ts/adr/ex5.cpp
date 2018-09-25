@@ -425,8 +425,8 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   DM             da;
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,l,d,kk,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2;
-  PetscScalar    *u_vec,**J = NULL,norm = 0.,diff = 0.,*fz;
-  Field          **u,**frhs;
+  PetscScalar    *u_vec,**J = NULL;
+  Field          **u;
   Vec            localU;
 
   PetscFunctionBegin;
@@ -463,130 +463,14 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 
   /* Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive */
   if (appctx->zos) {
-    ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
-    zos_forward(tag,m,n,0,u_vec,fz);
-    frhs = new Field*[ym];
-    for (j=ys; j<ys+ym; j++)
-      frhs[j] = new Field[xm];
-    RHSLocalPassive(da,frhs,u,appctx);
-
-    for (j=ys; j<ys+ym; j++) {
-      for (i=xs; i<xs+xm; i++) {
-        if (appctx->zos_view) {
-          if ((fabs(frhs[j][i].u) > 1.e-16) && (fabs(fz[k]) > 1.e-16)) {
-            PetscPrintf(MPI_COMM_WORLD,"F_rhs[%2d,%2d,u] = %+.4e, ",j,i,frhs[j][i].u);
-            PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d,u] = %+.4e\n",j,i,fz[k++]);
-          }
-          if ((fabs(frhs[j][i].v) > 1.e-16) && (fabs(fz[k]) > 1.e-16)) {
-            PetscPrintf(MPI_COMM_WORLD,"F_rhs[%2d,%2d,v] = %+.4e, ",j,i,frhs[j][i].v);
-            PetscPrintf(MPI_COMM_WORLD,"F_zos[%2d,%2d,v] = %+.4e\n",j,i,fz[k--]);
-          }
-        }
-        diff += (frhs[j][i].u-fz[k])*(frhs[j][i].u-fz[k]);k++;
-        diff += (frhs[j][i].v-fz[k])*(frhs[j][i].v-fz[k]);k++;
-        norm += frhs[j][i].u*frhs[j][i].u + frhs[j][i].v*frhs[j][i].v;
-      }
-    }
-    ierr = PetscFree(fz);CHKERRQ(ierr);
-    for (j=ys; j<ys+ym; j++)
-      delete[] frhs[j];
-    delete[] frhs;
-    PetscPrintf(MPI_COMM_WORLD,"    ----- Testing Zero Order evaluation -----\n");
-    PetscPrintf(MPI_COMM_WORLD,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",sqrt(diff/norm));
-    k = 0;
+    ierr = PetscPrintf(MPI_COMM_WORLD,"Exiting. ZOS test not yet complete.\n");CHKERRQ(ierr);
+    exit(0);
   }
 
   /*
     Calculate Jacobian using ADOL-C
   */
   if (appctx->sparse) {
-
-    /*
-      Generate sparsity pattern
-
-      TODO: This only need be done once
-    */
-    unsigned int **JP = NULL;
-    PetscInt     ctrl[3] = {0,0,0},p=0;
-
-    JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
-    jac_pat(tag,m,n,u_vec,JP,ctrl);
-
-    for (i=0;i<m;i++) {
-      if ((PetscInt) JP[i][0] > p)
-        p = (PetscInt) JP[i][0];
-    }
-
-    if (appctx->sparse_view) {
-      for (i=0;i<m;i++) {
-        ierr = PetscPrintf(PETSC_COMM_WORLD," %d: ",i);CHKERRQ(ierr);
-        for (j=1;j<= (PetscInt) JP[i][0];j++)
-          ierr = PetscPrintf(PETSC_COMM_WORLD," %d ",JP[i][j]);CHKERRQ(ierr);
-        ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
-      }
-      ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
-    }
-    for (i=0;i<m;i++)
-      free(JP[i]);
-    free(JP);
-
-    /*
-      Colour Jacobian
-
-      TODO: Above sparsity pattern is not currently used.
-    */
-
-    ISColoring     iscoloring;
-    MatColoring    coloring;
-
-    ierr = MatColoringCreate(A,&coloring);CHKERRQ(ierr);
-    ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // 'Smallest last' default
-    ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
-    ierr = MatColoringApply(coloring,&iscoloring);CHKERRQ(ierr);
-
-    /*
-      Generate seed matrix
-    */
-
-    IS             *isp,is;
-    PetscScalar    **Seed = NULL;
-    PetscInt       nis,size;
-    const PetscInt *indices;
-
-    Seed = myalloc2(n,p);
-    ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
-    for (i=0;i<p;i++) {
-      is = *(isp+i);
-      ierr = ISGetLocalSize(is,&size);CHKERRQ(ierr);
-      ierr = ISGetIndices(is,&indices);CHKERRQ(ierr);
-      for (j=0;j<size;j++) {
-        Seed[indices[j]][i] = 1.;
-      }
-      ierr = ISRestoreIndices(is,&indices);CHKERRQ(ierr);
-    }
-    ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
-
-    /*
-      Form compressed Jacobian
-    */
-    PetscScalar **Jcomp;
-
-    ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
-    zos_forward(tag,m,n,0,u_vec,fz);
-
-    Jcomp = myalloc2(n,p);
-    fov_forward(tag,m,n,p,u_vec,Seed,fz,Jcomp);
-    ierr = PetscFree(fz);CHKERRQ(ierr);
-
-    // TODO: Use compressed format
-
-    /*
-      Free workspace
-    */
-
-    myfree2(Seed);
-    ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
-    ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
     ierr = PetscPrintf(MPI_COMM_WORLD,"Exiting. Sparse driver not yet complete.\n");CHKERRQ(ierr);
     exit(0);
 
