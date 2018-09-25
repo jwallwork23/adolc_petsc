@@ -65,20 +65,22 @@ extern PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned i
 extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed);
 extern PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec);
 extern PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp);
-extern PetscErrorCode TestZOS(DM da,PetscScalar **u,PetscScalar **f,void *ctx);
+extern PetscErrorCode TestZOS(DM da,PetscScalar **u,Vec F,void *ctx);
 
 int main(int argc,char **argv)
 {
   TS             ts;                    /* nonlinear solver */
   Vec            u,r;                   /* solution, residual vector */
   Mat            J;                     /* Jacobian matrix */
-  PetscInt       steps,xs,ys,xm,ym,gxs,gys,gxm,gym;
+  PetscInt       steps,xs,ys,xm,ym,gxs,gys,gxm,gym,i,m,n,p,ctrl[3] = {0,0,0};
   PetscErrorCode ierr;
   DM             da;
   PetscReal      ftime,dt;
   AppCtx         user;                  /* user-defined work context */
   adouble        **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;  /* active variables */
-  PetscScalar    **Seed = NULL,**Rec = NULL;
+  PetscScalar    **Seed = NULL,**Rec = NULL,*u_vec;
+  unsigned int   **JP = NULL;
+  ISColoring     iscoloring;
   PetscBool      byhand = PETSC_FALSE;
   MPI_Comm       comm = MPI_COMM_WORLD;
 
@@ -157,11 +159,6 @@ int main(int argc,char **argv)
     time integration, we can save computational effort by only generating these objects once.
   */
   if ((user.sparse) && (!user.no_an)) {
-
-    unsigned int **JP = NULL;
-    PetscInt     ctrl[3] = {0,0,0},p,i,m,n;
-    ISColoring   iscoloring;
-    PetscScalar  *u_vec;
 
     ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
     m = gxm*gym;  // Number of dependent variables / globally owned points
@@ -488,15 +485,14 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   PetscErrorCode ierr;
   DM             da;
   PetscInt       i,j,k = 0,gxs,gys,gxm,gym,m,n;
-  PetscScalar    **u,*u_vec,**Jac = NULL,**f,*f_vec,**Jcomp = NULL;
-  Vec            localU,localF,F;
+  PetscScalar    **u,*u_vec,**Jac = NULL,*f_vec,**Jcomp = NULL;
+  Vec            localU,F;
   MPI_Comm       comm = MPI_COMM_WORLD;
 
   PetscFunctionBeginUser;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
   if (appctx->zos) {
-    ierr = DMGetLocalVector(da,&localF);CHKERRQ(ierr);
     ierr = VecDuplicate(U,&F);CHKERRQ(ierr);
   }
 
@@ -508,32 +504,25 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   */
   ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
-  if (appctx->zos) {
-    ierr = DMGlobalToLocalBegin(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
-    ierr = DMGlobalToLocalEnd(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
-  }
 
   /* Get pointers to vector data */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
-  if (appctx->zos) {
-    ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);
-  }
 
-  /* Get local and ghosted grid boundaries */
+  /* Get ghosted grid boundaries */
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
   /* Convert 2-array to a 1-array, so this can be read by ADOL-C */
   m = gxm*gym;  // Number of dependent variables
   n = m;        // Number of independent variables
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-  for (j=gys; j<gys+gym; j++) { // TODO: Write a function for this
+  for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++)
       u_vec[k++] = u[j][i];
   }
 
   /* Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive */
   if (appctx->zos) {
-    ierr = TestZOS(da,u,f,appctx);CHKERRQ(ierr);
+    ierr = TestZOS(da,u,F,appctx);CHKERRQ(ierr);
   }
 
   /*
@@ -573,20 +562,12 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     myfree2(Jac);
   }
 
-
-  if (appctx->zos) {
-    ierr = DMLocalToGlobalBegin(da,localF,INSERT_VALUES,F);CHKERRQ(ierr);
-    ierr = DMLocalToGlobalEnd(da,localF,INSERT_VALUES,F);CHKERRQ(ierr);
-  }
-
   /*
     Restore vectors
   */
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   if (appctx->zos) {
-    ierr = DMDAVecRestoreArray(da,localF,&f);CHKERRQ(ierr);
-    ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
     ierr = VecDestroy(&F);CHKERRQ(ierr);
   }
 
@@ -790,20 +771,30 @@ PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,Pet
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode TestZOS(DM da,PetscScalar **u,PetscScalar **f,void *ctx)
+PetscErrorCode TestZOS(DM da,PetscScalar **u,Vec F,void *ctx)
 {
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   PetscInt       m,n,xs,ys,xm,ym,gxs,gys,gxm,gym,i,j,k = 0;
-  PetscScalar    diff = 0,norm = 0,*u_vec,*fz;
+  PetscScalar    diff = 0,norm = 0,*u_vec,*fz,**f;
   MPI_Comm       comm = MPI_COMM_WORLD;
+  Vec            localF;
 
   PetscFunctionBegin;
+
+  /* Get local structure for f */
+  ierr = DMGetLocalVector(da,&localF);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
+  ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);
+
+  /* Get extent of region owned by processor */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
   m = gxm*gym;
   n = gxm*gym;
 
+  /* Convert to a 1-array */
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++)
@@ -815,7 +806,6 @@ PetscErrorCode TestZOS(DM da,PetscScalar **u,PetscScalar **f,void *ctx)
   /* Zero order scalar evaluation vs. calling RHS function */
   zos_forward(tag,m,n,0,u_vec,fz);
   ierr = RHSLocalPassive(da,f,u,appctx);CHKERRQ(ierr);
-
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
       if ((appctx->zos_view) && (fabs(f[j][i]) > 1.e-16) && (fabs(fz[k]) > 1.e-16))
@@ -828,6 +818,12 @@ PetscErrorCode TestZOS(DM da,PetscScalar **u,PetscScalar **f,void *ctx)
   PetscPrintf(comm,"    ----- Testing Zero Order evaluation -----\n");
   PetscPrintf(comm,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",norm);
   ierr = PetscFree(fz);CHKERRQ(ierr);
+
+  /* Return local structure */
+  ierr = DMLocalToGlobalBegin(da,localF,INSERT_VALUES,F);CHKERRQ(ierr);
+  ierr = DMLocalToGlobalEnd(da,localF,INSERT_VALUES,F);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArray(da,localF,&f);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
