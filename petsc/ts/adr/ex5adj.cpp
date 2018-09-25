@@ -19,6 +19,7 @@ static char help[] = "Demonstrates adjoint sensitivity analysis for Reaction-Dif
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>
+#include <adolc/adolc_sparse.h>
 
 #define tag 1
 
@@ -49,6 +50,13 @@ extern PetscErrorCode IJacobianADOLC(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void
 
 /* Utility functions for automatic Jacobian computation */
 extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]);
+extern PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M);
+extern PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP);
+extern PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring);
+extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed);
+extern PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec);
+extern PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp);
+extern PetscErrorCode TestZOS2d(DM da,Field **u,Vec F,void *ctx);
 
 int main(int argc,char **argv)
 {
@@ -947,6 +955,139 @@ PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
     (*a2d)[j] = cgs + j*gxm - gxs;
   }
   *a2d -= gys;
+  PetscFunctionReturn(0);
+}
+
+/*
+  Print matrices involved in sparse computations.
+*/
+PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M)
+{
+  PetscErrorCode ierr;
+  PetscInt       i,j;
+
+  PetscFunctionBegin;
+  ierr = PetscPrintf(comm,"%s \n",name);CHKERRQ(ierr);
+  for(i=0; i<m ;i++) {
+    ierr = PetscPrintf(comm,"\n %d: ",i);CHKERRQ(ierr);
+    for(j=0; j<n ;j++)
+      ierr = PetscPrintf(comm," %10.4f ", M[i][j]);CHKERRQ(ierr);
+  }
+  ierr = PetscPrintf(comm,"\n\n");CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP)
+{
+  PetscErrorCode ierr;
+  PetscInt       i,j;
+
+  PetscFunctionBegin;
+  ierr = PetscPrintf(comm,"Sparsity pattern:\n");CHKERRQ(ierr);
+  for(i=0; i<m ;i++) {
+    ierr = PetscPrintf(comm,"\n %2d: ",i);CHKERRQ(ierr);
+    for(j=1; j<= (PetscInt) JP[i][0] ;j++)
+      ierr = PetscPrintf(comm," %2d ", JP[i][j]);CHKERRQ(ierr);
+  }
+  ierr = PetscPrintf(comm,"\n\n");CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring)
+{
+  PetscErrorCode ierr;
+  MatColoring    coloring;
+  PetscScalar    one = 1.;
+  Mat            S;
+  PetscInt       i,j,k;
+
+  PetscFunctionBegin;
+
+  // Create Jacobian sparsity pattern object, assembling with preallocated nonzeros as ones
+  ierr = MatCreate(comm,&S);CHKERRQ(ierr);
+  ierr = MatSetSizes(S,PETSC_DECIDE,PETSC_DECIDE,m,n);CHKERRQ(ierr);
+  ierr = MatSetFromOptions(S);CHKERRQ(ierr);
+  ierr = MatSetUp(S);CHKERRQ(ierr);
+  *p = 0;
+  for (i=0;i<m;i++) {
+    if ((PetscInt) JP[i][0] > *p)
+      *p = (PetscInt) JP[i][0];
+    for (j=1;j<= (PetscInt) JP[i][0];j++) {
+      k = JP[i][j];
+      ierr = MatSetValues(S,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
+    }
+  }
+  ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  // Extract colouring
+  ierr = MatColoringCreate(S,&coloring);CHKERRQ(ierr);
+  ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // 'Smallest last' default
+  ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
+  ierr = MatColoringApply(coloring,iscoloring);CHKERRQ(ierr);
+  ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
+  ierr = MatDestroy(&S);CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed)
+{
+  PetscErrorCode ierr;
+  IS             *isp,is;
+  PetscInt       nis,size,i,j;
+  const PetscInt *indices;
+
+  PetscFunctionBegin;
+
+  ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
+  for (i=0;i<p;i++) {
+    is = *(isp+i);
+    ierr = ISGetLocalSize(is,&size);CHKERRQ(ierr);
+    ierr = ISGetIndices(is,&indices);CHKERRQ(ierr);
+    for (j=0;j<size;j++) {
+      Seed[indices[j]][i] = 1.;
+    }
+    ierr = ISRestoreIndices(is,&indices);CHKERRQ(ierr);
+  }
+  ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec)
+{
+  PetscInt i,j,k,colour;
+
+  PetscFunctionBegin;
+  for (i=0;i<m;i++) {
+    for (colour=0;colour<p;colour++) {
+      Rec[i][colour] = -1.;
+      for (k=1;k<=(PetscInt) JP[i][0];k++) {
+        j = (PetscInt) JP[i][k];
+        if (Seed[j][colour] == 1.) {
+          Rec[i][colour] = j;
+          break;
+        }
+      }
+    }
+  }
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp)
+{
+  PetscErrorCode ierr;
+  PetscInt       i,j,colour;
+
+  PetscFunctionBegin;
+  for (i=0; i<m; i++) {
+    for (colour=0;colour<p;colour++) {
+      j = (PetscInt) Rec[i][colour];
+      if (j != -1)
+        ierr = MatSetValuesLocal(J,1,&i,1,&j,&Jcomp[i][colour],INSERT_VALUES);CHKERRQ(ierr);
+    }
+  }
   PetscFunctionReturn(0);
 }
 
