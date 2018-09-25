@@ -32,9 +32,11 @@ typedef struct {
 } AField;
 
 typedef struct {
-  PetscReal D1,D2,gamma,kappa;
-  PetscBool aijpc,no_an;
-  AField    **u_a,**f_a;
+  PetscReal   D1,D2,gamma,kappa;
+  PetscBool   aijpc,no_an,sparse,sparse_view;
+  AField      **u_a,**f_a;
+  PetscScalar **Seed,**Rec;
+  PetscInt    p;
 } AppCtx;
 
 /* (Slightly modified) functions included in original code of ex5adj.c */
@@ -56,26 +58,31 @@ extern PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned i
 extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed);
 extern PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec);
 extern PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp);
-extern PetscErrorCode TestZOS2d(DM da,Field **u,Vec F,void *ctx);
 
 int main(int argc,char **argv)
 {
   TS             ts;                  		/* ODE integrator */
-  Vec            x;                   		/* solution */
+  Vec            x,r;                  		/* solution, residual */
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
   Vec            lambda[1];
   PetscScalar    *x_ptr;
   PetscBool      forwardonly=PETSC_FALSE,implicitform=PETSC_FALSE,byhand=PETSC_FALSE;
-  PetscInt       gxs,gys,gxm,gym;
+  PetscInt       xs,ys,xm,ym,gxs,gys,gxm,gym,i,m,n,p,dofs = 2,ctrl[3] = {0,0,0};
   AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
+  PetscScalar    **Seed = NULL,**Rec = NULL,*u_vec;
+  unsigned int   **JP = NULL;
+  ISColoring     iscoloring;
+  MPI_Comm       comm = MPI_COMM_WORLD;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   ierr = PetscOptionsGetBool(NULL,NULL,"-forwardonly",&forwardonly,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-implicitform",&implicitform,NULL);CHKERRQ(ierr);
-  appctx.aijpc = PETSC_FALSE,appctx.no_an = PETSC_FALSE;
+  appctx.aijpc = PETSC_FALSE,appctx.no_an = PETSC_FALSE,appctx.sparse = PETSC_FALSE,appctx.sparse_view = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-aijpc",&appctx.aijpc,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse_view",&appctx.sparse_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
@@ -97,6 +104,7 @@ int main(int argc,char **argv)
      vectors that are the same types
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
+  ierr = VecDuplicate(x,&r);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Allocate memory for (local) active fields (called AFields) and store 
@@ -139,13 +147,60 @@ int main(int argc,char **argv)
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
   if (!implicitform) {
     ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
+  } else {
+    ierr = TSSetIFunction(ts,NULL,IFunction,&appctx);CHKERRQ(ierr);
+  }
+
+  /*
+    In the case where ADOL-C generates the Jacobian in compressed format, seed and recovery matrices
+    are required. Since the sparsity structure of the Jacobian does not change over the course of the
+    time integration, we can save computational effort by only generating these objects once.
+  */
+  if ((appctx.sparse) && (!appctx.no_an)) {
+
+    ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+    m = dofs*gxm*gym;  // Number of dependent variables
+    n = m;             // Number of independent variables
+
+    // Trace RHSFunction, so that ADOL-C has tape to read from
+    ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
+    ierr = RHSFunction(ts,1.0,x,r,&appctx);CHKERRQ(ierr);
+
+    // Generate sparsity pattern
+    JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
+    jac_pat(tag,m,n,u_vec,JP,ctrl);
+    ierr = GetColoring(comm,m,n,JP,&p,&iscoloring);CHKERRQ(ierr);
+
+    // Generate seed matrix
+    Seed = myalloc2(n,p);
+    ierr = GenerateSeedMatrix(iscoloring,n,p,Seed);CHKERRQ(ierr);
+    ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+
+    // Generate recovery matrix
+    Rec = myalloc2(m,p);
+    ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
+    if (appctx.sparse_view) {
+      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
+      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+    }
+
+    // Store results and free workspace
+    appctx.Seed = Seed;
+    appctx.Rec = Rec;
+    appctx.p = p;
+    for (i=0;i<m;i++)
+      free(JP[i]);
+    free(JP);
+    ierr = PetscFree(u_vec);CHKERRQ(ierr);
+  }
+
+  if (!implicitform) {
     if (!byhand) {
       ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianADOLC,&appctx);CHKERRQ(ierr);
     } else {
       ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianByHand,&appctx);CHKERRQ(ierr);
     }
   } else {
-    ierr = TSSetIFunction(ts,NULL,IFunction,&appctx);CHKERRQ(ierr);
     if (appctx.aijpc) {
       Mat                    A,B;
 
@@ -204,11 +259,17 @@ int main(int argc,char **argv)
     ierr = TSAdjointSolve(ts);CHKERRQ(ierr);
     ierr = VecDestroy(&lambda[0]);CHKERRQ(ierr);
   }
+
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Free work space and call destructors for AFields.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = VecDestroy(&r);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
+  if (appctx.sparse) {
+    myfree2(Rec);
+    myfree2(Seed);
+  }
   if (!appctx.no_an) {
     f_a += gys;
     u_a += gys;
@@ -437,12 +498,14 @@ PetscErrorCode InitialConditions(DM da,Vec U)
 
 PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 {
+  AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2;
-  PetscScalar    *u_vec,**J = NULL;
+  PetscScalar    *u_vec,**J = NULL,*f_vec;
   Field          **u;
   Vec            localU;
+  MPI_Comm       comm = MPI_COMM_WORLD;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
@@ -485,17 +548,39 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     Calculate Jacobian using ADOL-C
   */
 
-  J = myalloc2(m,n);
-  jacobian(tag,m,n,u_vec,J);
-  ierr = PetscFree(u_vec);CHKERRQ(ierr);
-  for (i=0; i<m; i++) {
-    for (j=0; j<n; j++) {
-      if (fabs(J[i][j]) > 1.e-16) {
-        ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+  if (appctx->sparse) {
+
+    /*
+      Compute Jacobian in compressed format and recover from this, using seed and recovery matrices
+      computed earlier.
+    */
+    ierr = PetscMalloc1(m,&f_vec);CHKERRQ(ierr);
+    J = myalloc2(m,appctx->p);
+    fov_forward(tag,m,n,appctx->p,u_vec,appctx->Seed,f_vec,J);
+    ierr = PetscFree(f_vec);CHKERRQ(ierr);
+    if (appctx->sparse_view) {
+      ierr = TSGetStepNumber(ts,&k);
+      if (k == 0) {
+        ierr = PrintMat(comm,"Compressed Jacobian:",m,appctx->p,J);CHKERRQ(ierr);
       }
     }
+    ierr = RecoverJacobian(A,m,appctx->p,appctx->Rec,J);CHKERRQ(ierr);
+    myfree2(J);
+
+  } else {
+
+    J = myalloc2(m,n);
+    jacobian(tag,m,n,u_vec,J);
+    ierr = PetscFree(u_vec);CHKERRQ(ierr);
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+    myfree2(J);
   }
-  myfree2(J);
 
   /*
      Restore vectors
@@ -771,12 +856,14 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
 
 PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat BB,void *ctx)
 {
+  AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2;
-  PetscScalar    *u_vec,**J;
+  PetscScalar    *u_vec,**J,*f_vec;
   Field          **u;
   Vec            localU,D;
+  MPI_Comm       comm = MPI_COMM_WORLD;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
@@ -818,17 +905,39 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   /*
     First, calculate the -df/dx part using ADOL-C
   */
-  J = myalloc2(m,n);
-  jacobian(tag,m,n,u_vec,J);
-  ierr = PetscFree(u_vec);CHKERRQ(ierr);
-  for (i=0; i<m; i++) {
-    for (j=0; j<n; j++) {
-      if (fabs(J[i][j]) > 1.e-16) {
-        ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+  if (appctx->sparse) {
+
+    /*
+      Compute Jacobian in compressed format and recover from this, using seed and recovery matrices
+      computed earlier.
+    */
+    ierr = PetscMalloc1(m,&f_vec);CHKERRQ(ierr);
+    J = myalloc2(m,appctx->p);
+    fov_forward(tag,m,n,appctx->p,u_vec,appctx->Seed,f_vec,J);
+    ierr = PetscFree(f_vec);CHKERRQ(ierr);
+    if (appctx->sparse_view) {
+      ierr = TSGetStepNumber(ts,&k);
+      if (k == 0) {
+        ierr = PrintMat(comm,"Compressed Jacobian:",m,appctx->p,J);CHKERRQ(ierr);
       }
     }
+    ierr = RecoverJacobian(A,m,appctx->p,appctx->Rec,J);CHKERRQ(ierr);
+    myfree2(J);
+
+  } else {
+
+    J = myalloc2(m,n);
+    jacobian(tag,m,n,u_vec,J);
+    ierr = PetscFree(u_vec);CHKERRQ(ierr);
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+    myfree2(J);
   }
-  myfree2(J);
 
   /*
     Next, assemble a*M
