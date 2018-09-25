@@ -83,7 +83,7 @@ extern PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned i
 extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed);
 extern PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec);
 extern PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp);
-extern PetscErrorCode TestZOS2d(DM da,Field **u,Vec F,void *ctx);
+extern PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx);
 
 int main(int argc,char **argv)
 {
@@ -372,6 +372,11 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   if (!appctx->no_an) {
     ierr = RHSLocalActive(da,f,u,appctx);CHKERRQ(ierr);
+
+    /* Test zeroth order scalar evaluation in ADOL-C gives the same result */
+    if (appctx->zos) {
+      ierr = TestZOS2d(da,f,u,appctx);CHKERRQ(ierr); // FIXME: Why does this give nonzero?
+    }
   } else {
     ierr = RHSLocalPassive(da,f,u,appctx);CHKERRQ(ierr);
   }
@@ -483,12 +488,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     }
   }
   k = 0;
-
-  /* Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive */
-  if (appctx->zos) {
-    ierr = PetscPrintf(MPI_COMM_WORLD,"Exiting. ZOS test not yet complete.\n");CHKERRQ(ierr);
-    exit(0);
-  }
 
   /*
     Calculate Jacobian using ADOL-C
@@ -819,26 +818,17 @@ PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,Pet
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode TestZOS2d(DM da,Field **u,Vec F,void *ctx)
+PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx)
 {
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
-  PetscInt       m,n,xs,ys,xm,ym,gxs,gys,gxm,gym,i,j,k = 0,dofs = 2;
+  PetscInt       m,n,gxs,gys,gxm,gym,i,j,k = 0,dofs = 2;
   PetscScalar    diff = 0,norm = 0,*u_vec,*fz;
-  Field          **f;
   MPI_Comm       comm = MPI_COMM_WORLD;
-  Vec            localF;
 
   PetscFunctionBegin;
 
-  /* Get local structure for f */
-  ierr = DMGetLocalVector(da,&localF);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalBegin(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);
-
   /* Get extent of region owned by processor */
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
   m = dofs*gxm*gym;
   n = m;
@@ -851,13 +841,12 @@ PetscErrorCode TestZOS2d(DM da,Field **u,Vec F,void *ctx)
       u_vec[k++] = u[j][i].v;
   }
   k = 0;
-  ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
 
   /* Zero order scalar evaluation vs. calling RHS function */
+  ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
   zos_forward(tag,m,n,0,u_vec,fz);
-  ierr = RHSLocalPassive(da,f,u,appctx);CHKERRQ(ierr);
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
       if ((appctx->zos_view) && (fabs(f[j][i].u) > 1.e-16) && (fabs(fz[k]) > 1.e-16))
         PetscPrintf(comm,"(%2d,%2d): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,f[j][i].u,fz[k]);
       diff += (f[j][i].u-fz[k])*(f[j][i].u-fz[k]);k++;
@@ -872,12 +861,6 @@ PetscErrorCode TestZOS2d(DM da,Field **u,Vec F,void *ctx)
   PetscPrintf(comm,"    ----- Testing Zero Order evaluation -----\n");
   PetscPrintf(comm,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",norm);
   ierr = PetscFree(fz);CHKERRQ(ierr);
-
-  /* Return local structure */
-  ierr = DMLocalToGlobalBegin(da,localF,INSERT_VALUES,F);CHKERRQ(ierr);
-  ierr = DMLocalToGlobalEnd(da,localF,INSERT_VALUES,F);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArray(da,localF,&f);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
