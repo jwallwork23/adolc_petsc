@@ -65,7 +65,7 @@ extern PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned i
 extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed);
 extern PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec);
 extern PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp);
-extern PetscErrorCode TestZOS(DM da,PetscScalar **u,Vec F,void *ctx);
+extern PetscErrorCode TestZOS2d(DM da,PetscScalar **u,Vec F,void *ctx);
 
 int main(int argc,char **argv)
 {
@@ -96,7 +96,7 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = DMDACreate2d(comm, DM_BOUNDARY_NONE, DM_BOUNDARY_NONE,DMDA_STENCIL_STAR,8,8,PETSC_DECIDE,PETSC_DECIDE,1,1,NULL,NULL,&da);CHKERRQ(ierr);
+  ierr = DMDACreate2d(comm,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DMDA_STENCIL_STAR,8,8,PETSC_DECIDE,PETSC_DECIDE,1,1,NULL,NULL,&da);CHKERRQ(ierr);
   ierr = DMSetFromOptions(da);CHKERRQ(ierr);
   ierr = DMSetUp(da);CHKERRQ(ierr);
 
@@ -522,7 +522,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
   /* Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive */
   if (appctx->zos) {
-    ierr = TestZOS(da,u,F,appctx);CHKERRQ(ierr);
+    ierr = TestZOS2d(da,u,F,appctx);CHKERRQ(ierr);
   }
 
   /*
@@ -540,7 +540,10 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     fov_forward(tag,m,n,appctx->p,u_vec,appctx->Seed,f_vec,Jcomp);
     ierr = PetscFree(f_vec);CHKERRQ(ierr);
     if (appctx->sparse_view) {
-      ierr = PrintMat(comm,"Compressed Jacobian:",m,appctx->p,Jcomp);CHKERRQ(ierr);
+      ierr = TSGetStepNumber(ts,&k);
+      if (k == 0) {
+        ierr = PrintMat(comm,"Compressed Jacobian:",m,appctx->p,Jcomp);CHKERRQ(ierr);
+      }
     }
     ierr = RecoverJacobian(J,m,appctx->p,appctx->Rec,Jcomp);CHKERRQ(ierr);
     myfree2(Jcomp);
@@ -771,7 +774,7 @@ PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,Pet
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode TestZOS(DM da,PetscScalar **u,Vec F,void *ctx)
+PetscErrorCode TestZOS2d(DM da,PetscScalar **u,Vec F,void *ctx)
 {
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
