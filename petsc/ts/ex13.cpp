@@ -487,7 +487,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       i,j,k = 0,l,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n;
+  PetscInt       i,j,k = 0,gxs,gys,gxm,gym,m,n;
   PetscScalar    **u,*u_vec,**Jac = NULL,**f,*f_vec,**Jcomp = NULL;
   Vec            localU,localF,F;
   MPI_Comm       comm = MPI_COMM_WORLD;
@@ -520,18 +520,16 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   }
 
   /* Get local and ghosted grid boundaries */
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
   /* Convert 2-array to a 1-array, so this can be read by ADOL-C */
-  m = gxm*gym;  // Number of dependent variables / globally owned points
-  n = gxm*gym;  // Number of independent variables / locally owned points
+  m = gxm*gym;  // Number of dependent variables
+  n = m;        // Number of independent variables
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-  for (j=gys; j<gys+gym; j++) {
+  for (j=gys; j<gys+gym; j++) { // TODO: Write a function for this
     for (i=gxs; i<gxs+gxm; i++)
       u_vec[k++] = u[j][i];
   }
-  k = 0;
 
   /* Test zeroth order scalar evaluation in ADOL-C gives the same result as calling RHSLocalPassive */
   if (appctx->zos) {
@@ -549,7 +547,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       computed earlier.
     */
     ierr = PetscMalloc1(m,&f_vec);CHKERRQ(ierr);
-    zos_forward(tag,m,n,0,u_vec,f_vec);		// FIXME: Temporary recomputation of dependent vector
     Jcomp = myalloc2(m,appctx->p);
     fov_forward(tag,m,n,appctx->p,u_vec,appctx->Seed,f_vec,Jcomp);
     ierr = PetscFree(f_vec);CHKERRQ(ierr);
@@ -565,12 +562,12 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       Default method of computing full Jacobian (not recommended!).
     */
     Jac = myalloc2(m,n);
-    jacobian(tag,n,n,u_vec,Jac);
+    jacobian(tag,m,n,u_vec,Jac);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
-    for (k=0; k<n; k++) {
-      for (l=0; l<n; l++) {
-        if (fabs(Jac[k][l]) > 1.e-16)	// TODO: Instead use where nonzeros expected
-          ierr = MatSetValuesLocal(J,1,&k,1,&l,&Jac[k][l],INSERT_VALUES);CHKERRQ(ierr);
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(Jac[i][j]) > 1.e-16)	// TODO: Instead use where nonzeros expected
+          ierr = MatSetValuesLocal(J,1,&i,1,&j,&Jac[i][j],INSERT_VALUES);CHKERRQ(ierr);
       }
     }
     myfree2(Jac);
