@@ -161,8 +161,8 @@ int main(int argc,char **argv)
   if ((user.sparse) && (!user.no_an)) {
 
     ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-    m = gxm*gym;  // Number of dependent variables / globally owned points
-    n = gxm*gym;  // Number of independent variables / locally owned points
+    m = gxm*gym;  // Number of dependent variables
+    n = gxm*gym;  // Number of independent variables
 
     // Trace RHSFunction, so that ADOL-C has tape to read from
     ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
@@ -490,7 +490,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   PetscErrorCode ierr;
   DM             da;
   PetscInt       i,j,k = 0,gxs,gys,gxm,gym,m,n;
-  PetscScalar    **u,*u_vec,**Jac = NULL,*f_vec,**Jcomp = NULL;
+  PetscScalar    **u,*u_vec,**Jac = NULL,*f_vec;
   Vec            localU;
   MPI_Comm       comm = MPI_COMM_WORLD;
 
@@ -533,17 +533,17 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
       computed earlier.
     */
     ierr = PetscMalloc1(m,&f_vec);CHKERRQ(ierr);
-    Jcomp = myalloc2(m,appctx->p);
-    fov_forward(tag,m,n,appctx->p,u_vec,appctx->Seed,f_vec,Jcomp);
+    Jac = myalloc2(m,appctx->p);
+    fov_forward(tag,m,n,appctx->p,u_vec,appctx->Seed,f_vec,Jac);
     ierr = PetscFree(f_vec);CHKERRQ(ierr);
     if (appctx->sparse_view) {
       ierr = TSGetStepNumber(ts,&k);
       if (k == 0) {
-        ierr = PrintMat(comm,"Compressed Jacobian:",m,appctx->p,Jcomp);CHKERRQ(ierr);
+        ierr = PrintMat(comm,"Compressed Jacobian:",m,appctx->p,Jac);CHKERRQ(ierr);
       }
     }
-    ierr = RecoverJacobian(J,m,appctx->p,appctx->Rec,Jcomp);CHKERRQ(ierr);
-    myfree2(Jcomp);
+    ierr = RecoverJacobian(J,m,appctx->p,appctx->Rec,Jac);CHKERRQ(ierr);
+    myfree2(Jac);
 
   } else {
 
