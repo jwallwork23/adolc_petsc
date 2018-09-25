@@ -40,9 +40,11 @@ static char help[] = "Demonstrates automatic Jacobian computation using ADOL-C f
    User-defined data structures
 */
 typedef struct {
-  PetscReal c;
-  PetscBool zos,zos_view,no_an,sparse,sparse_view;
-  adouble   **u_a,**f_a;
+  PetscReal   c;
+  PetscBool   zos,zos_view,no_an,sparse,sparse_view;
+  adouble     **u_a,**f_a;
+  PetscScalar **Seed,**Rec; /* Jacobian seed and recovery matrices */
+  PetscInt    p;
 } AppCtx;
 
 /* (Slightly modified) functions included in original code of ex13.c */
@@ -69,12 +71,13 @@ int main(int argc,char **argv)
   TS             ts;                    /* nonlinear solver */
   Vec            u,r;                   /* solution, residual vector */
   Mat            J;                     /* Jacobian matrix */
-  PetscInt       steps,gxs,gys,gxm,gym; /* iterations for convergence, ghost points */
+  PetscInt       steps,xs,ys,xm,ym,gxs,gys,gxm,gym;
   PetscErrorCode ierr;
   DM             da;
   PetscReal      ftime,dt;
   AppCtx         user;                  /* user-defined work context */
   adouble        **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;  /* active variables */
+  PetscScalar    **Seed = NULL,**Rec = NULL;
   PetscBool      byhand = PETSC_FALSE;
   MPI_Comm       comm = MPI_COMM_WORLD;
 
@@ -147,6 +150,54 @@ int main(int argc,char **argv)
   ierr = TSSetType(ts,TSBEULER);CHKERRQ(ierr);
   ierr = TSSetRHSFunction(ts,r,RHSFunction,&user);CHKERRQ(ierr);
 
+  /*
+    In the case where ADOL-C generates the Jacobian in compressed format, seed and recovery matrices
+    are required. Since the sparsity structure of the Jacobian does not change over the course of the
+    time integration, we can save computational effort by only generating these objects once.
+  */
+  if ((user.sparse) && (!user.no_an)) {
+
+    unsigned int **JP = NULL;
+    PetscInt     ctrl[3] = {0,0,0},p,i,m,n;
+    ISColoring   iscoloring;
+    PetscScalar  *u_vec;
+
+    ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+    m = gxm*gym;  // Number of dependent variables / globally owned points
+    n = gxm*gym;  // Number of independent variables / locally owned points
+
+    // Trace RHSFunction, so that ADOL-C has tape to read from
+    ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
+    ierr = RHSFunction(ts,1.0,u,r,&user);CHKERRQ(ierr);
+
+    // Generate sparsity pattern
+    JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
+    jac_pat(tag,m,n,u_vec,JP,ctrl);
+    ierr = GetColoring(comm,m,n,JP,&p,&iscoloring);CHKERRQ(ierr);
+
+    // Generate seed matrix
+    Seed = myalloc2(n,p);
+    ierr = GenerateSeedMatrix(iscoloring,n,p,Seed);CHKERRQ(ierr);
+    ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+
+    // Generate recovery matrix
+    Rec = myalloc2(m,p);
+    ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
+    if (user.sparse_view) {
+      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
+      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+    }
+
+    // Store results and free workspace
+    user.Seed = Seed;
+    user.Rec = Rec;
+    user.p = p;
+    for (i=0;i<m;i++)
+      free(JP[i]);
+    free(JP);
+    ierr = PetscFree(u_vec);CHKERRQ(ierr);
+  }
+
   /* Set Jacobian */
   ierr = DMSetMatType(da,MATAIJ);CHKERRQ(ierr);
   ierr = DMCreateMatrix(da,&J);CHKERRQ(ierr);
@@ -184,6 +235,10 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = MatDestroy(&J);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
+  if (user.sparse) {
+    myfree2(Rec);
+    myfree2(Seed);
+  }
   if (!user.no_an) {
     f_a += gys;
     u_a += gys;
@@ -222,9 +277,8 @@ PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *p
   /*
     Mark independence
 
-    NOTE: Ghost points are marked as independent at this stage, but their contributions to
-          the Jacobian will be added to the corresponding rows on other processes, meaning
-          the Jacobian remains square.
+    NOTE: Ghost points are marked as independent, in place of the points they represent on
+          other processors / on other boundaries.
   */
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
@@ -250,6 +304,9 @@ PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *p
 
   /*
     Mark dependence
+
+    NOTE: Ghost points are marked as dependent in order to vastly simplify index notation
+          during Jacobian assembly.
   */
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++)
@@ -327,7 +384,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 
   /* Get pointers to vector data */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da,F,&f);CHKERRQ(ierr);
   ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);
 
   /* Get local grid boundaries */
@@ -431,7 +487,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   PetscErrorCode ierr;
   DM             da;
   PetscInt       i,j,k = 0,l,xs,ys,xm,ym,gxs,gys,gxm,gym,m,n;
-  PetscScalar    **u,*u_vec,**Jac = NULL,**f,*fz,norm=0.,diff=0.;
+  PetscScalar    **u,*u_vec,**Jac = NULL,**f,*fz,norm=0.,diff=0.,**Jcomp = NULL;
   Vec            localU,localF,F;
   MPI_Comm       comm = MPI_COMM_WORLD;
 
@@ -476,7 +532,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
     zos_forward(tag,m,n,0,u_vec,fz);
 
-    RHSLocalPassive(da,f,u,appctx);
+    ierr = RHSLocalPassive(da,f,u,appctx);CHKERRQ(ierr);
 
     for (j=ys; j<ys+ym; j++) {
       for (i=xs; i<xs+xm; i++) {
@@ -499,84 +555,29 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
   if (appctx->sparse) {
 
-    // ------------------- TODO: Move the below out of the TS loop --------------------
-
-    unsigned int **JP = NULL;
-    PetscInt     ctrl[3] = {0,0,0},p;
-    ISColoring   iscoloring;
-    PetscScalar  **Seed = NULL,**Jcomp = NULL,**Rec = NULL;
-
     /*
-      Get independent vector
-    */
-    ierr = RHSLocalActive(da,f,u,appctx);
-    for (j=gys; j<gys+gym; j++) {
-      for (i=gxs; i<gxs+gxm; i++) {
-        u_vec[k++] = u[j][i];
-      }
-    }
-    k = 0;
-
-    /*
-      Generate sparsity pattern
-    */
-    JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
-    jac_pat(tag,m,n,u_vec,JP,ctrl);
-    ierr = GetColoring(comm,m,n,JP,&p,&iscoloring);CHKERRQ(ierr);
-
-    /*
-      Generate seed matrix
-    */
-    Seed = myalloc2(n,p);
-    ierr = GenerateSeedMatrix(iscoloring,n,p,Seed);CHKERRQ(ierr);
-    ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
-
-    /*
-      Generate recovery matrix
-    */
-    Rec = myalloc2(m,p);
-    ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
-    if (appctx->sparse_view) {
-      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
-      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
-    }
-
-    // ------------------- TODO: Move the above out of the TS loop --------------------
-
-    /*
-      Compute Jacobian in compressed format
+      Compute Jacobian in compressed format and recover from this, using seed and recovery matrices
+      computed earlier.
     */
     ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
     zos_forward(tag,m,n,0,u_vec,fz);		// FIXME: Temporary recomputation of dependent vector
-    Jcomp = myalloc2(m,p);
-    fov_forward(tag,m,n,p,u_vec,Seed,fz,Jcomp);
+    Jcomp = myalloc2(m,appctx->p);
+    fov_forward(tag,m,n,appctx->p,u_vec,appctx->Seed,fz,Jcomp);
     ierr = PetscFree(fz);CHKERRQ(ierr);
-
     if (appctx->sparse_view) {
-      ierr = PrintMat(comm,"Compressed Jacobian:",m,p,Jcomp);CHKERRQ(ierr);
+      ierr = PrintMat(comm,"Compressed Jacobian:",m,appctx->p,Jcomp);CHKERRQ(ierr);
     }
-
-    /*
-      Recover Jacobian from compressed format
-    */
-    ierr = RecoverJacobian(J,m,p,Rec,Jcomp);CHKERRQ(ierr);
-
-    /*
-      Free workspace
-    */
-
-    myfree2(Rec);
-    for (i=0;i<m;i++)
-      free(JP[i]);
-    free(JP);
-    myfree2(Seed);
+    ierr = RecoverJacobian(J,m,appctx->p,appctx->Rec,Jcomp);CHKERRQ(ierr);
+    myfree2(Jcomp);
 
   } else {
 
+    /*
+      Default method of computing full Jacobian (not recommended!).
+    */
     Jac = myalloc2(m,n);
     jacobian(tag,n,n,u_vec,Jac);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
-
     for (k=0; k<n; k++) {
       for (l=0; l<n; l++) {
         if (fabs(Jac[k][l]) > 1.e-16)	// TODO: Instead use where nonzeros expected
@@ -689,9 +690,6 @@ PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,Pet
   PetscFunctionReturn(0);
 }
 
-/*
-  Print sparsity pattern.
-*/
 PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP)
 {
   PetscErrorCode ierr;
@@ -708,9 +706,6 @@ PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP)
   PetscFunctionReturn(0);
 }
 
-/*
-  Generate colouring
-*/
 PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring)
 {
   PetscErrorCode ierr;
@@ -749,9 +744,6 @@ PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP
   PetscFunctionReturn(0);
 }
 
-/*
-  Generate seed matrix
-*/
 PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed)
 {
   PetscErrorCode ierr;
