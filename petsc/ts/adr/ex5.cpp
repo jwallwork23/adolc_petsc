@@ -816,6 +816,7 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,PetscIn
 
      NOTE: Using DMCreateMatrix introduces 'fake' nonzeros.
   */
+  //ierr = DMCreateMatrix(da,&S);CHKERRQ(ierr);
   ierr = MatCreateSeqAIJ(PETSC_COMM_WORLD,m,n,0,nnz,&S);CHKERRQ(ierr);
   ierr = MatSetFromOptions(S);CHKERRQ(ierr);
   ierr = MatSetUp(S);CHKERRQ(ierr);

@@ -82,31 +82,7 @@ int main(int argc,char **args)
 /*--------------------------------------------------------------------------*/
 /*                                                     preallocate nonzeros */
 /*--------------------------------------------------------------------------*/
-/*
-  PetscInt        nnz;
 
-  PetscInt        *dnz,*onz,*cols;
-
-  ierr = MatPreallocateInitialize(PETSC_COMM_WORLD,m,n,dnz,onz);CHKERRQ(ierr);
-  for (i=0; i<m; i++) {
-    nnz = (PetscInt) JP[i][0];
-    ierr = PetscMalloc1(nnz,&cols);CHKERRQ(ierr);
-    for (j=1; j<=nnz; j++) {
-      cols[j-1] = JP[i][j];
-    }
-    ierr = MatPreallocateSet(i,n,cols,dnz,onz);CHKERRQ(ierr);
-    ierr = PetscFree(cols);CHKERRQ(ierr);
-  }
-  ierr = MatPreallocateFinalize(dnz,onz);CHKERRQ(ierr);
-*/
-  // TODO: try preallocating using MatCreateSeqAIJ with nz and nnz
-
-/*--------------------------------------------------------------------------*/
-/*                                      obtain a colouring for the Jacobian */
-/*--------------------------------------------------------------------------*/
-
-  ISColoring      iscoloring;
-  MatColoring     coloring;
   Mat             J;
   PetscInt        k,p = 0,nnz[m];
   PetscScalar     one = 1.;
@@ -130,6 +106,13 @@ int main(int argc,char **args)
   }
   ierr = MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+/*--------------------------------------------------------------------------*/
+/*                                      obtain a colouring for the Jacobian */
+/*--------------------------------------------------------------------------*/
+
+  ISColoring      iscoloring;
+  MatColoring     coloring;
 
   /*
     Colour Jacobian using 'smallest last' method
