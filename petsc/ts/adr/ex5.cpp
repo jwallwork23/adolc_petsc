@@ -81,7 +81,7 @@ extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]);
 extern PetscErrorCode AFieldDestroy2d(DM da,AField *cgs[],AField **a2d[]);
 extern PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M);
 extern PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP);
-extern PetscErrorCode GetColoring(Mat S,PetscInt m,unsigned int **JP,PetscInt *p,ISColoring *iscoloring);
+extern PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring);
 extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed);
 extern PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec);
 extern PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp);
@@ -91,7 +91,6 @@ int main(int argc,char **argv)
 {
   TS             ts;                    /* ODE integrator */
   Vec            x,r;                   /* solution, residual */
-  Mat            Sparsity;
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
@@ -203,9 +202,7 @@ int main(int argc,char **argv)
     // Generate sparsity pattern and create an associated colouring
     JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
     jac_pat(tag,m,n,u_vec,JP,ctrl);
-    ierr = DMCreateMatrix(da,&Sparsity);CHKERRQ(ierr);
-    ierr = GetColoring(Sparsity,m,JP,&p,&iscoloring);CHKERRQ(ierr);
-    ierr = MatDestroy(&Sparsity);CHKERRQ(ierr);
+    ierr = GetColoring(da,m,n,JP,&p,&iscoloring);CHKERRQ(ierr);
 
     // Generate seed matrix
     Seed = myalloc2(n,p);
@@ -794,35 +791,51 @@ PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP)
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode GetColoring(Mat S,PetscInt m,unsigned int **JP,PetscInt *p,ISColoring *iscoloring)
+PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring)
 {
-  PetscErrorCode ierr;
-  MatColoring    coloring;
-  PetscScalar    one = 1.;
-  PetscInt       i,j,k,nnz;
+  PetscErrorCode         ierr;
+  Mat                    S;
+  MatColoring            coloring;
+  PetscInt               i,nnz[m];
+  ISLocalToGlobalMapping ltog;
 
   PetscFunctionBegin;
 
-  // Create Jacobian sparsity pattern object, assembling with preallocated nonzeros as ones
+  /*
+    Extract number of nonzeros and colours required from JP.
+  */
   *p = 0;
-  for (i=0;i<m;i++) {
-    nnz = (PetscInt) JP[i][0];
-    if (nnz > *p)
-      *p = nnz;
-    for (k=1; k<=nnz; k++) {
-      j = (PetscInt) JP[i][k];
-      ierr = MatSetValuesLocal(S,1,&i,1,&j,&one,INSERT_VALUES);CHKERRQ(ierr); // FIXME
-    }
+  for (i=0; i<m; i++) {
+    nnz[i] = (PetscInt) JP[i][0];
+    if (nnz[i] > *p)
+      *p = nnz[i];
   }
+
+  /*
+     Preallocate nonzeros by specifying local-to-global mapping. 
+
+     NOTE: Using DMCreateMatrix introduces 'fake' nonzeros.
+  */
+  ierr = MatCreateSeqAIJ(PETSC_COMM_WORLD,m,n,0,nnz,&S);CHKERRQ(ierr);
+  ierr = MatSetFromOptions(S);CHKERRQ(ierr);
+  ierr = MatSetUp(S);CHKERRQ(ierr);
+  ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
+  ierr = MatSetLocalToGlobalMapping(S,ltog,ltog);
   ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
-  // Extract colouring
+  /*
+    Extract colouring, with smallest last ('sl') as default.
+
+    NOTE: Use -mat_coloring_type <sl,lf,id,natural,greedy,jp> to change mode.
+    FIXME: Only sl and lf are currently working.
+  */
   ierr = MatColoringCreate(S,&coloring);CHKERRQ(ierr);
-  ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // 'Smallest last' default
+  ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);
   ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
   ierr = MatColoringApply(coloring,iscoloring);CHKERRQ(ierr);
   ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
+  ierr = MatDestroy(&S);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }

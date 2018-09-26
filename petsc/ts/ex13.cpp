@@ -673,12 +673,10 @@ PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP)
 
 PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring)
 {
-  PetscErrorCode ierr;
-  Mat            Sparsity;
-  MatColoring    coloring;
-//  PetscScalar    one = 1.;
-  PetscInt       i,nnz[m];
-//  PetscInt j,k;
+  PetscErrorCode         ierr;
+  Mat                    S;
+  MatColoring            coloring;
+  PetscInt               i,nnz[m];
   ISLocalToGlobalMapping ltog;
 
   PetscFunctionBegin;
@@ -698,30 +696,26 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,PetscIn
 
      NOTE: Using DMCreateMatrix introduces 'fake' nonzeros.
   */
-  ierr = MatCreateSeqAIJ(PETSC_COMM_WORLD,m,n,0,nnz,&Sparsity);CHKERRQ(ierr);
-  ierr = MatSetFromOptions(Sparsity);CHKERRQ(ierr);
-  ierr = MatSetUp(Sparsity);CHKERRQ(ierr);
+  ierr = MatCreateSeqAIJ(PETSC_COMM_WORLD,m,n,0,nnz,&S);CHKERRQ(ierr);
+  ierr = MatSetFromOptions(S);CHKERRQ(ierr);
+  ierr = MatSetUp(S);CHKERRQ(ierr);
   ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
-  ierr = MatSetLocalToGlobalMapping(Sparsity,ltog,ltog);
-/*
-  // Enter nonzeros as ones into Jacobian sparsity pattern matrix
-  for (i=0; i<m; i++) {
-    for (k=1; k<=nnz[i]; k++) {
-      j = (PetscInt) JP[i][k];
-      ierr = MatSetValuesLocal(Sparsity,1,&i,1,&j,&one,INSERT_VALUES);CHKERRQ(ierr);
-    }
-  }
-*/
-  ierr = MatAssemblyBegin(Sparsity,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(Sparsity,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatSetLocalToGlobalMapping(S,ltog,ltog);
+  ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
-  // Extract colouring
-  ierr = MatColoringCreate(Sparsity,&coloring);CHKERRQ(ierr);
-  ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // 'Smallest last' default
+  /*
+    Extract colouring, with smallest last ('sl') as default.
+
+    NOTE: Use -mat_coloring_type <sl,lf,id,natural,greedy,jp> to change mode.
+    FIXME
+  */
+  ierr = MatColoringCreate(S,&coloring);CHKERRQ(ierr);
+  ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);
   ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
   ierr = MatColoringApply(coloring,iscoloring);CHKERRQ(ierr);
   ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
-    ierr = MatDestroy(&Sparsity);CHKERRQ(ierr);
+  ierr = MatDestroy(&S);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
