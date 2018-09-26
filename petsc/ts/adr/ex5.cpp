@@ -843,23 +843,21 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,PetscIn
 PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed)
 {
   PetscErrorCode ierr;
-  IS             *isp,is;
+  IS             *is;
   PetscInt       nis,size,i,j;
   const PetscInt *indices;
 
   PetscFunctionBegin;
 
-  ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
-  for (i=0;i<p;i++) {
-    is = *(isp+i);
-    ierr = ISGetLocalSize(is,&size);CHKERRQ(ierr);
-    ierr = ISGetIndices(is,&indices);CHKERRQ(ierr);
-    for (j=0;j<size;j++) {
+  ierr = ISColoringGetIS(iscoloring,&nis,&is);CHKERRQ(ierr);
+  for (i=0; i<nis; i++) {  // FIXME: What if p != nis??
+    ierr = ISGetLocalSize(is[i],&size);CHKERRQ(ierr);
+    ierr = ISGetIndices(is[i],&indices);CHKERRQ(ierr);
+    for (j=0; j<size; j++)
       Seed[indices[j]][i] = 1.;
-    }
-    ierr = ISRestoreIndices(is,&indices);CHKERRQ(ierr);
+    ierr = ISRestoreIndices(is[i],&indices);CHKERRQ(ierr);
   }
-  ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
+  ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
@@ -869,10 +867,10 @@ PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m
   PetscInt i,j,k,colour;
 
   PetscFunctionBegin;
-  for (i=0;i<m;i++) {
-    for (colour=0;colour<p;colour++) {
+  for (i=0; i<m; i++) {
+    for (colour=0; colour<p; colour++) {
       Rec[i][colour] = -1.;
-      for (k=1;k<=(PetscInt) JP[i][0];k++) {
+      for (k=1; k<=(PetscInt) JP[i][0]; k++) {
         j = (PetscInt) JP[i][k];
         if (Seed[j][colour] == 1.) {
           Rec[i][colour] = j;
@@ -891,7 +889,7 @@ PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,Pet
 
   PetscFunctionBegin;
   for (i=0; i<m; i++) {
-    for (colour=0;colour<p;colour++) {
+    for (colour=0; colour<p; colour++) {
       j = (PetscInt) Rec[i][colour];
       if (j != -1)
         ierr = MatSetValuesLocal(J,1,&i,1,&j,&Jcomp[i][colour],INSERT_VALUES);CHKERRQ(ierr);
