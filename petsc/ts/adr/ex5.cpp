@@ -806,12 +806,12 @@ PetscErrorCode GetColoring(Mat S,PetscInt m,unsigned int **JP,PetscInt *p,ISColo
   // Create Jacobian sparsity pattern object, assembling with preallocated nonzeros as ones
   *p = 0;
   for (i=0;i<m;i++) {
-    nnz = (PetscInt) JP[i][0]
+    nnz = (PetscInt) JP[i][0];
     if (nnz > *p)
       *p = nnz;
-    for (j=1; j<=nnz; j++) {
-      k = (PetscInt) JP[i][j];
-      ierr = MatSetValuesLocal(S,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
+    for (k=1; k<=nnz; k++) {
+      j = (PetscInt) JP[i][k];
+      ierr = MatSetValuesLocal(S,1,&i,1,&j,&one,INSERT_VALUES);CHKERRQ(ierr); // FIXME
     }
   }
   ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);

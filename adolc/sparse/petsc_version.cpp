@@ -83,12 +83,15 @@ int main(int argc,char **args)
 /*                                                     preallocate nonzeros */
 /*--------------------------------------------------------------------------*/
 /*
+  PetscInt        nnz;
+
   PetscInt        *dnz,*onz,*cols;
 
   ierr = MatPreallocateInitialize(PETSC_COMM_WORLD,m,n,dnz,onz);CHKERRQ(ierr);
-  for (i=0;i<m;i++) {
-    ierr = PetscMalloc1(JP[i][0],&cols);CHKERRQ(ierr);
-    for (j=1;j<= (int) JP[i][0];j++) {
+  for (i=0; i<m; i++) {
+    nnz = (PetscInt) JP[i][0];
+    ierr = PetscMalloc1(nnz,&cols);CHKERRQ(ierr);
+    for (j=1; j<=nnz; j++) {
       cols[j-1] = JP[i][j];
     }
     ierr = MatPreallocateSet(i,n,cols,dnz,onz);CHKERRQ(ierr);
@@ -105,18 +108,22 @@ int main(int argc,char **args)
   ISColoring      iscoloring;
   MatColoring     coloring;
   Mat             J;
-  PetscInt        k,p = 0;
+  PetscInt        k,p = 0,nnz[m];
   PetscScalar     one = 1.;
 
+  // Get number of nonzeros per row and number of colours, p
+  for (i=0; i<m; i++) {
+    nnz[i] = (PetscInt) JP[i][0];
+    if (nnz[i] > p)
+      p = nnz[i];
+  }
+
   // Create Jacobian object, assembling with preallocated nonzeros as ones
-  ierr = MatCreate(PETSC_COMM_WORLD,&J);CHKERRQ(ierr);
-  ierr = MatSetSizes(J,PETSC_DECIDE,PETSC_DECIDE,m,n);CHKERRQ(ierr);
+  ierr = MatCreateSeqAIJ(PETSC_COMM_WORLD,m,n,0,nnz,&J);CHKERRQ(ierr);
   ierr = MatSetFromOptions(J);CHKERRQ(ierr);
   ierr = MatSetUp(J);CHKERRQ(ierr);
-  for (i=0;i<m;i++) {
-    if ((PetscInt) JP[i][0] > p)
-      p = (PetscInt) JP[i][0];
-    for (j=1;j<= (PetscInt) JP[i][0];j++) {
+  for (i=0; i<m; i++) {
+    for (j=1; j<=nnz[i]; j++) {
       k = JP[i][j];
       ierr = MatSetValues(J,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
     }
