@@ -796,7 +796,7 @@ PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,void *ctx)
   zos_forward(tag,m,n,0,u_vec,fz);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
-      if ((appctx->zos_view) && (fabs(f[j][i]) > 1.e-16) && (fabs(fz[k]) > 1.e-16))
+      if ((appctx->zos_view) && ((fabs(f[j][i]) > 1.e-16) || (fabs(fz[k]) > 1.e-16)))
         PetscPrintf(comm,"(%2d,%2d): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,f[j][i],fz[k]);
       diff += (f[j][i]-fz[k])*(f[j][i]-fz[k]);k++;
       norm += f[j][i]*f[j][i];
@@ -804,7 +804,7 @@ PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,void *ctx)
   }
   norm = sqrt(diff/norm);
   PetscPrintf(comm,"    ----- Testing Zero Order evaluation -----\n");
-  PetscPrintf(comm,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",norm);
+  PetscPrintf(comm,"    ||Fzos - Frhs||_2/||Frhs||_2 = %.4e, ||Fzos - Frhs||_2 = %.4e\n",norm,sqrt(diff));
   ierr = PetscFree(fz);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);

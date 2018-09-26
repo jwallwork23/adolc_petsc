@@ -171,7 +171,7 @@ int main(int argc,char **argv)
   }
 
   if (appctx.zos) {
-    PetscPrintf(MPI_COMM_WORLD,"    If ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 is O(1.e-8), ADOL-C function evaluation\n      is probably correct.\n");
+    PetscPrintf(comm,"    If ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 is O(1.e-8), ADOL-C function evaluation\n      is probably correct.\n");
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -908,8 +908,8 @@ PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx)
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++)
-      u_vec[k++] = u[j][i].u;
-      u_vec[k++] = u[j][i].v;
+      u_vec[k] = u[j][i].u;k++;
+      u_vec[k] = u[j][i].v;k++;
   }
   k = 0;
 
@@ -918,19 +918,19 @@ PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx)
   zos_forward(tag,m,n,0,u_vec,fz);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
-      if ((appctx->zos_view) && (fabs(f[j][i].u) > 1.e-16) && (fabs(fz[k]) > 1.e-16))
-        PetscPrintf(comm,"(%2d,%2d): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,f[j][i].u,fz[k]);
+      if ((appctx->zos_view) && ((fabs(f[j][i].u) > 1.e-16) || (fabs(fz[k]) > 1.e-16)))
+        PetscPrintf(comm,"(%2d,%2d, u): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,f[j][i].u,fz[k]);
       diff += (f[j][i].u-fz[k])*(f[j][i].u-fz[k]);k++;
       norm += f[j][i].u*f[j][i].u;
-      if ((appctx->zos_view) && (fabs(f[j][i].v) > 1.e-16) && (fabs(fz[k]) > 1.e-16))
-        PetscPrintf(comm,"(%2d,%2d): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,f[j][i].v,fz[k]);
+      if ((appctx->zos_view) && ((fabs(f[j][i].v) > 1.e-16) || (fabs(fz[k]) > 1.e-16)))
+        PetscPrintf(comm,"(%2d,%2d, v): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,f[j][i].v,fz[k]);
       diff += (f[j][i].v-fz[k])*(f[j][i].v-fz[k]);k++;
       norm += f[j][i].v*f[j][i].v;
     }
   }
   norm = sqrt(diff/norm);
   PetscPrintf(comm,"    ----- Testing Zero Order evaluation -----\n");
-  PetscPrintf(comm,"    ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 = %.4e\n",norm);
+  PetscPrintf(comm,"    ||Fzos - Frhs||_2/||Frhs||_2 = %.4e, ||Fzos - Frhs||_2 = %.4e\n",norm,sqrt(diff));
   ierr = PetscFree(fz);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
