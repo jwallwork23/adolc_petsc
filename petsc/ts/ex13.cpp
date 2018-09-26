@@ -61,7 +61,7 @@ extern PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,
 extern PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[]);
 extern PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M);
 extern PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP);
-extern PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring);
+extern PetscErrorCode GetColoring(Mat S,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring);
 extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed);
 extern PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec);
 extern PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp);
@@ -71,7 +71,7 @@ int main(int argc,char **argv)
 {
   TS             ts;                    /* nonlinear solver */
   Vec            u,r;                   /* solution, residual vector */
-  Mat            J;                     /* Jacobian matrix */
+  Mat            J,Sparsity;            /* Jacobian matrix */
   PetscInt       steps,xs,ys,xm,ym,gxs,gys,gxm,gym,i,m,n,p,ctrl[3] = {0,0,0};
   PetscErrorCode ierr;
   DM             da;
@@ -171,7 +171,12 @@ int main(int argc,char **argv)
     // Generate sparsity pattern
     JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
     jac_pat(tag,m,n,u_vec,JP,ctrl);
-    ierr = GetColoring(comm,m,n,JP,&p,&iscoloring);CHKERRQ(ierr);
+    ierr = MatCreate(comm,&Sparsity);CHKERRQ(ierr);
+    ierr = MatSetSizes(Sparsity,PETSC_DECIDE,PETSC_DECIDE,m,n);CHKERRQ(ierr);
+    ierr = MatSetFromOptions(Sparsity);CHKERRQ(ierr);
+    ierr = MatSetUp(Sparsity);CHKERRQ(ierr);
+    ierr = GetColoring(Sparsity,m,n,JP,&p,&iscoloring);CHKERRQ(ierr);
+    ierr = MatDestroy(&Sparsity);CHKERRQ(ierr);
 
     // Generate seed matrix
     Seed = myalloc2(n,p);
@@ -670,28 +675,23 @@ PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP)
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring)
+PetscErrorCode GetColoring(Mat S,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring)
 {
   PetscErrorCode ierr;
   MatColoring    coloring;
   PetscScalar    one = 1.;
-  Mat            S;
   PetscInt       i,j,k;
 
   PetscFunctionBegin;
 
-  // Create Jacobian sparsity pattern object, assembling with preallocated nonzeros as ones
-  ierr = MatCreate(comm,&S);CHKERRQ(ierr);
-  ierr = MatSetSizes(S,PETSC_DECIDE,PETSC_DECIDE,m,n);CHKERRQ(ierr);
-  ierr = MatSetFromOptions(S);CHKERRQ(ierr);
-  ierr = MatSetUp(S);CHKERRQ(ierr);
+  // Enter nonzeros as ones into Jacobian sparsity pattern matrix
   *p = 0;
   for (i=0;i<m;i++) {
     if ((PetscInt) JP[i][0] > *p)
       *p = (PetscInt) JP[i][0];
     for (j=1;j<= (PetscInt) JP[i][0];j++) {
       k = JP[i][j];
-      ierr = MatSetValues(S,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
+      ierr = MatSetValues(S,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr); // TODO: set locally
     }
   }
   ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
@@ -703,7 +703,6 @@ PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP
   ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
   ierr = MatColoringApply(coloring,iscoloring);CHKERRQ(ierr);
   ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
-  ierr = MatDestroy(&S);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
@@ -802,9 +801,10 @@ PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,void *ctx)
       norm += f[j][i]*f[j][i];
     }
   }
-  norm = sqrt(diff/norm);
+  diff = sqrt(diff);
+  norm = diff/sqrt(norm);
   PetscPrintf(comm,"    ----- Testing Zero Order evaluation -----\n");
-  PetscPrintf(comm,"    ||Fzos - Frhs||_2/||Frhs||_2 = %.4e, ||Fzos - Frhs||_2 = %.4e\n",norm,sqrt(diff));
+  PetscPrintf(comm,"    ||Fzos - Frhs||_2/||Frhs||_2 = %.4e, ||Fzos - Frhs||_2 = %.4e\n",norm,diff);
   ierr = PetscFree(fz);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
