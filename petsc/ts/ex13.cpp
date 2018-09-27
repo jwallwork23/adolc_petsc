@@ -677,7 +677,7 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   PetscErrorCode         ierr;
   Mat                    S;
   MatColoring            coloring;
-  PetscInt               i,nnz[m];
+  PetscInt               i,j,nnz[m],onz[m];
   ISLocalToGlobalMapping ltog;
 
   PetscFunctionBegin;
@@ -685,15 +685,22 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   /*
     Extract number of nonzeros and colours required from JP.
   */
-  for (i=0; i<m; i++)
+  for (i=0; i<m; i++) {
     nnz[i] = (PetscInt) JP[i][0];
+    onz[i] = nnz[i];
+    for (j=1; j<=nnz[i]; j++) {
+      if (i == (PetscInt) JP[i][j])
+        onz[i]--;
+    }
+  }
 
   /*
      Preallocate nonzeros by specifying local-to-global mapping. 
 
      NOTE: Using DMCreateMatrix overestimates nonzeros.
   */
-  ierr = MatCreateSeqAIJ(PETSC_COMM_WORLD,m,n,0,nnz,&S);CHKERRQ(ierr);
+  //ierr = DMCreateMatrix(da,&S);CHKERRQ(ierr);
+  ierr = MatCreateAIJ(PETSC_COMM_SELF,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&S);CHKERRQ(ierr);
   ierr = MatSetFromOptions(S);CHKERRQ(ierr);
   ierr = MatSetUp(S);CHKERRQ(ierr);
   ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
