@@ -83,7 +83,7 @@ extern PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscIn
 extern PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP);
 extern PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColoring *iscoloring);
 extern PetscErrorCode CountColors(ISColoring iscoloring,PetscInt *p);
-extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed);
+extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscScalar **Seed);
 extern PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec);
 extern PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp);
 extern PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx);
@@ -208,7 +208,7 @@ int main(int argc,char **argv)
 
     // Generate seed matrix
     Seed = myalloc2(n,p);
-    ierr = GenerateSeedMatrix(iscoloring,n,p,Seed);CHKERRQ(ierr);
+    ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
     ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
 
     // Generate recovery matrix
@@ -812,7 +812,7 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   /*
      Preallocate nonzeros by specifying local-to-global mapping. 
 
-     NOTE: Using DMCreateMatrix introduces 'fake' nonzeros.
+     NOTE: Using DMCreateMatrix overestimates nonzeros.
   */
   //ierr = DMCreateMatrix(da,&S);CHKERRQ(ierr);
   ierr = MatCreateSeqAIJ(PETSC_COMM_WORLD,m,n,0,nnz,&S);CHKERRQ(ierr);
@@ -851,17 +851,17 @@ PetscErrorCode CountColors(ISColoring iscoloring,PetscInt *p)
 
 }
 
-PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed)
+PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscScalar **Seed)
 {
   PetscErrorCode ierr;
   IS             *is;
-  PetscInt       nis,size,i,j;
+  PetscInt       p,size,i,j;
   const PetscInt *indices;
 
   PetscFunctionBegin;
 
-  ierr = ISColoringGetIS(iscoloring,&nis,&is);CHKERRQ(ierr);
-  for (i=0; i<nis; i++) {  // FIXME: What if p != nis??
+  ierr = ISColoringGetIS(iscoloring,&p,&is);CHKERRQ(ierr);
+  for (i=0; i<p; i++) {
     ierr = ISGetLocalSize(is[i],&size);CHKERRQ(ierr);
     ierr = ISGetIndices(is[i],&indices);CHKERRQ(ierr);
     for (j=0; j<size; j++)
