@@ -87,12 +87,9 @@ int main(int argc,char **args)
   PetscInt        k,p = 0,nnz[m];
   PetscScalar     one = 1.;
 
-  // Get number of nonzeros per row and number of colours, p
-  for (i=0; i<m; i++) {
+  // Get number of nonzeros per row
+  for (i=0; i<m; i++)
     nnz[i] = (PetscInt) JP[i][0];
-    if (nnz[i] > p)
-      p = nnz[i];
-  }
 
   // Create Jacobian object, assembling with preallocated nonzeros as ones
   ierr = MatCreateSeqAIJ(PETSC_COMM_WORLD,m,n,0,nnz,&J);CHKERRQ(ierr);
@@ -132,22 +129,20 @@ int main(int argc,char **args)
 /*--------------------------------------------------------------------------*/
 
   PetscScalar     **Seed = NULL;
-  PetscInt        nis,size;
-  IS              *isp,is;
+  PetscInt        size;
+  IS              *is;
   const PetscInt  *indices;
 
+  ierr = ISColoringGetIS(iscoloring,&p,&is);CHKERRQ(ierr);
   Seed = myalloc2(n,p);
-
-  ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
   for (i=0;i<p;i++) {
-    is = *(isp+i);
-    ierr = ISGetLocalSize(is,&size);CHKERRQ(ierr);  // FIXME sometimes comes up as an invalid pointer
-    ierr = ISGetIndices(is,&indices);CHKERRQ(ierr);
+    ierr = ISGetLocalSize(is[i],&size);CHKERRQ(ierr);
+    ierr = ISGetIndices(is[i],&indices);CHKERRQ(ierr);
     for (j=0;j<size;j++)
       Seed[indices[j]][i] = 1.;
-    ierr = ISRestoreIndices(is,&indices);CHKERRQ(ierr);
+    ierr = ISRestoreIndices(is[i],&indices);CHKERRQ(ierr);
   }
-  ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
+  ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
   ierr = PrintMat(PETSC_COMM_WORLD," Seed matrix:",n,p,Seed);CHKERRQ(ierr);
 
 /*--------------------------------------------------------------------------*/
@@ -163,7 +158,7 @@ int main(int argc,char **args)
   ierr = PrintMat(PETSC_COMM_WORLD," Compressed Jacobian:",m,p,Jcomp);CHKERRQ(ierr);
 
 /*--------------------------------------------------------------------------*/
-/*                                                      decompress Jacobian */
+/*                                                         recover Jacobian */
 /*--------------------------------------------------------------------------*/
 
   PetscInt    colour;
@@ -192,7 +187,7 @@ int main(int argc,char **args)
     }
   }
 
-  ierr = PrintMat(PETSC_COMM_WORLD," Decompressed Jacobian:",m,n,Jdecomp);CHKERRQ(ierr);
+  ierr = PrintMat(PETSC_COMM_WORLD," Recovered Jacobian:",m,n,Jdecomp);CHKERRQ(ierr);
 
 /****************************************************************************/
 /*******       free workspace and finalise                    ***************/
