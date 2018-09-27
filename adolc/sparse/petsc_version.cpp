@@ -11,6 +11,7 @@ PetscErrorCode ActiveEvaluate(adouble *x,adouble *c);
 int main(int argc,char **args)
 {
   PetscErrorCode  ierr;
+  MPI_Comm        comm = MPI_COMM_WORLD;
 
   ierr = PetscInitialize(&argc,&args,(char*)0,NULL);if (ierr) return ierr;
 
@@ -36,10 +37,10 @@ int main(int argc,char **args)
       cad[i] >>= c[i];
   trace_off();
 
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"\n c = ");CHKERRQ(ierr);
+  ierr = PetscPrintf(comm,"\n c = ");CHKERRQ(ierr);
   for(j=0;j<m;j++)
-      ierr = PetscPrintf(PETSC_COMM_WORLD," %e ",c[j]);CHKERRQ(ierr);
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"\n\n");CHKERRQ(ierr);
+      ierr = PetscPrintf(comm," %e ",c[j]);CHKERRQ(ierr);
+  ierr = PetscPrintf(comm,"\n\n");CHKERRQ(ierr);
 
 /****************************************************************************/
 /********           For comparisons: Full Jacobian                   ********/
@@ -50,7 +51,7 @@ int main(int argc,char **args)
 
   jacobian(tag,m,n,x,Jdense);
 
-  ierr = PrintMat(PETSC_COMM_WORLD," Jacobian:",m,n,Jdense);CHKERRQ(ierr);
+  ierr = PrintMat(comm," Jacobian:",m,n,Jdense);CHKERRQ(ierr);
 
 /****************************************************************************/
 /*******       sparse Jacobians, separate drivers             ***************/
@@ -70,14 +71,14 @@ int main(int argc,char **args)
 
   jac_pat(tag, m, n, x, JP, ctrl);
 
-  ierr = PetscPrintf(PETSC_COMM_WORLD," Sparsity pattern: \n");CHKERRQ(ierr);
+  ierr = PetscPrintf(comm," Sparsity pattern: \n");CHKERRQ(ierr);
   for (i=0;i<m;i++) {
-    ierr = PetscPrintf(PETSC_COMM_WORLD," %d: ",i);CHKERRQ(ierr);
+    ierr = PetscPrintf(comm," %d: ",i);CHKERRQ(ierr);
     for (j=1;j<= (int) JP[i][0];j++)
-      ierr = PetscPrintf(PETSC_COMM_WORLD," %d ",JP[i][j]);CHKERRQ(ierr);
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+      ierr = PetscPrintf(comm," %d ",JP[i][j]);CHKERRQ(ierr);
+    ierr = PetscPrintf(comm,"\n");CHKERRQ(ierr);
   }
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+  ierr = PetscPrintf(comm,"\n");CHKERRQ(ierr);
 
 /*--------------------------------------------------------------------------*/
 /*                                                     preallocate nonzeros */
@@ -92,7 +93,7 @@ int main(int argc,char **args)
     nnz[i] = (PetscInt) JP[i][0];
 
   // Create Jacobian object, assembling with preallocated nonzeros as ones
-  ierr = MatCreateSeqAIJ(PETSC_COMM_WORLD,m,n,0,nnz,&J);CHKERRQ(ierr);
+  ierr = MatCreateSeqAIJ(comm,m,n,0,nnz,&J);CHKERRQ(ierr);
   ierr = MatSetFromOptions(J);CHKERRQ(ierr);
   ierr = MatSetUp(J);CHKERRQ(ierr);
   for (i=0; i<m; i++) {
@@ -115,9 +116,11 @@ int main(int argc,char **args)
     Colour Jacobian using 'smallest last' method
 
     NOTE: Other methods may be selected from the command line using
-          -mat_coloring_type <sl,lf,natural,id,greedy,jp>
+            -mat_coloring_type <sl,lf,id>
+          ('natural' only works for square Jacobians, and 'greedy' and 'jp'
+          are for parallel programs.)
 
-          TODO: Fix seg fault in natural,id,greedy,jp cases
+          TODO: Fix seg fault in id case
   */
   ierr = MatColoringCreate(J,&coloring);CHKERRQ(ierr);
   ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);
@@ -135,15 +138,15 @@ int main(int argc,char **args)
 
   ierr = ISColoringGetIS(iscoloring,&p,&is);CHKERRQ(ierr);
   Seed = myalloc2(n,p);
-  for (i=0;i<p;i++) {
+  for (i=0;i<p;i++) {					// Loop over colours
     ierr = ISGetLocalSize(is[i],&size);CHKERRQ(ierr);
     ierr = ISGetIndices(is[i],&indices);CHKERRQ(ierr);
-    for (j=0;j<size;j++)
+    for (j=0;j<size;j++)				// Loop over associated entries
       Seed[indices[j]][i] = 1.;
     ierr = ISRestoreIndices(is[i],&indices);CHKERRQ(ierr);
   }
   ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
-  ierr = PrintMat(PETSC_COMM_WORLD," Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+  ierr = PrintMat(comm," Seed matrix:",n,p,Seed);CHKERRQ(ierr);
 
 /*--------------------------------------------------------------------------*/
 /*                                                      compressed Jacobian */
@@ -187,7 +190,7 @@ int main(int argc,char **args)
     }
   }
 
-  ierr = PrintMat(PETSC_COMM_WORLD," Recovered Jacobian:",m,n,Jdecomp);CHKERRQ(ierr);
+  ierr = PrintMat(comm," Recovered Jacobian:",m,n,Jdecomp);CHKERRQ(ierr);
 
 /****************************************************************************/
 /*******       free workspace and finalise                    ***************/

@@ -824,10 +824,12 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   ierr = MatCreateAIJ(PETSC_COMM_SELF,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&S);CHKERRQ(ierr);
   ierr = MatSetFromOptions(S);CHKERRQ(ierr);
   ierr = MatSetUp(S);CHKERRQ(ierr);
-  ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
-  ierr = MatSetLocalToGlobalMapping(S,ltog,ltog);
+  //ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
+  //ierr = MatSetLocalToGlobalMapping(S,NULL,NULL);
   ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  //ierr = MatView(S,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
   /*
     Extract colouring, with smallest last ('sl') as default.

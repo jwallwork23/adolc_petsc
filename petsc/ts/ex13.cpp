@@ -258,10 +258,10 @@ int main(int argc,char **argv)
 
 PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *ptr)
 {
-  AppCtx         *user=(AppCtx*)ptr;
+  AppCtx         *user = (AppCtx*)ptr;
   PetscErrorCode ierr;
   PetscInt       i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,Mx,My;
-  PetscReal      hx,hy,sx,sy,two=2.0;
+  PetscReal      hx,hy,sx,sy,two = 2.0;
   adouble        **f_a = user->f_a,**u_a = user->u_a;
   adouble        u,uxx,uyy;
 
@@ -281,9 +281,8 @@ PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *p
           other processors / on other boundaries.
   */
   for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
+    for (i=gxs; i<gxs+gxm; i++)
       u_a[j][i] <<= uarray[j][i];
-    }
   }
 
   /*
@@ -514,10 +513,10 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
   /* Get ghosted grid boundaries */
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-
-  /* Convert 2-array to a 1-array, so this can be read by ADOL-C */
   m = gxm*gym;  // Number of dependent variables
   n = m;        // Number of independent variables
+
+  /* Convert 2-array to a 1-array, so this can be read by ADOL-C */
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++)
@@ -703,8 +702,8 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   ierr = MatCreateAIJ(PETSC_COMM_SELF,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&S);CHKERRQ(ierr);
   ierr = MatSetFromOptions(S);CHKERRQ(ierr);
   ierr = MatSetUp(S);CHKERRQ(ierr);
-  ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
-  ierr = MatSetLocalToGlobalMapping(S,ltog,ltog);
+  //ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
+  //ierr = MatSetLocalToGlobalMapping(S,ltog,ltog);
   ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
