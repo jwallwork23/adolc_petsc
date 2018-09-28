@@ -23,7 +23,7 @@ ex1: ex1.o
 	${RM} $^
 
 ex5: ex5.o
-	$(CC) $(INCLUDES) $(LD_FLAGS) -o $@ $^ $(LIB)
+	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
 	${RM} $^
 
 ex5adj: ex5adj.o
@@ -31,7 +31,7 @@ ex5adj: ex5adj.o
 	${RM} $^
 
 ex5imp: ex5imp.o
-	${CLINKER} -o $@ $^ ${PETSC_TS_LIB}
+	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
 	${RM} $^
 
 

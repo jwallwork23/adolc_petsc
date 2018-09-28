@@ -701,7 +701,7 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   //ierr = DMCreateMatrix(da,&S);CHKERRQ(ierr);
   ierr = MatCreateAIJ(PETSC_COMM_SELF,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&S);CHKERRQ(ierr);
   ierr = MatSetFromOptions(S);CHKERRQ(ierr);
-  ierr = MatSetUp(S);CHKERRQ(ierr);
+  ierr = MatSetUp(S);CHKERRQ(ierr);		// FIXME: Colouring doesn't seem right
   //ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
   //ierr = MatSetLocalToGlobalMapping(S,ltog,ltog);
   ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);

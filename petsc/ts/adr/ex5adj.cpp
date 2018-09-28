@@ -54,8 +54,9 @@ extern PetscErrorCode IJacobianADOLC(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void
 extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]);
 extern PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M);
 extern PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP);
-extern PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring);
-extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed);
+extern PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColoring *iscoloring);
+extern PetscErrorCode CountColors(ISColoring iscoloring,PetscInt *p);
+extern PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscScalar **Seed);
 extern PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec);
 extern PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp);
 
@@ -164,16 +165,21 @@ int main(int argc,char **argv)
 
     // Trace RHSFunction, so that ADOL-C has tape to read from
     ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-    ierr = RHSFunction(ts,1.0,x,r,&appctx);CHKERRQ(ierr);
+    if (!implicitform) {
+      ierr = RHSFunction(ts,1.0,x,r,&appctx);CHKERRQ(ierr);
+    } else {
+      exit(1); // FIXME!
+    }
 
     // Generate sparsity pattern
     JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
     jac_pat(tag,m,n,u_vec,JP,ctrl);
-    ierr = GetColoring(comm,m,n,JP,&p,&iscoloring);CHKERRQ(ierr);
+    ierr = GetColoring(da,m,n,JP,&iscoloring);CHKERRQ(ierr);
+    ierr = CountColors(iscoloring,&p);CHKERRQ(ierr);
 
     // Generate seed matrix
     Seed = myalloc2(n,p);
-    ierr = GenerateSeedMatrix(iscoloring,n,p,Seed);CHKERRQ(ierr);
+    ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
     ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
 
     // Generate recovery matrix
@@ -735,6 +741,8 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   Field          **u,**f,**udot;
   Vec            localU,localF;
 
+  // FIXME: localUdot???
+
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
@@ -779,6 +787,8 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
       NOTE: Ghost points are marked as independent at this stage, but their contributions to
             the Jacobian will be added to the corresponding rows on other processes, meaning
             the Jacobian remains square.
+
+      TODO: Should there be independence of udot?
     */
     for (j=gys; j<gys+gym; j++) {
       for (i=gxs; i<gxs+gxm; i++) {
@@ -1130,36 +1140,52 @@ PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP)
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP,PetscInt *p,ISColoring *iscoloring)
+PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColoring *iscoloring)
 {
-  PetscErrorCode ierr;
-  MatColoring    coloring;
-  PetscScalar    one = 1.;
-  Mat            S;
-  PetscInt       i,j,k;
+  PetscErrorCode         ierr;
+  Mat                    S;
+  MatColoring            coloring;
+  PetscInt               i,j,nnz[m],onz[m];
+  //ISLocalToGlobalMapping ltog;
 
   PetscFunctionBegin;
 
-  // Create Jacobian sparsity pattern object, assembling with preallocated nonzeros as ones
-  ierr = MatCreate(comm,&S);CHKERRQ(ierr);
-  ierr = MatSetSizes(S,PETSC_DECIDE,PETSC_DECIDE,m,n);CHKERRQ(ierr);
-  ierr = MatSetFromOptions(S);CHKERRQ(ierr);
-  ierr = MatSetUp(S);CHKERRQ(ierr);
-  *p = 0;
-  for (i=0;i<m;i++) {
-    if ((PetscInt) JP[i][0] > *p)
-      *p = (PetscInt) JP[i][0];
-    for (j=1;j<= (PetscInt) JP[i][0];j++) {
-      k = JP[i][j];
-      ierr = MatSetValues(S,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
+  /*
+    Extract number of nonzeros and colours required from JP.
+  */
+  for (i=0; i<m; i++) {
+    nnz[i] = (PetscInt) JP[i][0];
+    onz[i] = nnz[i];
+    for (j=1; j<=nnz[i]; j++) {
+      if (i == (PetscInt) JP[i][j])
+        onz[i]--;
     }
   }
+
+  /*
+     Preallocate nonzeros by specifying local-to-global mapping. 
+
+     NOTE: Using DMCreateMatrix overestimates nonzeros.
+  */
+  //ierr = DMCreateMatrix(da,&S);CHKERRQ(ierr);
+  ierr = MatCreateAIJ(PETSC_COMM_SELF,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&S);CHKERRQ(ierr);
+  ierr = MatSetFromOptions(S);CHKERRQ(ierr);
+  ierr = MatSetUp(S);CHKERRQ(ierr);		// FIXME: Colouring doesn't seem right
+  //ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
+  //ierr = MatSetLocalToGlobalMapping(S,NULL,NULL);
   ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
-  // Extract colouring
+  //ierr = MatView(S,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+
+  /*
+    Extract colouring, with smallest last ('sl') as default.
+
+    NOTE: Use -mat_coloring_type <sl,lf,id,natural,greedy,jp> to change mode.
+    FIXME: Only natural is currently working.
+  */
   ierr = MatColoringCreate(S,&coloring);CHKERRQ(ierr);
-  ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);      // 'Smallest last' default
+  ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);
   ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
   ierr = MatColoringApply(coloring,iscoloring);CHKERRQ(ierr);
   ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
@@ -1168,26 +1194,36 @@ PetscErrorCode GetColoring(MPI_Comm comm,PetscInt m,PetscInt n,unsigned int **JP
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscInt n,PetscInt p,PetscScalar **Seed)
+PetscErrorCode CountColors(ISColoring iscoloring,PetscInt *p)
 {
   PetscErrorCode ierr;
-  IS             *isp,is;
-  PetscInt       nis,size,i,j;
+  IS             *is;
+
+  PetscFunctionBegin;
+  ierr = ISColoringGetIS(iscoloring,p,&is);CHKERRQ(ierr);
+  ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+
+}
+
+PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscScalar **Seed)
+{
+  PetscErrorCode ierr;
+  IS             *is;
+  PetscInt       p,size,i,j;
   const PetscInt *indices;
 
   PetscFunctionBegin;
 
-  ierr = ISColoringGetIS(iscoloring,&nis,&isp);CHKERRQ(ierr);
-  for (i=0;i<p;i++) {
-    is = *(isp+i);
-    ierr = ISGetLocalSize(is,&size);CHKERRQ(ierr);
-    ierr = ISGetIndices(is,&indices);CHKERRQ(ierr);
-    for (j=0;j<size;j++) {
+  ierr = ISColoringGetIS(iscoloring,&p,&is);CHKERRQ(ierr);
+  for (i=0; i<p; i++) {
+    ierr = ISGetLocalSize(is[i],&size);CHKERRQ(ierr);
+    ierr = ISGetIndices(is[i],&indices);CHKERRQ(ierr);
+    for (j=0; j<size; j++)
       Seed[indices[j]][i] = 1.;
-    }
-    ierr = ISRestoreIndices(is,&indices);CHKERRQ(ierr);
+    ierr = ISRestoreIndices(is[i],&indices);CHKERRQ(ierr);
   }
-  ierr = ISColoringRestoreIS(iscoloring,&isp);CHKERRQ(ierr);
+  ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
