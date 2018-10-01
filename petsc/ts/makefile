@@ -4,7 +4,7 @@ FFLAGS		=
 CXXFLAGS	= -std=c++11
 CPPFLAGS	=
 FPPFLAGS	=
-CLEANFILES	= ex13 ex16adj ex16opt_ic ex20adj *.tap *.txt
+CLEANFILES	= ex13 ex13hong ex16adj ex16opt_ic ex20adj *.tap *.txt
 CC		= g++
 
 INCLUDES	=
@@ -15,6 +15,10 @@ include ${PETSC_DIR}/lib/petsc/conf/rules
 
 ex13: ex13.o
 	$(CC) $(CXXFLAGS) -o $@ $^ $(LIB)
+	${RM} $^
+
+ex13hong: ex13hong.o
+	${CLINKER} -o $@ $^ ${PETSC_TS_LIB}
 	${RM} $^
 
 ex16adj: ex16adj.o
