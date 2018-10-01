@@ -676,8 +676,9 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   PetscErrorCode         ierr;
   Mat                    S;
   MatColoring            coloring;
-  PetscInt               i,j,nnz[m],onz[m];
-  ISLocalToGlobalMapping ltog;
+  PetscInt               i,j,k,nnz[m],onz[m];
+  PetscScalar            one = 1.;
+  //ISLocalToGlobalMapping ltog;
 
   PetscFunctionBegin;
 
@@ -700,8 +701,16 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   */
   //ierr = DMCreateMatrix(da,&S);CHKERRQ(ierr);
   ierr = MatCreateAIJ(PETSC_COMM_SELF,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&S);CHKERRQ(ierr);
+  //ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
+  //ierr = MatSetLocalToGlobalMapping(S,ltog,NULL);CHKERRQ(ierr);
   ierr = MatSetFromOptions(S);CHKERRQ(ierr);
   ierr = MatSetUp(S);CHKERRQ(ierr);		// FIXME: Colouring doesn't seem right
+  for (i=0; i<m; i++) {
+    for (j=1; j<=nnz[i]; j++) {
+      k = JP[i][j];
+      ierr = MatSetValuesLocal(S,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
+    }
+  }
   //ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
   //ierr = MatSetLocalToGlobalMapping(S,ltog,ltog);
   ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
