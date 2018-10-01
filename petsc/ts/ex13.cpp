@@ -172,6 +172,11 @@ int main(int argc,char **argv)
     // Generate sparsity pattern and create an associated colouring
     JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
     jac_pat(tag,m,n,u_vec,JP,ctrl);
+    if (user.sparse_view) {
+      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
+    }
+
+    // Extract colouring
     ierr = GetColoring(da,m,n,JP,&iscoloring);CHKERRQ(ierr);
     ierr = CountColors(iscoloring,&p);CHKERRQ(ierr);
 
@@ -179,14 +184,13 @@ int main(int argc,char **argv)
     Seed = myalloc2(n,p);
     ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
     ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+    if (user.sparse_view) {
+      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+    }
 
     // Generate recovery matrix
     Rec = myalloc2(m,p);
     ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
-    if (user.sparse_view) {
-      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
-      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
-    }
 
     // Store results and free workspace
     user.Seed = Seed;

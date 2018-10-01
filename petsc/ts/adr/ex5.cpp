@@ -158,10 +158,7 @@ int main(int argc,char **argv)
     // Corresponding 2-arrays of AFields
     u_a = new AField*[gym];
     f_a = new AField*[gym];
-/*
-    ierr = AFieldCreate2d(da,u_c,u_a);CHKERRQ(ierr);
-    ierr = AFieldCreate2d(da,f_c,f_a);CHKERRQ(ierr);
-*/
+
     // Align indices between array types and endow ghost points
     ierr = AFieldGiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
     ierr = AFieldGiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
@@ -203,6 +200,11 @@ int main(int argc,char **argv)
     // Generate sparsity pattern and create an associated colouring
     JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
     jac_pat(tag,m,n,u_vec,JP,ctrl);
+    if (appctx.sparse_view) {
+      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
+    }
+
+    // Extract colouring
     ierr = GetColoring(da,m,n,JP,&iscoloring);CHKERRQ(ierr);
     ierr = CountColors(iscoloring,&p);CHKERRQ(ierr);
 
@@ -210,14 +212,13 @@ int main(int argc,char **argv)
     Seed = myalloc2(n,p);
     ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
     ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+    if (appctx.sparse_view) {
+      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+    }
 
     // Generate recovery matrix
     Rec = myalloc2(m,p);
     ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
-    if (appctx.sparse_view) {
-      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
-      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
-    }
 
     // Store results and free workspace
     appctx.Seed = Seed;
@@ -264,10 +265,6 @@ int main(int argc,char **argv)
     myfree2(Seed);
   }
   if (!appctx.no_an) {
-/*
-    ierr = AFieldDestroy2d(da,f_c,f_a);CHKERRQ(ierr);
-    ierr = AFieldDestroy2d(da,u_c,u_a);CHKERRQ(ierr);
-*/
     f_a += gys;
     u_a += gys;
     delete[] f_a;
@@ -439,7 +436,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   } else {
     ierr = RHSLocalPassive(da,f,u,appctx);CHKERRQ(ierr);
   }
-  ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
 
   /*
      Gather global vector, using the 2-step process
@@ -458,6 +454,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
+  ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -572,6 +569,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 
   } else {
 
+    /*
+      Default method of computing full Jacobian (not recommended!)
+    */
     J = myalloc2(m,n);
     jacobian(tag,m,n,u_vec,J);
     ierr = PetscFree(u_vec);CHKERRQ(ierr);
@@ -706,23 +706,6 @@ PetscErrorCode RHSJacobianByHand(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 }
 
 /*
-  Set up AField, including ghost points.
-
-  FIXME: How to do this properly?
-*/
-PetscErrorCode AFieldCreate2d(DM da,AField *cgs,AField **a2d)
-{
-  PetscErrorCode ierr;
-  PetscInt       gxs,gys,gxm,gym;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  cgs = new AField[gxm*gym];	// Contiguous 1-arrays of AFields
-  a2d = new AField*[gym];	// Corresponding 2-arrays of AFields
-  PetscFunctionReturn(0);
-}
-
-/*
   Shift indices in AField to endow it with ghost points.
 */
 PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
@@ -736,25 +719,6 @@ PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
     (*a2d)[j] = cgs + j*gxm - gxs;
   }
   *a2d -= gys;
-  PetscFunctionReturn(0);
-}
-
-/*
-  Destroy AField.
-
-  FIXME: How to do this properly?
-*/
-PetscErrorCode AFieldDestroy2d(DM da,AField *cgs[],AField **a2d[])
-{
-  PetscErrorCode ierr;
-  PetscInt       gys;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetGhostCorners(da,NULL,&gys,NULL,NULL,NULL,NULL);CHKERRQ(ierr);
-  *a2d += gys;
-  delete[] a2d;
-  delete[] cgs;
-
   PetscFunctionReturn(0);
 }
 
@@ -836,7 +800,7 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
     Extract colouring, with smallest last ('sl') as default.
 
     NOTE: Use -mat_coloring_type <sl,lf,id,natural,greedy,jp> to change mode.
-    FIXME: jp and greedy not currently working
+    FIXME: only natural is currently working
   */
   ierr = MatColoringCreate(S,&coloring);CHKERRQ(ierr);
   ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);
