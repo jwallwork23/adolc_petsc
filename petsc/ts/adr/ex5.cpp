@@ -566,7 +566,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     */
     J = myalloc2(m,n);
     jacobian(tag,m,n,u_vec,J);
-    ierr = PetscFree(u_vec);CHKERRQ(ierr);
     for (i=0; i<m; i++) {
       for (j=0; j<n; j++) {
         if (fabs(J[i][j]) > 1.e-16) {
@@ -576,6 +575,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     }
     myfree2(J);
   }
+  ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*
      Restore vectors

@@ -33,7 +33,9 @@ static char help[] = "Demonstrates automatic Jacobian computation using ADOL-C f
 #include <petscts.h>
 #include <adolc/adolc.h>	// Include ADOL-C
 #include <adolc/adolc_sparse.h> // Include ADOL-C sparse drivers
+#include "../utils/allocation.cpp"
 #include "../utils/sparse.cpp"
+#include "../utils/tests.cpp"
 
 #define tag 1
 
@@ -57,10 +59,6 @@ extern PetscErrorCode FormInitialSolution(DM,Vec,void*);
 /* Problem specific functions for the purpose of automatic Jacobian computation */
 extern PetscErrorCode RHSJacobianADOLC(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *ptr);
-
-/* Utility functions for automatic Jacobian computation and printing */
-extern PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[]);
-extern PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,void *ctx);
 
 int main(int argc,char **argv)
 {
@@ -393,7 +391,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 
     /* Test zeroth order scalar evaluation in ADOL-C gives the same result */
     if (user->zos) {
-      ierr = TestZOS2d(da,f,u,user);CHKERRQ(ierr);
+      ierr = TestZOS2d(da,f,u,tag,user->zos_view);CHKERRQ(ierr);
     }
   } else {
     ierr = RHSLocalPassive(da,f,u,user);CHKERRQ(ierr);
@@ -519,10 +517,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
   /* Convert 2-array to a 1-array, so this can be read by ADOL-C */
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++)
-      u_vec[k++] = u[j][i];
-  }
+  ierr = ConvertTo1Array(da,u,u_vec);CHKERRQ(ierr);
 
   /*
     Calculate Jacobian using ADOL-C
@@ -554,7 +549,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     */
     Jac = myalloc2(m,n);
     jacobian(tag,m,n,u_vec,Jac);
-    ierr = PetscFree(u_vec);CHKERRQ(ierr);
     for (i=0; i<m; i++) {
       for (j=0; j<n; j++) {
         if (fabs(Jac[i][j]) > 1.e-16)	// TODO: Instead use where nonzeros expected
@@ -563,6 +557,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     }
     myfree2(Jac);
   }
+  ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*
     Restore vectors
@@ -618,65 +613,6 @@ PetscErrorCode FormInitialSolution(DM da,Vec U,void* ptr)
 
   /* Restore vectors */
   ierr = DMDAVecRestoreArray(da,U,&u);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-/*
-  Shift indices in adouble array to endow it with ghost points.
-*/
-PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[])
-{
-  PetscErrorCode ierr;
-  PetscInt       gxs,gys,gxm,gym,j;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  for (j=0; j<gym; j++)
-    (*a2d)[j] = cgs + j*gxm - gxs;
-  *a2d -= gys;
-  PetscFunctionReturn(0);
-}
-
-PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,void *ctx)
-{
-  AppCtx         *appctx = (AppCtx*)ctx;
-  PetscErrorCode ierr;
-  PetscInt       m,n,gxs,gys,gxm,gym,i,j,k = 0;
-  PetscScalar    diff = 0,norm = 0,*u_vec,*fz;
-  MPI_Comm       comm = MPI_COMM_WORLD;
-
-  PetscFunctionBegin;
-
-  /* Get extent of region owned by processor */
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  m = gxm*gym;
-  n = m;
-
-  /* Convert to a 1-array */
-  ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++)
-      u_vec[k++] = u[j][i];
-  }
-  k = 0;
-
-  /* Zero order scalar evaluation vs. calling RHS function */
-  ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
-  zos_forward(tag,m,n,0,u_vec,fz);
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
-      if ((appctx->zos_view) && ((fabs(f[j][i]) > 1.e-16) || (fabs(fz[k]) > 1.e-16)))
-        PetscPrintf(comm,"(%2d,%2d): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,f[j][i],fz[k]);
-      diff += (f[j][i]-fz[k])*(f[j][i]-fz[k]);k++;
-      norm += f[j][i]*f[j][i];
-    }
-  }
-  diff = sqrt(diff);
-  norm = diff/sqrt(norm);
-  PetscPrintf(comm,"    ----- Testing Zero Order evaluation -----\n");
-  PetscPrintf(comm,"    ||Fzos - Frhs||_2/||Frhs||_2 = %.4e, ||Fzos - Frhs||_2 = %.4e\n",norm,diff);
-  ierr = PetscFree(fz);CHKERRQ(ierr);
-
   PetscFunctionReturn(0);
 }
 
