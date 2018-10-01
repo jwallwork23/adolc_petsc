@@ -800,7 +800,6 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   MatColoring            coloring;
   PetscInt               i,j,k,nnz[m],onz[m];
   PetscScalar            one = 1.;
-  //ISLocalToGlobalMapping ltog;
 
   PetscFunctionBegin;
 
@@ -817,7 +816,7 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   }
 
   /*
-     Preallocate nonzeros by specifying local-to-global mapping. 
+     Preallocate nonzeros as ones. 
 
      NOTE: Using DMCreateMatrix overestimates nonzeros.
   */
@@ -837,7 +836,7 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
     Extract colouring, with smallest last ('sl') as default.
 
     NOTE: Use -mat_coloring_type <sl,lf,id,natural,greedy,jp> to change mode.
-    FIXME: Only ls,lf,natural are currently working.
+    FIXME: jp and greedy not currently working
   */
   ierr = MatColoringCreate(S,&coloring);CHKERRQ(ierr);
   ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);
