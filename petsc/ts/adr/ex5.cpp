@@ -194,10 +194,10 @@ int main(int argc,char **argv)
     n = m;             // Number of independent variables
 
     // Trace RHSFunction, so that ADOL-C has tape to read from
-    ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
     ierr = RHSFunction(ts,1.0,x,r,&appctx);CHKERRQ(ierr);
 
     // Generate sparsity pattern and create an associated colouring
+    ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
     JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
     jac_pat(tag,m,n,u_vec,JP,ctrl);
     if (appctx.sparse_view) {

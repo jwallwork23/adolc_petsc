@@ -166,10 +166,10 @@ int main(int argc,char **argv)
     n = gxm*gym;  // Number of independent variables
 
     // Trace RHSFunction, so that ADOL-C has tape to read from
-    ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
     ierr = RHSFunction(ts,1.0,u,r,&user);CHKERRQ(ierr);
 
     // Generate sparsity pattern and create an associated colouring
+    ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
     JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
     jac_pat(tag,m,n,u_vec,JP,ctrl);
     if (user.sparse_view) {
@@ -382,6 +382,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   */
   ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  //ierr = VecZeroEntries(F);
   ierr = DMGlobalToLocalBegin(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
 
@@ -408,6 +409,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
      Gather global vector, using the 2-step process
         DMLocalToGlobalBegin(),DMLocalToGlobalEnd().
   */
+  //ierr = DMLocalToGlobalBegin(da,localF,ADD_VALUES,F);CHKERRQ(ierr);
+  //ierr = DMLocalToGlobalEnd(da,localF,ADD_VALUES,F);CHKERRQ(ierr);
   ierr = DMLocalToGlobalBegin(da,localF,INSERT_VALUES,F);CHKERRQ(ierr);
   ierr = DMLocalToGlobalEnd(da,localF,INSERT_VALUES,F);CHKERRQ(ierr);
 
@@ -704,7 +707,7 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   */
   ierr = MatCreateAIJ(PETSC_COMM_SELF,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&S);CHKERRQ(ierr);
   ierr = MatSetFromOptions(S);CHKERRQ(ierr);
-  ierr = MatSetUp(S);CHKERRQ(ierr);		// FIXME: Colouring doesn't seem right
+  ierr = MatSetUp(S);CHKERRQ(ierr);
   for (i=0; i<m; i++) {
     for (j=1; j<=nnz[i]; j++) {
       k = JP[i][j];
