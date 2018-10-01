@@ -801,8 +801,8 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   PetscErrorCode         ierr;
   Mat                    S;
   MatColoring            coloring;
-  PetscInt               i,j,nnz[m],onz[m];
-  //ISLocalToGlobalMapping ltog;
+  PetscInt               i,j,k,nnz[m],onz[m];
+  PetscScalar            one = 1.;
 
   PetscFunctionBegin;
 
@@ -819,26 +819,27 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   }
 
   /*
-     Preallocate nonzeros by specifying local-to-global mapping. 
+     Preallocate nonzeros as ones.
 
      NOTE: Using DMCreateMatrix overestimates nonzeros.
   */
-  //ierr = DMCreateMatrix(da,&S);CHKERRQ(ierr);
   ierr = MatCreateAIJ(PETSC_COMM_SELF,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&S);CHKERRQ(ierr);
   ierr = MatSetFromOptions(S);CHKERRQ(ierr);
-  ierr = MatSetUp(S);CHKERRQ(ierr);             // FIXME: Colouring doesn't seem right
-  //ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
-  //ierr = MatSetLocalToGlobalMapping(S,NULL,NULL);
+  ierr = MatSetUp(S);CHKERRQ(ierr);
+  for (i=0; i<m; i++) {
+    for (j=1; j<=nnz[i]; j++) {
+      k = JP[i][j];
+      ierr = MatSetValues(S,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
+    }
+  }
   ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-
-  //ierr = MatView(S,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
   /*
     Extract colouring, with smallest last ('sl') as default.
 
     NOTE: Use -mat_coloring_type <sl,lf,id,natural,greedy,jp> to change mode.
-    FIXME: Only natural is currently working.
+    FIXME: jp and greedy are not currently working.
   */
   ierr = MatColoringCreate(S,&coloring);CHKERRQ(ierr);
   ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);
