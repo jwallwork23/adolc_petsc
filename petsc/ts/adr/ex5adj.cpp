@@ -63,7 +63,7 @@ extern PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **
 int main(int argc,char **argv)
 {
   TS             ts;                  		/* ODE integrator */
-  Vec            x,r;                  		/* solution, residual */
+  Vec            x,r,xdot;             		/* solution, residual, derivative */
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
@@ -106,6 +106,7 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&r);CHKERRQ(ierr);
+  ierr = VecDuplicate(x,&xdot);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Allocate memory for (local) active fields (called AFields) and store 
@@ -168,12 +169,17 @@ int main(int argc,char **argv)
     if (!implicitform) {
       ierr = RHSFunction(ts,1.0,x,r,&appctx);CHKERRQ(ierr);
     } else {
-      exit(1); // FIXME!
+      ierr = IFunction(ts,1.0,x,xdot,r,&appctx);CHKERRQ(ierr);
     }
 
     // Generate sparsity pattern
     JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
     jac_pat(tag,m,n,u_vec,JP,ctrl);
+    if (appctx.sparse_view) {
+      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
+    }
+
+    // Extract colouring
     ierr = GetColoring(da,m,n,JP,&iscoloring);CHKERRQ(ierr);
     ierr = CountColors(iscoloring,&p);CHKERRQ(ierr);
 
@@ -181,14 +187,13 @@ int main(int argc,char **argv)
     Seed = myalloc2(n,p);
     ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
     ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+    if (appctx.sparse_view) {
+      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+    }
 
     // Generate recovery matrix
     Rec = myalloc2(m,p);
     ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
-    if (appctx.sparse_view) {
-      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
-      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
-    }
 
     // Store results and free workspace
     appctx.Seed = Seed;
@@ -269,6 +274,7 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Free work space and call destructors for AFields.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = VecDestroy(&xdot);CHKERRQ(ierr);
   ierr = VecDestroy(&r);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
@@ -1270,59 +1276,6 @@ PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,Pet
    build:
       requires: !complex !single
 
-   test:
-      args: -ts_max_steps 10 -ts_monitor -ts_adjoint_monitor -da_grid_x 16 -da_grid_y 16
-      output_file: output/ex5adj_1.out
-
-   test:
-      suffix: 2
-      nsize: 2
-      args: -ts_max_steps 10 -ts_monitor -ts_adjoint_monitor -ksp_monitor_short -da_grid_x 16 -da_grid_y 16 -ts_trajectory_dirname Test-dir -ts_trajectory_file_template test-%06D.cp
-
-   test:
-      suffix: 3
-      nsize: 2
-      args: -ts_max_steps 10 -ts_dt 10 -ts_adjoint_monitor_draw_sensi
-
-   test:
-      suffix: knl
-      args: -ts_max_steps 10 -ts_monitor -ts_adjoint_monitor -ts_trajectory_type memory -ts_trajectory_solution_only 0 -malloc_hbw -ts_trajectory_use_dram 1
-      output_file: output/ex5adj_3.out
-      requires: knl
-
-   test:
-      suffix: sell
-      nsize: 4
-      args: -forwardonly -ts_max_steps 10 -ts_monitor -snes_monitor_short -dm_mat_type sell -pc_type none
-      output_file: output/ex5adj_sell_1.out
-
-   test:
-      suffix: sell2
-      nsize: 4
-      args: -forwardonly -ts_max_steps 10 -ts_monitor -snes_monitor_short -dm_mat_type sell -pc_type mg -pc_mg_levels 2 -mg_coarse_pc_type sor
-      output_file: output/ex5adj_sell_2.out
-
-   test:
-      suffix: sell3
-      nsize: 4
-      args: -forwardonly -ts_max_steps 10 -ts_monitor -snes_monitor_short -dm_mat_type sell -pc_type mg -pc_mg_levels 2 -mg_coarse_pc_type bjacobi -mg_levels_pc_type bjacobi
-      output_file: output/ex5adj_sell_3.out
-
-   test:
-      suffix: sell4
-      nsize: 4
-      args: -forwardonly -implicitform -ts_max_steps 10 -ts_monitor -snes_monitor_short -dm_mat_type sell -pc_type mg -pc_mg_levels 2 -mg_coarse_pc_type bjacobi -mg_levels_pc_type bjacobi
-      output_file: output/ex5adj_sell_4.out
-
-   test:
-      suffix: sell5
-      nsize: 4
-      args: -forwardonly -ts_max_steps 10 -ts_monitor -snes_monitor_short -dm_mat_type sell -aijpc
-      output_file: output/ex5adj_sell_5.out
-
-   test:
-      suffix: sell6
-      args: -ts_max_steps 10 -ts_monitor -ts_adjoint_monitor -ts_trajectory_type memory -ts_trajectory_solution_only 0 -dm_mat_type sell -pc_type jacobi
-      output_file: output/ex5adj_sell_6.out
+   TODO
 
 TEST*/

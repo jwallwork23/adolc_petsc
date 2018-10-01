@@ -165,7 +165,7 @@ int main(int argc,char **argv)
     // Trace RHSFunction, so that ADOL-C has tape to read from
     ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
     ierr = IFunction(ts,1.0,x,r,xdot,&appctx);CHKERRQ(ierr); // Need use IFunction and give xdot
-    exit(1); // FIXME: What to put for xdot?
+    // FIXME: What to put for xdot?
 
     // Generate sparsity pattern and create an associated colouring
     JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
@@ -319,8 +319,6 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   PetscInt       xm,ym;
   Field          **u,**f,**udot;
   Vec            localU,localF;
-
-  // FIXME: localUdot???
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
@@ -584,12 +582,111 @@ PetscErrorCode IJacobianByHand(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat 
 }
 
 
-PetscErrorCode IJacobianADOLC(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*)
+PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat BB,void *ctx)
 {
+  AppCtx         *appctx = (AppCtx*)ctx;
+  DM             da;
+  PetscErrorCode ierr;
+  PetscInt       i,j,k = 0,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2;
+  PetscScalar    *u_vec,**J,*f_vec;
+  Field          **u;
+  Vec            localU,D;
+  MPI_Comm       comm = MPI_COMM_WORLD;
+
   PetscFunctionBegin;
+  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
 
-  // TODO
+  /*
+     Scatter ghost points to local vector,using the 2-step process
+        DMGlobalToLocalBegin(),DMGlobalToLocalEnd().
+     By placing code between these two statements, computations can be
+     done while messages are in transition.
+  */
+  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
 
+  /* Get pointers to vector data */
+  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
+
+  /* Get local and ghosted grid boundaries */
+  ierr = DMDAGetCorners(da,NULL,NULL,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+
+  /* Convert array of structs to a 2-array, so this can be read by ADOL-C */
+  m = dofs*gxm*gym;  // Number of dependent variables
+  n = m;             // Number of independent variables
+  ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
+      u_vec[k++] = u[j][i].u;
+      u_vec[k++] = u[j][i].v;
+    }
+  }
+
+  /*
+    For an implicit Jacobian we may use the rule that
+       G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
+    where a = d(xdot)/dx is a constant.
+  */
+
+  /*
+    First, calculate the -df/dx part using ADOL-C
+  */
+  if (appctx->sparse) {
+
+    /*
+      Compute Jacobian in compressed format and recover from this, using seed and recovery matrices
+      computed earlier.
+    */
+    ierr = PetscMalloc1(m,&f_vec);CHKERRQ(ierr);
+    J = myalloc2(m,appctx->p);
+    fov_forward(tag,m,n,appctx->p,u_vec,appctx->Seed,f_vec,J);
+    ierr = PetscFree(f_vec);CHKERRQ(ierr);
+    if (appctx->sparse_view) {
+      ierr = TSGetStepNumber(ts,&k);
+      if (k == 0) {
+        ierr = PrintMat(comm,"Compressed Jacobian:",m,appctx->p,J);CHKERRQ(ierr);
+      }
+    }
+    ierr = RecoverJacobian(A,m,appctx->p,appctx->Rec,J);CHKERRQ(ierr);
+    myfree2(J);
+
+  } else {
+
+    J = myalloc2(m,n);
+    jacobian(tag,m,n,u_vec,J);
+    ierr = PetscFree(u_vec);CHKERRQ(ierr);
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+    myfree2(J);
+  }
+
+  /*
+    Next, assemble a*M
+  */
+  ierr = VecDuplicate(U,&D);CHKERRQ(ierr);
+  ierr = VecSet(D,a);CHKERRQ(ierr);
+
+  /*
+     Restore vectors
+  */
+  ierr = PetscLogFlops(19*xm*ym);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
+
+  /*
+    Assemble local matrix
+  */
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatDiagonalSet(A,D,ADD_VALUES);     /* Combine a*M and -df/dx parts */
+  ierr = VecDestroy(&D);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
