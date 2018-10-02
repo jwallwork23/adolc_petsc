@@ -2,16 +2,34 @@
 #include <petscdmda.h>
 #include <adolc/adolc.h>
 
-
 extern PetscErrorCode GiveGhostPoints2d(DM da,void *cgs,void *a2d);
 extern PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[]);
 extern PetscErrorCode ConvertTo1Array(DM da,PetscScalar **u,PetscScalar *u_vec);
 extern PetscErrorCode ConvertTo1Array2d(DM da,PetscScalar **u,PetscScalar *u_vec);
 
+/*@C
+  TODO: Documentation
+@*/
+PetscErrorCode AdolcMalloc2(PetscInt m,PetscInt n,PetscScalar **A[])
+{
+  PetscFunctionBegin;
+  *A = myalloc2(m,n);
+  PetscFunctionReturn(0);
+}
 
 /*@C
   TODO: Documentation
-*/
+@*/
+PetscErrorCode AdolcFree2(PetscScalar **A)
+{
+  PetscFunctionBegin;
+  myfree2(A);
+  PetscFunctionReturn(0);
+}
+
+/*@C
+  TODO: Documentation
+@*/
 PetscErrorCode GiveGhostPoints2d(DM da,void *cgs,void *a2d)
 {
 
@@ -22,11 +40,11 @@ PetscErrorCode GiveGhostPoints2d(DM da,void *cgs,void *a2d)
   PetscFunctionReturn(0);
 }
 
-/*
+/*@C
   Shift indices in adouble array to endow it with ghost points.
 
   TODO: Documentation
-*/
+@*/
 PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[])
 {
   PetscErrorCode ierr;
@@ -43,7 +61,7 @@ PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[])
 /*@C
   TODO: Documentation
   FIXME: Generalise for dimensions and dofs
-*/
+@*/
 PetscErrorCode ConvertTo1Array(DM da,void **u,PetscScalar *u_vec)
 {
   PetscErrorCode ierr;
@@ -56,7 +74,7 @@ PetscErrorCode ConvertTo1Array(DM da,void **u,PetscScalar *u_vec)
 /*@C
   TODO: Documentation
   TODO: Generalise for dimensions and dofs
-*/
+@*/
 PetscErrorCode ConvertTo1Array2d(DM da,PetscScalar **u,PetscScalar *u_vec)
 {
   PetscErrorCode ierr;

@@ -9,6 +9,20 @@ extern PetscErrorCode PassiveEvaluate(PetscScalar *x,PetscScalar *c);
 extern PetscErrorCode ActiveEvaluate(adouble *x,adouble *c);
 extern PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec U,Vec Action);
 
+PetscErrorCode AdolcMalloc2(PetscInt m,PetscInt n,PetscScalar **A[])
+{
+  PetscFunctionBegin;
+  *A = myalloc2(m,n);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode AdolcFree2(PetscScalar **A)
+{
+  PetscFunctionBegin;
+  myfree2(A);
+  PetscFunctionReturn(0);
+}
+
 int main(int argc,char **args)
 {
   PetscErrorCode  ierr;
@@ -89,17 +103,17 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec U,Vec Action)
 
   PetscFunctionBegin;
 
-  /* Read vector data */
+  /* Read data and allocate memory */
   ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
   ierr = PetscMalloc1(m,&u);CHKERRQ(ierr);
-  uarray = myalloc2(q,m);
+  ierr = AdolcMalloc2(q,m,&uarray);CHKERRQ(ierr);
   ierr = VecGetArrayRead(U,&u);CHKERRQ(ierr);
   for (i=0; i<m; i++)
-    uarray[0][i] = u[i];
+    uarray[0][i] = u[i];	// TODO: Create a wrapper for this
   ierr = VecRestoreArrayRead(U,&u);CHKERRQ(ierr);
 
   /* Compute action */
-  action = myalloc2(q,n);
+  ierr = AdolcMalloc2(q,n,&action);CHKERRQ(ierr);
   fov_reverse(tag,m,n,q,uarray,action);
 
   /* Set values in vector */
@@ -107,8 +121,9 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec U,Vec Action)
     ierr = VecSetValues(Action,1,&i,&action[0][i],INSERT_VALUES);CHKERRQ(ierr);
   }
 
-  myfree2(action);
-  myfree2(uarray);
+  /* Free memory */
+  ierr = AdolcFree2(action);CHKERRQ(ierr);
+  ierr = AdolcFree2(uarray);CHKERRQ(ierr);
   ierr = PetscFree(u);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
