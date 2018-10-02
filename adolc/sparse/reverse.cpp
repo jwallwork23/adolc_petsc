@@ -99,6 +99,7 @@ int main(int argc,char **args)
   }
   ierr = MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatSetOption(J,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr);
 
 /*--------------------------------------------------------------------------*/
 /*                                                            trace forward */
@@ -124,27 +125,62 @@ int main(int argc,char **args)
   I = myallocI2(q);
   Jrev = myalloc2(q,n);
   fov_reverse(tag,m,n,q,I,Jrev);
-  ierr = PrintMat(PETSC_COMM_WORLD," Jacobian by reverse mode:",q,n,Jrev);CHKERRQ(ierr);
+  ierr = PrintMat(comm," Jacobian by reverse mode:",q,n,Jrev);CHKERRQ(ierr);
+  for (i=0; i<q; i++) {
+    for (j=0; j<n; j++) {
+      ierr = MatSetValues(J,1,&i,1,&j,&Jrev[i][j],INSERT_VALUES);CHKERRQ(ierr);
+    }
+  }
+  ierr = MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  //ierr = MatView(J,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 /*--------------------------------------------------------------------------*/
 /*                          Jacobian transpose vector product, the long way */
 /*--------------------------------------------------------------------------*/
 
-// TODO
+  Vec      C,Action;
+  PetscInt ix[3] = {0,1,2};
+
+  ierr = VecCreate(comm,&C);CHKERRQ(ierr);
+  ierr = VecSetSizes(C,PETSC_DECIDE,m);CHKERRQ(ierr);
+  ierr = VecSetFromOptions(C);CHKERRQ(ierr);
+  ierr = VecSetValues(C,m,ix,c,INSERT_VALUES);CHKERRQ(ierr);
+  //ierr = VecView(C,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+
+  ierr = VecCreate(comm,&Action);CHKERRQ(ierr);
+  ierr = VecSetSizes(Action,PETSC_DECIDE,n);CHKERRQ(ierr);
+  ierr = VecSetFromOptions(Action);CHKERRQ(ierr);
+  ierr = MatMultTranspose(J,C,Action);CHKERRQ(ierr);
+  ierr = PetscPrintf(comm,"Jacobian transpose vector product:\n");CHKERRQ(ierr);
+  ierr = VecView(Action,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 /****************************************************************************/
 /*******            reverse mode matrix free                  ***************/
 /****************************************************************************/
 
-// TODO
+  PetscScalar **u,**action;
+
+  q = 1;
+  u = myalloc2(q,m);
+  for (i=0; i<m; i++)
+    u[0][i] = c[i];
+  action = myalloc2(q,n);
+
+  fov_reverse(tag,m,n,q,u,action);
+  ierr = PrintMat(comm," Matrix free Jacobian transpose vector product:",q,n,action);CHKERRQ(ierr);
 
 /****************************************************************************/
 /*******       free workspace and finalise                    ***************/
 /****************************************************************************/
 
+  myfree2(action);
+  myfree2(u);
+  ierr = VecDestroy(&Action);CHKERRQ(ierr);
+  ierr = VecDestroy(&C);CHKERRQ(ierr);
   ierr = PetscFree(f);CHKERRQ(ierr);
   myfree2(Jrev);
-  myfreeI2(q,I);
+  myfreeI2(m,I);
   ierr = MatDestroy(&J);CHKERRQ(ierr);
   for (i=0;i<m;i++)
     free(JP[i]);
