@@ -7,7 +7,8 @@
 extern PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt n,PetscInt m,PetscScalar **M);
 extern PetscErrorCode PassiveEvaluate(PetscScalar *x,PetscScalar *c);
 extern PetscErrorCode ActiveEvaluate(adouble *x,adouble *c);
-extern PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec U,Vec Action);
+extern PetscErrorCode JacobianVectorProduct(Mat J,Vec U,Vec Action);
+extern PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec X,Vec Action);
 
 PetscErrorCode AdolcMalloc2(PetscInt m,PetscInt n,PetscScalar **A[])
 {
@@ -96,27 +97,37 @@ int main(int argc,char **args)
 }
 
 /* Intended to overload MatMult in matrix-free methods */
-PetscErrorCode JacobianVectorProduct(Mat J,Vec XX,Vec Action)
+PetscErrorCode JacobianVectorProduct(Mat J,Vec X,Vec Action)
 {
   PetscErrorCode    ierr;
   PetscInt          m,n;
-  const PetscScalar *x
+  const PetscScalar *x;
   PetscScalar       *action,*xx,*ff;
 
   PetscFunctionBegin;
+
+  /* Read data and allocate memory */
   ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
   ierr = PetscMalloc1(n,&x);CHKERRQ(ierr);
   ierr = PetscMalloc1(n,&xx);CHKERRQ(ierr);
   ierr = PetscMalloc1(m,&ff);CHKERRQ(ierr);
+  ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
+  for (i=0; i<n; i++)
+    xx[i] = x[i];	// FIXME: How to avoid this conversion from read only?
 
-  // TODO
-
+  /* Compute action of Jacobian on vector */
   fos_forward(tag,m,n,0,xx,xx,ff,action);
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
+  for (i=0; i<m; i++) {
+    ierr = VecSetValues(Action,1,&i,&ff[i],INSERT_VALUES);CHKERRQ(ierr);
+  }
 
-  // TODO
-
+  /* Free memory */
+  ierr = PetscFree(action);CHKERRQ(ierr);
+  ierr = PetscFree(ff);CHKERRQ(ierr);
+  ierr = PetscFree(xx);CHKERRQ(ierr);
+  ierr = PetscFree(x);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -145,10 +156,10 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec U,Vec Action)
   ierr = PetscFree(c);CHKERRQ(ierr);
   ierr = PetscFree(x);CHKERRQ(ierr);
 */
-  /* Compute action */
+  /* Compute action of Jacobian transpose on vector */
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
   for (i=0; i<m; i++)
-    uu[i] = u[i];
+    uu[i] = u[i];	// FIXME: How to avoid this conversion from read only?
   fos_reverse(tag,m,n,uu,action);
   ierr = VecRestoreArrayRead(U,&u);CHKERRQ(ierr);
 
