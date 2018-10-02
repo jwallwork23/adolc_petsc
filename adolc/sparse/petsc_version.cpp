@@ -120,7 +120,7 @@ int main(int argc,char **args)
           ('natural' only works for square Jacobians, and 'greedy' and 'jp'
           are for parallel programs.)
 
-          TODO: Fix seg fault in id case
+          FIXME: Why is there a seg fault in id case?
   */
   ierr = MatColoringCreate(J,&coloring);CHKERRQ(ierr);
   ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);
