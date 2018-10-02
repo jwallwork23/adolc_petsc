@@ -161,6 +161,7 @@ int main(int argc,char **argv)
     ierr = RHSFunction(ts,1.0,u,r,&user);CHKERRQ(ierr);
 
     // Generate sparsity pattern and create an associated colouring
+    // FIXME: This sparsity pattern does not quite match the DM sparsity pattern
     ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
     JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
     jac_pat(tag,m,n,u_vec,JP,ctrl);
@@ -169,7 +170,7 @@ int main(int argc,char **argv)
     }
 
     // Extract colouring
-    ierr = GetColoring(da,m,n,JP,&iscoloring);CHKERRQ(ierr);
+    ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
     ierr = CountColors(iscoloring,&p);CHKERRQ(ierr);
 
     // Generate seed matrix

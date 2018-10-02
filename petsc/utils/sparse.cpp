@@ -59,91 +59,19 @@ PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **sparsity)
 
   Input parameters:
   da         - distributed array
-  m,n        - number of rows and columns, respectively
-  sparsity   - matrix sparsity pattern, typically computed using an ADOL-C function such as jac_pat
-  or hess_pat
 
   Output parameter:
   iscoloring - index set coloring corresponding to the sparsity pattern under the given coloring type
 
   Notes:
-  Use -mat_coloring_type <sl,lf,id,natural,greedy,jp> to change coloring type used
-  FIXME: only natural is currently working in serial case if BCs are considered
-  FIXME: jp and greedy run in parallel case, but give Jacobians leading to divergence
+  FIXME: only currently works for DM_BOUNDARY_NONE or DM_BOUNDARY_GHOSTED
 @*/
-PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **sparsity,ISColoring *iscoloring)
+PetscErrorCode GetColoring(DM da,ISColoring *iscoloring)
 {
   PetscErrorCode         ierr;
-  //Mat                    P;		/* Mat containing nonzero entries */
-  //MatColoring            coloring;
-  //PetscInt               i,j,k,xproc,yproc,zproc,nnz[m],onz[m];
-  //PetscScalar            one = 1.;
-  //ISLocalToGlobalMapping ltog;
 
   PetscFunctionBegin;
-  //ierr = DMDAGetInfo(da,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,&xproc,&yproc,&zproc,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
-
-  /*
-    Extract number of nonzeros and off-diagonal nonzeros from sparsity pattern.
-  */
-/*
-  for (i=0; i<m; i++) {
-    nnz[i] = (PetscInt) sparsity[i][0];
-    onz[i] = nnz[i];
-    for (j=1; j<=nnz[i]; j++) {
-      if (i == (PetscInt) sparsity[i][j])
-        onz[i]--;
-    }
-  }
-*/
-  /*
-     Preallocate nonzeros as ones. 
-
-     FIXME: Perhaps consider matrix passed into function from outside
-  */
-  /* Version which seems most promising */
-  //ierr = MatCreateAIJ(PETSC_COMM_SELF,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&P);CHKERRQ(ierr);
-
-  /* Alternative version */
-  //ierr = MatCreateAIJ(PETSC_COMM_WORLD,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&P);CHKERRQ(ierr);
-  //ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
-  //ierr = MatSetLocalToGlobalMapping(P,ltog,ltog);CHKERRQ(ierr);
-
-  /* Alternative version 2 */
-  //ierr = DMCreateMatrix(da,&P);CHKERRQ(ierr);
-/*
-  ierr = MatSetFromOptions(P);CHKERRQ(ierr);
-  ierr = MatSetUp(P);CHKERRQ(ierr);
-  for (i=0; i<m; i++) {
-    for (j=1; j<=nnz[i]; j++) {
-      k = sparsity[i][j];
-      //ierr = MatSetValuesLocal(P,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
-      ierr = MatSetValues(P,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
-    }
-  }
-  ierr = MatAssemblyBegin(P,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(P,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-*/
-  /*
-    Extract colouring, with smallest last as default.
-  */
-  //ierr = DMCreateColoring(da,IS_COLORING_GLOBAL,iscoloring);CHKERRQ(ierr);
   ierr = DMCreateColoring(da,IS_COLORING_LOCAL,iscoloring);CHKERRQ(ierr);
-  //ierr = MatColoringSetType(iscoloring,MATCOLORINGSL);CHKERRQ(ierr);
-  //ierr = MatColoringSetFromOptions(iscoloring);CHKERRQ(ierr);
-
-
-  //ierr = MatColoringCreate(P,&coloring);CHKERRQ(ierr);
-  //if ((xproc > 1) || (yproc > 1) || (zproc > 1)) {
-  //  ierr = MatColoringSetType(coloring,MATCOLORINGJP);CHKERRQ(ierr); // Parallel coloring
-  //} else {
-  //  ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr); // Serial coloring
-  //}
-  //ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
-  //ierr = MatColoringApply(coloring,iscoloring);CHKERRQ(ierr);
-  //ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
-  //ierr = MatDestroy(&P);CHKERRQ(ierr);
-
   PetscFunctionReturn(0);
 }
 
