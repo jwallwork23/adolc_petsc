@@ -15,13 +15,13 @@ int main(int argc,char **args)
 
   ierr = PetscInitialize(&argc,&args,(char*)0,NULL);if (ierr) return ierr;
 
-  PetscInt n = 6,m = 3,i,j;
-  PetscScalar x[n],c[m];
-  adouble xad[n],cad[m];
-
 /****************************************************************************/
 /*******                function evaluation                   ***************/
 /****************************************************************************/
+
+  PetscInt n = 6,m = 3,i,j;
+  PetscScalar x[n],c[m];
+  adouble xad[n],cad[m];
 
   for(i=0;i<n;i++)
     x[i] = log(1.0+i);
@@ -106,9 +106,6 @@ int main(int argc,char **args)
 /*--------------------------------------------------------------------------*/
 
   PetscInt        q = m;
-  PetscScalar     *f;
-
-  ierr = PetscMalloc1(m,&f);CHKERRQ(ierr);
 
   zos_forward(tag,m,n,1,x,c);
   ierr = PetscPrintf(comm,"\n c = ");CHKERRQ(ierr);
@@ -178,7 +175,6 @@ int main(int argc,char **args)
   myfree2(u);
   ierr = VecDestroy(&Action);CHKERRQ(ierr);
   ierr = VecDestroy(&C);CHKERRQ(ierr);
-  ierr = PetscFree(f);CHKERRQ(ierr);
   myfree2(Jrev);
   myfreeI2(m,I);
   ierr = MatDestroy(&J);CHKERRQ(ierr);

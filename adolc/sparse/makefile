@@ -19,5 +19,9 @@ reverse: reverse.o
 	$(CC) $(CXXFLAGS) -o $@ $^ $(LIB)
 	${RM} $^
 
+matfree: matfree.o
+	$(CC) $(CXXFLAGS) -o $@ $^ $(LIB)
+	${RM} $^
+
 include ${PETSC_DIR}/lib/petsc/conf/test
 
