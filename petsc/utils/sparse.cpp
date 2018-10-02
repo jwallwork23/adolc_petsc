@@ -200,7 +200,7 @@ PetscErrorCode GetRecoveryMatrix(PetscScalar **S,unsigned int **sparsity,PetscIn
       R[i][colour] = -1.;
       for (k=1; k<=(PetscInt) sparsity[i][0]; k++) {
         j = (PetscInt) sparsity[i][k];
-        if (Seed[j][colour] == 1.) {
+        if (S[j][colour] == 1.) {
           R[i][colour] = j;
           break;
         }
@@ -237,4 +237,3 @@ PetscErrorCode RecoverJacobian(Mat A,PetscInt m,PetscInt p,PetscScalar **R,Petsc
   }
   PetscFunctionReturn(0);
 }
-
