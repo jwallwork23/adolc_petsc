@@ -2,6 +2,9 @@
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>
+#include "allocation.cpp"
+
+#define tag 1	// TODO: Generalise to case where multiple tags may be used
 
 /*@C
   Jacobian transpose vector product, provided matrix free using reverse mode of AD
@@ -11,35 +14,39 @@
   x - vector to be multiplied
   y - Jacobian transpose vector product
 @*/
+/* Intended to overload MatMultTranspose in matrix-free methods */
 PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec x,Vec y)
 {
   PetscErrorCode    ierr;
-  PetscInt          i,m,n,q = 1;
-  const PetscScalar *data;
-  PetscScalar       **datarray,**action;
+  PetscInt          i,m,n;
+  const PetscScalar *dat_ro;
+  PetscScalar       *action,*dat;
 
   PetscFunctionBegin;
 
+  // TODO: How to call zos_forward here?
+
   /* Read data and allocate memory */
   ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
-  ierr = PetscMalloc1(m,&data);CHKERRQ(ierr);
-  ierr = AdolcMalloc2(q,m,&datarray);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(x,&data);CHKERRQ(ierr);
-  for (i=0; i<m; i++)
-    datarray[0][i] = data[i];        // TODO: Create a wrapper for this
-  ierr = VecRestoreArrayRead(x,&data);CHKERRQ(ierr);
+  ierr = PetscMalloc1(m,&dat_ro);CHKERRQ(ierr);
+  ierr = PetscMalloc1(m,&dat);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(x,&dat_ro);CHKERRQ(ierr);
 
-  /* Compute action and set values in vector*/
-  ierr = AdolcMalloc2(q,n,&action);CHKERRQ(ierr);
-  fov_reverse(tag,m,n,q,uarray,action);
+  /* Compute action */
+  ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
+  for (i=0; i<m; i++)
+    dat[i] = dat_ro[i];
+  fos_reverse(tag,m,n,uu,action);
+  ierr = VecRestoreArrayRead(x,&dat_ro);CHKERRQ(ierr);
+
+  /* Set values in vector */
   for (i=0; i<n; i++) {
-    ierr = VecSetValues(y,1,&i,&action[0][i],INSERT_VALUES);CHKERRQ(ierr);
+    ierr = VecSetValues(y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
   }
 
   /* Free memory */
-  ierr = AdolcFree2(action);CHKERRQ(ierr);
-  ierr = AdolcFree2(datarray);CHKERRQ(ierr);
-  ierr = PetscFree(data);CHKERRQ(ierr);
+  ierr = PetscFree(action);CHKERRQ(ierr);
+  ierr = PetscFree(dat);CHKERRQ(ierr);
+  ierr = PetscFree(dat_ro);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
-

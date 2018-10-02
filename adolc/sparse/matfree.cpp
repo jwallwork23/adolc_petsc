@@ -75,6 +75,7 @@ int main(int argc,char **args)
 
   /* Create matrix free matrix */
   ierr = MatCreateShell(comm,m,n,m,n,NULL,&J);CHKERRQ(ierr);
+  // TODO: Set MatMult using forward mode
   ierr = MatShellSetOperation(J,MATOP_MULT_TRANSPOSE,(void(*)(void))JacobianTransposeVectorProduct);CHKERRQ(ierr);
 
   /* Evaluate Jacobian matrix free */
@@ -82,7 +83,7 @@ int main(int argc,char **args)
   ierr = VecSetSizes(Z,PETSC_DECIDE,n);CHKERRQ(ierr);
   ierr = VecSetFromOptions(Z);CHKERRQ(ierr);
   //ierr = JacobianTransposeVectorProduct(C,m,n,Z);CHKERRQ(ierr);
-  ierr = MatMultTranspose(J,C,Z);CHKERRQ(ierr);
+  ierr = MatMultTranspose(J,C,Z);CHKERRQ(ierr);	// Note: This has been overloaded for matrix J
   ierr = PetscPrintf(comm,"Jacobian transpose vector product:\n");CHKERRQ(ierr);
   ierr = VecView(Z,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
@@ -94,36 +95,62 @@ int main(int argc,char **args)
   return ierr;
 }
 
+/* Intended to overload MatMult in matrix-free methods */
+/*PetscErrorCode JacobianVectorProduct(Mat J,Vec U,Vec Action)
+{
+  PetscErrorCode    ierr;
+  PetscInt          m,n;
+  PetscScalar       **Seed;
+
+  PetscFunctionBegin;
+  ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
+  //fov_forward(tag,m,n,...);
+  //fos_forward(tag,m,n,...);
+
+  PetscFunctionReturn(0);
+}
+*/
+
+/* Intended to overload MatMultTranspose in matrix-free methods */
 PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec U,Vec Action)
 {
   PetscErrorCode    ierr;
-  PetscInt          i,m,n,q = 1;
+  PetscInt          i,m,n;
   const PetscScalar *u;
-  PetscScalar       **uarray,**action;
+  PetscScalar       *action,*uu;
+  //PetscScalar       *x,*c;
 
   PetscFunctionBegin;
+
+  // TODO: How to call zos_forward here?
 
   /* Read data and allocate memory */
   ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
   ierr = PetscMalloc1(m,&u);CHKERRQ(ierr);
-  ierr = AdolcMalloc2(q,m,&uarray);CHKERRQ(ierr);
+  ierr = PetscMalloc1(m,&uu);CHKERRQ(ierr);
   ierr = VecGetArrayRead(U,&u);CHKERRQ(ierr);
-  for (i=0; i<m; i++)
-    uarray[0][i] = u[i];	// TODO: Create a wrapper for this
-  ierr = VecRestoreArrayRead(U,&u);CHKERRQ(ierr);
-
+/*
+  ierr = PetscMalloc1(n,&x);CHKERRQ(ierr);
+  ierr = PetscMalloc1(m,&c);CHKERRQ(ierr);
+  zos_forward(tag,m,n,1,x,c);
+  ierr = PetscFree(c);CHKERRQ(ierr);
+  ierr = PetscFree(x);CHKERRQ(ierr);
+*/
   /* Compute action */
-  ierr = AdolcMalloc2(q,n,&action);CHKERRQ(ierr);
-  fov_reverse(tag,m,n,q,uarray,action);
+  ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
+  for (i=0; i<m; i++)
+    uu[i] = u[i];
+  fos_reverse(tag,m,n,uu,action);
+  ierr = VecRestoreArrayRead(U,&u);CHKERRQ(ierr);
 
   /* Set values in vector */
   for (i=0; i<n; i++) {
-    ierr = VecSetValues(Action,1,&i,&action[0][i],INSERT_VALUES);CHKERRQ(ierr);
+    ierr = VecSetValues(Action,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
   }
 
   /* Free memory */
-  ierr = AdolcFree2(action);CHKERRQ(ierr);
-  ierr = AdolcFree2(uarray);CHKERRQ(ierr);
+  ierr = PetscFree(action);CHKERRQ(ierr);
+  ierr = PetscFree(uu);CHKERRQ(ierr);
   ierr = PetscFree(u);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
