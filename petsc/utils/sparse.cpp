@@ -74,7 +74,7 @@ PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **sparsity)
 PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **sparsity,ISColoring *iscoloring)
 {
   PetscErrorCode         ierr;
-  Mat                    S;
+  Mat                    P;
   MatColoring            coloring;
   PetscInt               i,j,k,xproc,yproc,zproc,nnz[m],onz[m];
   PetscScalar            one = 1.;
@@ -100,27 +100,33 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **sparsity,I
 
      FIXME
   */
-  ierr = DMCreateMatrix(da,&S);CHKERRQ(ierr);
-  //ierr = MatCreateAIJ(PETSC_COMM_WORLD,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&S);CHKERRQ(ierr);
-  //ierr = MatCreateAIJ(PETSC_COMM_SELF,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&S);CHKERRQ(ierr);
+  /* Version which seems most promising */
+  ierr = MatCreateAIJ(PETSC_COMM_SELF,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&P);CHKERRQ(ierr);
+
+  /* Alternative version */
+  //ierr = MatCreateAIJ(PETSC_COMM_WORLD,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&P);CHKERRQ(ierr);
   //ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
-  //ierr = MatSetLocalToGlobalMapping(S,ltog,ltog);CHKERRQ(ierr);
-  //ierr = MatSetFromOptions(S);CHKERRQ(ierr);
-  //ierr = MatSetUp(S);CHKERRQ(ierr);
+  //ierr = MatSetLocalToGlobalMapping(P,ltog,ltog);CHKERRQ(ierr);
+
+  /* Alternative version 2 */
+  //ierr = DMCreateMatrix(da,&P);CHKERRQ(ierr);
+
+  ierr = MatSetFromOptions(P);CHKERRQ(ierr);
+  ierr = MatSetUp(P);CHKERRQ(ierr);
   for (i=0; i<m; i++) {
     for (j=1; j<=nnz[i]; j++) {
       k = sparsity[i][j];
-      ierr = MatSetValuesLocal(S,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
-      //ierr = MatSetValues(S,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
+      //ierr = MatSetValuesLocal(P,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
+      ierr = MatSetValues(P,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
     }
   }
-  ierr = MatAssemblyBegin(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(P,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(P,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
   /*
     Extract colouring, with smallest last as default.
   */
-  ierr = MatColoringCreate(S,&coloring);CHKERRQ(ierr);
+  ierr = MatColoringCreate(P,&coloring);CHKERRQ(ierr);
   if ((xproc > 1) || (yproc > 1) || (zproc > 1)) {
     ierr = MatColoringSetType(coloring,MATCOLORINGJP);CHKERRQ(ierr); // Parallel coloring
   } else {
@@ -129,7 +135,7 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **sparsity,I
   ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
   ierr = MatColoringApply(coloring,iscoloring);CHKERRQ(ierr);
   ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
-  ierr = MatDestroy(&S);CHKERRQ(ierr);
+  ierr = MatDestroy(&P);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
