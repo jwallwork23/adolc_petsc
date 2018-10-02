@@ -517,7 +517,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
 
   /* Convert 2-array to a 1-array, so this can be read by ADOL-C */
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-  ierr = ConvertTo1Array(da,u,u_vec);CHKERRQ(ierr);
+  ierr = ConvertTo1Array2d(da,u,u_vec);CHKERRQ(ierr);
 
   /*
     Calculate Jacobian using ADOL-C

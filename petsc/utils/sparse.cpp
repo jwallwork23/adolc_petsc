@@ -66,6 +66,7 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
      Preallocate nonzeros as ones. 
 
      NOTE: Using DMCreateMatrix overestimates nonzeros.
+     FIXME: I think it is probably this PETSC_COMM_SELF which is causing trouble. Use MatSetValuesLocal
   */
   ierr = MatCreateAIJ(PETSC_COMM_SELF,m,n,PETSC_DETERMINE,PETSC_DETERMINE,0,nnz,0,onz,&S);CHKERRQ(ierr);
   ierr = MatSetFromOptions(S);CHKERRQ(ierr);
