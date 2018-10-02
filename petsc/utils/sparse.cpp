@@ -2,9 +2,15 @@
 #include <petscdmda.h>
 #include <petscts.h>
 
-/*
-  Print matrices involved in sparse computations.
-*/
+/*@C
+  Simple matrix printing
+
+  Input parameters:
+  comm - MPI communicator
+  name - name of matrix to print
+  m,n  - number of rows and columns, respectively
+  M    - matrix to print
+@*/
 PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M)
 {
   PetscErrorCode ierr;
@@ -21,9 +27,16 @@ PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,Pet
   PetscFunctionReturn(0);
 }
 
-/*
+/*@C
   Print sparsity pattern
-*/
+
+  Input parameters:
+  comm     - MPI communicator
+  m        - number of rows
+
+  Output parameter:
+  sparsity - matrix sparsity pattern, typically computed using an ADOL-C function such as jac_pat or hess_pat
+@*/
 PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP)
 {
   PetscErrorCode ierr;
@@ -33,14 +46,30 @@ PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **JP)
   ierr = PetscPrintf(comm,"Sparsity pattern:\n");CHKERRQ(ierr);
   for(i=0; i<m ;i++) {
     ierr = PetscPrintf(comm,"\n %2d: ",i);CHKERRQ(ierr);
-    for(j=1; j<= (PetscInt) JP[i][0] ;j++)
-      ierr = PetscPrintf(comm," %2d ", JP[i][j]);CHKERRQ(ierr);
+    for(j=1; j<= (PetscInt) sparsity[i][0] ;j++)
+      ierr = PetscPrintf(comm," %2d ",sparsity[i][j]);CHKERRQ(ierr);
   }
   ierr = PetscPrintf(comm,"\n\n");CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColoring *iscoloring)
+/*@C
+  Extract an index set coloring from a sparsity pattern
+
+  Input parameters:
+  da         - distributed array
+  m,n        - number of rows and columns, respectively
+  sparsity   - matrix sparsity pattern, typically computed using an ADOL-C function such as jac_pat or hess_pat
+
+  Output parameter:
+  iscoloring - index set coloring corresponding to the sparsity pattern under the given coloring type
+
+  Notes:
+  Use -mat_coloring_type <sl,lf,id,natural,greedy,jp> to change coloring type used
+  FIXME: only natural is currently working if BCs are considered
+  FIXME: jp and greedy are not currently working at all
+@*/
+PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **sparsity,ISColoring *iscoloring)
 {
   PetscErrorCode         ierr;
   Mat                    S;
@@ -54,10 +83,10 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
     Extract number of nonzeros and colours required from JP.
   */
   for (i=0; i<m; i++) {
-    nnz[i] = (PetscInt) JP[i][0];
+    nnz[i] = (PetscInt) sparsity[i][0];
     onz[i] = nnz[i];
     for (j=1; j<=nnz[i]; j++) {
-      if (i == (PetscInt) JP[i][j])
+      if (i == (PetscInt) sparsity[i][j])
         onz[i]--;
     }
   }
@@ -73,7 +102,7 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   ierr = MatSetUp(S);CHKERRQ(ierr);
   for (i=0; i<m; i++) {
     for (j=1; j<=nnz[i]; j++) {
-      k = JP[i][j];
+      k = sparsity[i][j];
       ierr = MatSetValues(S,1,&i,1,&k,&one,INSERT_VALUES);CHKERRQ(ierr);
     }
   }
@@ -81,11 +110,7 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   ierr = MatAssemblyEnd(S,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
   /*
-    Extract colouring, with smallest last ('sl') as default.
-
-    NOTE: Use -mat_coloring_type <sl,lf,id,natural,greedy,jp> to change mode.
-    FIXME: only natural is currently working if BCs are considered
-    FIXME: jp and greedy are not currently working at all
+    Extract colouring, with smallest last as default.
   */
   ierr = MatColoringCreate(S,&coloring);CHKERRQ(ierr);
   ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);
@@ -97,6 +122,15 @@ PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **JP,ISColor
   PetscFunctionReturn(0);
 }
 
+/*@C
+  Simple function to count the number of colors used in an index set coloring
+
+  Input parameter:
+  iscoloring - the index set coloring to count the number of colors of
+
+  Output parameter:
+  p          - number of colors used in iscoloring
+@*/
 PetscErrorCode CountColors(ISColoring iscoloring,PetscInt *p)
 {
   PetscErrorCode ierr;
@@ -108,8 +142,22 @@ PetscErrorCode CountColors(ISColoring iscoloring,PetscInt *p)
   PetscFunctionReturn(0);
 }
 
+/*@C
+  Generate a seed matrix defining the partition of columns of a matrix by a particular coloring,
+  used for matrix compression
 
-PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscScalar **Seed)
+  Input parameter:
+  iscoloring - the index set coloring to be used
+
+  Output parameter:
+  S          - the resulting seed matrix
+
+  Notes:
+  Before calling GenerateSeedMatrix, Seed should be allocated as a logically 2d array with number of
+  rows equal to the matrix to be compressed and number of columns equal to the number of colors used
+  in iscoloring.
+@*/
+PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscScalar **S)
 {
   PetscErrorCode ierr;
   IS             *is;
@@ -117,32 +165,44 @@ PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscScalar **Seed)
   const PetscInt *indices;
 
   PetscFunctionBegin;
-
   ierr = ISColoringGetIS(iscoloring,&p,&is);CHKERRQ(ierr);
   for (i=0; i<p; i++) {
     ierr = ISGetLocalSize(is[i],&size);CHKERRQ(ierr);
     ierr = ISGetIndices(is[i],&indices);CHKERRQ(ierr);
     for (j=0; j<size; j++)
-      Seed[indices[j]][i] = 1.;
+      S[indices[j]][i] = 1.;
     ierr = ISRestoreIndices(is[i],&indices);CHKERRQ(ierr);
   }
   ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
-
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m,PetscInt p,PetscScalar **Rec)
+/*@C
+  Establish a look-up matrix whose entries contain the column coordinates of the corresponding entry
+  in a matrix which has been compressed using the coloring defined by some seed matrix
+
+  Input parameters:
+  S        - the seed matrix defining the coloring
+  sparsity - the sparsity pattern of the matrix to be recovered, typically computed using an ADOL-C
+             function, such as jac_pat or hess_pat
+  m        - the number of rows of Seed (and the matrix to be recovered)
+  p        - the number of colors used (also the number of columns in Seed)
+
+  Output parameter:
+  R        - the recovery matrix to be used for de-compression
+@*/
+PetscErrorCode GetRecoveryMatrix(PetscScalar **S,unsigned int **sparsity,PetscInt m,PetscInt p,PetscScalar **R)
 {
   PetscInt i,j,k,colour;
 
   PetscFunctionBegin;
   for (i=0; i<m; i++) {
     for (colour=0; colour<p; colour++) {
-      Rec[i][colour] = -1.;
-      for (k=1; k<=(PetscInt) JP[i][0]; k++) {
-        j = (PetscInt) JP[i][k];
-        if (Seed[j][colour] == 1.) {
-          Rec[i][colour] = j;
+      R[i][colour] = -1.;
+      for (k=1; k<=(PetscInt) sparsity[i][0]; k++) {
+        j = (PetscInt) sparsity[i][k];
+        if (S[j][colour] == 1.) {
+          R[i][colour] = j;
           break;
         }
       }
@@ -151,7 +211,19 @@ PetscErrorCode GetRecoveryMatrix(PetscScalar **Seed,unsigned int **JP,PetscInt m
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,PetscScalar **Jcomp)
+/*@C
+  Recover the values of a sparse matrix from a compressed foramt and insert these into a matrix
+
+  Input parameters:
+  m - number of rows of matrix.
+  p - number of colors used in the compression of J (also the number of columns of R)
+  R - recovery matrix to use in the decompression procedure
+  C - compressed matrix to recover values from
+
+  Output parameter:
+  A - Mat to be populated with values from compressed matrix
+*/
+PetscErrorCode RecoverJacobian(Mat A,PetscInt m,PetscInt p,PetscScalar **R,PetscScalar **C)
 {
   PetscErrorCode ierr;
   PetscInt       i,j,colour;
@@ -159,11 +231,10 @@ PetscErrorCode RecoverJacobian(Mat J,PetscInt m,PetscInt p,PetscScalar **Rec,Pet
   PetscFunctionBegin;
   for (i=0; i<m; i++) {
     for (colour=0; colour<p; colour++) {
-      j = (PetscInt) Rec[i][colour];
+      j = (PetscInt) R[i][colour];
       if (j != -1)
-        ierr = MatSetValuesLocal(J,1,&i,1,&j,&Jcomp[i][colour],INSERT_VALUES);CHKERRQ(ierr);
+        ierr = MatSetValuesLocal(A,1,&i,1,&j,&C[i][colour],INSERT_VALUES);CHKERRQ(ierr);
     }
   }
   PetscFunctionReturn(0);
 }
-

@@ -9,6 +9,9 @@ extern PetscErrorCode ConvertTo1Array(DM da,PetscScalar **u,PetscScalar *u_vec);
 extern PetscErrorCode ConvertTo1Array2d(DM da,PetscScalar **u,PetscScalar *u_vec);
 
 
+/*@C
+  TODO: Documentation
+*/
 PetscErrorCode GiveGhostPoints2d(DM da,void *cgs,void *a2d)
 {
 
@@ -21,6 +24,8 @@ PetscErrorCode GiveGhostPoints2d(DM da,void *cgs,void *a2d)
 
 /*
   Shift indices in adouble array to endow it with ghost points.
+
+  TODO: Documentation
 */
 PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[])
 {
@@ -35,16 +40,23 @@ PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[])
   PetscFunctionReturn(0);
 }
 
+/*@C
+  TODO: Documentation
+  FIXME: Generalise for dimensions and dofs
+*/
 PetscErrorCode ConvertTo1Array(DM da,void **u,PetscScalar *u_vec)
 {
   PetscErrorCode ierr;
 
   PetscFunctionBegin;
-  // FIXME and generalise for dimensions and dofs
   ierr = ConvertTo1Array2d(da,(PetscScalar**)u,u_vec);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
+/*@C
+  TODO: Documentation
+  TODO: Generalise for dimensions and dofs
+*/
 PetscErrorCode ConvertTo1Array2d(DM da,PetscScalar **u,PetscScalar *u_vec)
 {
   PetscErrorCode ierr;
