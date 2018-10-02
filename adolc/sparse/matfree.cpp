@@ -96,20 +96,29 @@ int main(int argc,char **args)
 }
 
 /* Intended to overload MatMult in matrix-free methods */
-/*PetscErrorCode JacobianVectorProduct(Mat J,Vec U,Vec Action)
+PetscErrorCode JacobianVectorProduct(Mat J,Vec XX,Vec Action)
 {
   PetscErrorCode    ierr;
   PetscInt          m,n;
-  PetscScalar       **Seed;
+  const PetscScalar *x
+  PetscScalar       *action,*xx,*ff;
 
   PetscFunctionBegin;
   ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
-  //fov_forward(tag,m,n,...);
-  //fos_forward(tag,m,n,...);
+  ierr = PetscMalloc1(n,&x);CHKERRQ(ierr);
+  ierr = PetscMalloc1(n,&xx);CHKERRQ(ierr);
+  ierr = PetscMalloc1(m,&ff);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
+
+  // TODO
+
+  fos_forward(tag,m,n,0,xx,xx,ff,action);
+  ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
+
+  // TODO
 
   PetscFunctionReturn(0);
 }
-*/
 
 /* Intended to overload MatMultTranspose in matrix-free methods */
 PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec U,Vec Action)
