@@ -4,7 +4,7 @@ FFLAGS          =
 CXXFLAGS        = -std=c++11
 CPPFLAGS        =
 FPPFLAGS        =
-CLEANFILES      = petsc_version reverse *.tap
+CLEANFILES      = petsc_version reverse matfree *.tap
 CC              = g++
 LIB             = ${PETSC_SNES_LIB} -L${ADOLC_HOME}/build -ladolc
 
