@@ -29,6 +29,10 @@ ex5: ex5.o
 	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
 	${RM} $^
 
+ex5_mf: ex5_mf.o
+	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
+	${RM} $^
+
 ex5adj: ex5adj.o
 	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
 	${RM} $^
