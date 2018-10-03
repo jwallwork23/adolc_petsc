@@ -69,6 +69,7 @@ int main(int argc,char **argv)
   DM             da;
   PetscReal      ftime,dt;
   AppCtx         user;                  /* user-defined work context */
+  //AdolcCtx       adolcctx; // FIXME: also need values inserting somehow
   adouble        **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;  /* active variables */
   PetscScalar    **Seed = NULL,**Rec = NULL,*u_vec;
   unsigned int   **JP = NULL;
@@ -196,7 +197,11 @@ int main(int argc,char **argv)
 
   /* Set Jacobian */
   ierr = DMSetMatType(da,MATAIJ);CHKERRQ(ierr);
+  //ierr = DMSetMatType(da,MATSHELL);CHKERRQ(ierr);	// FIXME
   ierr = DMCreateMatrix(da,&J);CHKERRQ(ierr);
+  //ierr = MatShellSetContext(J,&adolcctx);CHKERRQ(ierr);
+  //ierr = MatShellSetOperation(J,MATOP_MULT,(void(*)(void))JacobianVectorProduct);CHKERRQ(ierr);
+  //ierr = MatShellSetOperation(J,MATOP_MULT_TRANSPOSE,(void(*)(void))JacobianTransposeVectorProduct);CHKERRQ(ierr);
   if (!byhand) {
     ierr = TSSetRHSJacobian(ts,J,J,RHSJacobianADOLC,NULL);CHKERRQ(ierr);
   } else {
