@@ -1,6 +1,10 @@
 #include <petscdm.h>
 #include <petscdmda.h>
 
+#define tag 1
+
+extern PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,PetscBool view);
+
 /*@C
   Test to verify that the zero order scalar evaluation of forward mode AD yields the same
   result as evaluating the PDE residual.
@@ -13,7 +17,7 @@
   view - sanity check: toggle whether to print comparisons of nonzero values (to check
          there are some)
 */
-PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,PetscInt tag,PetscBool view)
+PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,PetscBool view)
 {
   PetscErrorCode ierr;
   PetscInt       m,n,gxs,gys,gxm,gym,i,j,k = 0;
