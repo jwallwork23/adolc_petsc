@@ -34,10 +34,9 @@ static char help[] = "Demonstrates automatic Jacobian computation using ADOL-C f
 #include <adolc/adolc.h>	// Include ADOL-C
 #include <adolc/adolc_sparse.h> // Include ADOL-C sparse drivers
 #include "../utils/allocation.cpp"
+#include "../utils/matfree.cpp"
 #include "../utils/sparse.cpp"
 #include "../utils/tests.cpp"
-
-#define tag 1
 
 /*
    User-defined data structures
@@ -392,7 +391,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
 
     /* Test zeroth order scalar evaluation in ADOL-C gives the same result */
     if (user->zos) {
-      ierr = TestZOS2d(da,f,u,tag,user->zos_view);CHKERRQ(ierr);
+      ierr = TestZOS2d(da,f,u,user->zos_view);CHKERRQ(ierr);
     }
   } else {
     ierr = RHSLocalPassive(da,f,u,user);CHKERRQ(ierr);

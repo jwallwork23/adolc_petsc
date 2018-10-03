@@ -7,8 +7,8 @@ extern PetscErrorCode JacobianVectorProduct(Mat J,Vec x,Vec y);
 extern PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec y,Vec x);
 
 typedef struct {
-  PetscScalar *indep_vals;
-  PetscBool   trace;
+  PetscScalar *indep_vals; // Need to provide a 1-array containing independent variable values
+  PetscBool   trace;       // Toggle whether or not to trace forward, thereby writing to tape
 } AdolcCtx;
 
 /*@C

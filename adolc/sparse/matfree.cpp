@@ -4,8 +4,6 @@
 #include "example_utils.cpp"
 #include "../../petsc/utils/matfree.cpp"
 
-#define tag 1
-
 int main(int argc,char **args)
 {
   AdolcCtx          ctx;
