@@ -1,36 +1,14 @@
-#include <petscsnes.h>
+#include <petscts.h>
 #include <adolc/adolc.h>
 #include <adolc/adolc_sparse.h>
+#include "example_utils.cpp"
+#include "../../petsc/utils/matfree.cpp"
 
 #define tag 1
 
-extern PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt n,PetscInt m,PetscScalar **M);
-extern PetscErrorCode PassiveEvaluate(PetscScalar *x,PetscScalar *c);
-extern PetscErrorCode ActiveEvaluate(adouble *x,adouble *c);
-extern PetscErrorCode JacobianVectorProduct(Mat J,Vec U,Vec Action);
-extern PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec X,Vec Action);
-
-PetscErrorCode AdolcMalloc2(PetscInt m,PetscInt n,PetscScalar **A[])
-{
-  PetscFunctionBegin;
-  *A = myalloc2(m,n);
-  PetscFunctionReturn(0);
-}
-
-PetscErrorCode AdolcFree2(PetscScalar **A)
-{
-  PetscFunctionBegin;
-  myfree2(A);
-  PetscFunctionReturn(0);
-}
-
-typedef struct {
-  PetscScalar *x;
-} AppCtx;
-
 int main(int argc,char **args)
 {
-  AppCtx          ctx;
+  AdolcCtx          ctx;
   PetscErrorCode  ierr;
   MPI_Comm        comm = MPI_COMM_WORLD;
   PetscInt        n = 6,m = 3,i,j,mi[m],ni[n];
@@ -41,12 +19,13 @@ int main(int argc,char **args)
 
   ierr = PetscInitialize(&argc,&args,(char*)0,NULL);if (ierr) return ierr;
 
-  /* Give values for independent variables */
+  /* Give values for independent variables and put these in context */
   for(i=0;i<n;i++) {
     x[i] = log(1.0+i);
     ni[i] = i;
   }
-  ctx.x = x;
+  ctx.indep_vals = x;
+  ctx.trace = PETSC_TRUE;
 
   /* Trace function c(x) */
   trace_on(tag);
@@ -127,113 +106,3 @@ int main(int argc,char **args)
 
   return ierr;
 }
-
-/* Intended to overload MatMult in matrix-free methods */
-PetscErrorCode JacobianVectorProduct(Mat J,Vec X,Vec Action)
-{
-  PetscErrorCode    ierr;
-  PetscInt          m,n,i;
-  const PetscScalar *x;
-  PetscScalar       *action,*xx;
-
-  PetscFunctionBegin;
-
-  /* Read data and allocate memory */
-  ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
-  ierr = PetscMalloc1(n,&x);CHKERRQ(ierr);
-  ierr = PetscMalloc1(n,&xx);CHKERRQ(ierr);
-  ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
-  for (i=0; i<n; i++)
-    xx[i] = x[i];	// FIXME: How to avoid this conversion from read only?
-
-  /* Compute action of Jacobian on vector */
-  fos_forward(tag,m,n,0,xx,xx,NULL,action);
-  ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
-  for (i=0; i<m; i++) {
-    ierr = VecSetValues(Action,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
-  }
-
-  /* Free memory */
-  ierr = PetscFree(action);CHKERRQ(ierr);
-  ierr = PetscFree(xx);CHKERRQ(ierr);
-  ierr = PetscFree(x);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-/* Intended to overload MatMultTranspose in matrix-free methods */
-PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec U,Vec Action)
-{
-  AppCtx            *ctx;
-  PetscErrorCode    ierr;
-  PetscInt          i,m,n;
-  const PetscScalar *u;
-  PetscScalar       *action,*uu;
-
-  PetscFunctionBegin;
-
-  /* Read data and allocate memory */
-  ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
-  ierr = PetscMalloc1(m,&u);CHKERRQ(ierr);
-  ierr = PetscMalloc1(m,&uu);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(U,&u);CHKERRQ(ierr);
-
-  /* Trace forward using independent variable values */
-  ierr = MatShellGetContext(J,&ctx);CHKERRQ(ierr);
-  zos_forward(tag,m,n,1,ctx->x,NULL);
-
-  /* Compute action of Jacobian transpose on vector */
-  ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
-  for (i=0; i<m; i++)
-    uu[i] = u[i];	// FIXME: How to avoid this conversion from read only?
-  fos_reverse(tag,m,n,uu,action);
-  ierr = VecRestoreArrayRead(U,&u);CHKERRQ(ierr);
-
-  /* Set values in vector */
-  for (i=0; i<n; i++) {
-    ierr = VecSetValues(Action,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
-  }
-
-  /* Free memory */
-  ierr = PetscFree(action);CHKERRQ(ierr);
-  ierr = PetscFree(uu);CHKERRQ(ierr);
-  ierr = PetscFree(u);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M)
-{
-  PetscErrorCode ierr;
-  PetscInt       i,j;
-
-  PetscFunctionBegin;
-  ierr = PetscPrintf(comm,"%s \n",name);CHKERRQ(ierr);
-  for(i=0; i<m ;i++) {
-    ierr = PetscPrintf(comm,"\n %d: ",i);CHKERRQ(ierr);
-    for(j=0; j<n ;j++)
-      ierr = PetscPrintf(comm," %10.4f ", M[i][j]);CHKERRQ(ierr);
-  }
-  ierr = PetscPrintf(comm,"\n\n");CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-PetscErrorCode PassiveEvaluate(PetscScalar *x,PetscScalar *c)
-{
-  PetscFunctionBegin;
-  c[0] = 2*x[0]+x[1]-2.0;
-  c[0] += PetscCosScalar(x[3])*PetscSinScalar(x[4]);
-  c[1] = x[2]*x[2]+x[3]*x[3]-2.0;
-  c[2] = 3*x[4]*x[5] - 3.0+PetscSinScalar(x[4]*x[5]);
-  PetscFunctionReturn(0);
-}
-
-PetscErrorCode ActiveEvaluate(adouble *x,adouble *c)
-{
-  PetscFunctionBegin;
-  c[0] = 2*x[0]+x[1]-2.0;
-  c[0] += PetscCosScalar(x[3])*PetscSinScalar(x[4]);
-  c[1] = x[2]*x[2]+x[3]*x[3]-2.0;
-  c[2] = 3*x[4]*x[5] - 3.0+PetscSinScalar(x[4]*x[5]);
-  PetscFunctionReturn(0);
-}
-

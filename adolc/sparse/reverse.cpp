@@ -1,12 +1,10 @@
-#include <petscsnes.h>
+#include <petscts.h>
 #include <adolc/adolc.h>
 #include <adolc/adolc_sparse.h>
+#include "example_utils.cpp"
+#include "../../petsc/utils/sparse.cpp"
 
 #define tag 1
-
-PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt n,PetscInt m,PetscScalar **M);
-PetscErrorCode PassiveEvaluate(PetscScalar *x,PetscScalar *c);
-PetscErrorCode ActiveEvaluate(adouble *x,adouble *c);
 
 int main(int argc,char **args)
 {
@@ -185,40 +183,4 @@ int main(int argc,char **args)
   ierr = PetscFinalize();
 
   return ierr;
-}
-
-PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M)
-{
-  PetscErrorCode ierr;
-  PetscInt       i,j;
-
-  PetscFunctionBegin;
-  ierr = PetscPrintf(comm,"%s \n",name);CHKERRQ(ierr);
-  for(i=0; i<m ;i++) {
-    ierr = PetscPrintf(comm,"\n %d: ",i);CHKERRQ(ierr);
-    for(j=0; j<n ;j++)
-      ierr = PetscPrintf(comm," %10.4f ", M[i][j]);CHKERRQ(ierr);
-  }
-  ierr = PetscPrintf(comm,"\n\n");CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-PetscErrorCode PassiveEvaluate(PetscScalar *x,PetscScalar *c)
-{
-  PetscFunctionBegin;
-  c[0] = 2*x[0]+x[1]-2.0;
-  c[0] += PetscCosScalar(x[3])*PetscSinScalar(x[4]);
-  c[1] = x[2]*x[2]+x[3]*x[3]-2.0;
-  c[2] = 3*x[4]*x[5] - 3.0+PetscSinScalar(x[4]*x[5]);
-  PetscFunctionReturn(0);
-}
-
-PetscErrorCode ActiveEvaluate(adouble *x,adouble *c)
-{
-  PetscFunctionBegin;
-  c[0] = 2*x[0]+x[1]-2.0;
-  c[0] += PetscCosScalar(x[3])*PetscSinScalar(x[4]);
-  c[1] = x[2]*x[2]+x[3]*x[3]-2.0;
-  c[2] = 3*x[4]*x[5] - 3.0+PetscSinScalar(x[4]*x[5]);
-  PetscFunctionReturn(0);
 }
