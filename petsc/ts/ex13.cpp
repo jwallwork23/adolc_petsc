@@ -47,6 +47,7 @@ typedef struct {
   adouble     **u_a,**f_a;
   PetscScalar **Seed,**Rec; /* Jacobian seed and recovery matrices */
   PetscInt    p;
+  AdolcCtx    *adolcctx;
 } AppCtx;
 
 /* (Slightly modified) functions included in original code of ex13.c */
@@ -58,6 +59,7 @@ extern PetscErrorCode FormInitialSolution(DM,Vec,void*);
 /* Problem specific functions for the purpose of automatic Jacobian computation */
 extern PetscErrorCode RHSJacobianADOLC(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *ptr);
+extern PetscErrorCode RHSJacobianPassContext(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx);
 
 int main(int argc,char **argv)
 {
@@ -69,12 +71,11 @@ int main(int argc,char **argv)
   DM             da;
   PetscReal      ftime,dt;
   AppCtx         user;                  /* user-defined work context */
-  //AdolcCtx       adolcctx; // FIXME: also need values inserting somehow
   adouble        **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;  /* active variables */
   PetscScalar    **Seed = NULL,**Rec = NULL,*u_vec;
   unsigned int   **JP = NULL;
   ISColoring     iscoloring;
-  PetscBool      byhand = PETSC_FALSE;
+  PetscBool      byhand = PETSC_FALSE,matfree = PETSC_FALSE;
   MPI_Comm       comm = MPI_COMM_WORLD;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
@@ -83,6 +84,7 @@ int main(int argc,char **argv)
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&user.zos_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse",&user.sparse,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse_view",&user.sparse_view,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_matfree",&matfree,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&user.no_an,NULL);CHKERRQ(ierr);
 
@@ -101,6 +103,7 @@ int main(int argc,char **argv)
 
   /* Initialize user application context */
   user.c = -30.0;
+  user.adolcctx->trace = PETSC_TRUE;
 
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Allocate memory for (local) active arrays and store references in the
@@ -113,9 +116,11 @@ int main(int argc,char **argv)
 
            It is also important to deconstruct and free memory appropriately.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  if (!user.no_an) {
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  m = gxm*gym;  // Number of dependent variables
+  n = gxm*gym;  // Number of independent variables
 
-    ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  if (!user.no_an) {
 
     // Create contiguous 1-arrays of AFields
     u_c = new adouble[gxm*gym];
@@ -154,8 +159,6 @@ int main(int argc,char **argv)
   if ((user.sparse) && (!user.no_an)) {
 
     ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-    m = gxm*gym;  // Number of dependent variables
-    n = gxm*gym;  // Number of independent variables
 
     // Trace RHSFunction, so that ADOL-C has tape to read from
     ierr = RHSFunction(ts,1.0,u,r,&user);CHKERRQ(ierr);
@@ -196,16 +199,24 @@ int main(int argc,char **argv)
   }
 
   /* Set Jacobian */
-  ierr = DMSetMatType(da,MATAIJ);CHKERRQ(ierr);
-  //ierr = DMSetMatType(da,MATSHELL);CHKERRQ(ierr);	// FIXME
-  ierr = DMCreateMatrix(da,&J);CHKERRQ(ierr);
-  //ierr = MatShellSetContext(J,&adolcctx);CHKERRQ(ierr);
-  //ierr = MatShellSetOperation(J,MATOP_MULT,(void(*)(void))JacobianVectorProduct);CHKERRQ(ierr);
-  //ierr = MatShellSetOperation(J,MATOP_MULT_TRANSPOSE,(void(*)(void))JacobianTransposeVectorProduct);CHKERRQ(ierr);
-  if (!byhand) {
-    ierr = TSSetRHSJacobian(ts,J,J,RHSJacobianADOLC,NULL);CHKERRQ(ierr);
+  if (!matfree) {
+    ierr = DMSetMatType(da,MATAIJ);CHKERRQ(ierr);
   } else {
-    ierr = TSSetRHSJacobian(ts,J,J,RHSJacobianByHand,NULL);CHKERRQ(ierr);
+    ierr = DMSetMatType(da,MATSHELL);CHKERRQ(ierr);
+    ierr = DMCreateMatrix(da,&J);CHKERRQ(ierr);
+    ierr = MatShellSetContext(J,&user.adolcctx);CHKERRQ(ierr);
+    ierr = MatShellSetOperation(J,MATOP_MULT,(void(*)(void))JacobianVectorProduct);CHKERRQ(ierr);
+    //ierr = MatShellSetOperation(J,MATOP_MULT_TRANSPOSE,(void(*)(void))JacobianTransposeVectorProduct);CHKERRQ(ierr);
+  }
+  if (!matfree) {
+    if (!byhand) {
+      ierr = TSSetRHSJacobian(ts,J,J,RHSJacobianADOLC,NULL);CHKERRQ(ierr);
+    } else {
+      ierr = TSSetRHSJacobian(ts,J,J,RHSJacobianByHand,NULL);CHKERRQ(ierr);
+    }
+  } else {
+    ierr = PetscMalloc1(n,&user.adolcctx->indep_vals);CHKERRQ(ierr);
+    ierr = TSSetRHSJacobian(ts,J,J,RHSJacobianPassContext,NULL);CHKERRQ(ierr);
   }
 
   ftime = 1.0;
@@ -234,6 +245,9 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Free work space and call destructors for active fields.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  if (matfree) {
+    ierr = PetscFree(user.adolcctx->indep_vals);CHKERRQ(ierr);
+  }
   ierr = MatDestroy(&J);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
   if (user.sparse) {
@@ -580,6 +594,54 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
     ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   }
 
+  PetscFunctionReturn(0);
+}
+
+/* --------------------------------------------------------------------- */
+/*
+   RHSJacobianPassContext - Replaces Jacobian computation function in the
+   matrix free case. Simply acts to pass context information.
+
+   Input Parameters:
+   ts - the TS context
+   t - current time
+   U - global input vector
+   ctx - optional user-defined context, as set by TSetRHSJacobian()
+
+   Output Parameters:
+   J - Jacobian matrix
+   Jpre - optionally different preconditioning matrix
+*/
+PetscErrorCode RHSJacobianPassContext(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx)
+{
+  AppCtx         *appctx = (AppCtx*)ctx;
+  PetscErrorCode ierr;
+  DM             da;
+  PetscScalar    **u;
+  Vec            localU;
+
+  PetscFunctionBeginUser;
+  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
+
+  /*
+     Scatter ghost points to local vector,using the 2-step process
+        DMGlobalToLocalBegin(),DMGlobalToLocalEnd().
+     By placing code between these two statements, computations can be
+     done while messages are in transition.
+  */
+  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+
+  /* Get pointers to vector data */
+  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
+
+  /* Convert 2-array to a 1-array and pass into AdolcCtx */
+  ierr = ConvertTo1Array2d(da,u,appctx->adolcctx->indep_vals);CHKERRQ(ierr);
+
+  /* Restore vectors */
+  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
