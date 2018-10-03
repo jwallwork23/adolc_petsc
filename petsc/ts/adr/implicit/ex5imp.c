@@ -23,15 +23,6 @@ typedef struct {
   Mat       Jac;
 } AppCtx;
 
-typedef struct {
-  PetscReal time;
-  Vec       X;
-  Vec       Xdot;
-  PetscReal shift;
-  AppCtx    *actx;
-  TS        ts;
-} MatCtx;
-
 /*
    User-defined routines
 */
@@ -46,8 +37,6 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
-  MatCtx         matctx;
-  Mat            A;                   /* Jacobian matrix */
   PetscInt       dof;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -77,21 +66,12 @@ int main(int argc,char **argv)
   ierr = VecGetSize(x,&dof);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    Create matrix free context
-    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = DMCreateMatrix(da,&A);CHKERRQ(ierr);
-  ierr = VecDuplicate(x,&matctx.X);CHKERRQ(ierr);
-  ierr = VecDuplicate(x,&matctx.Xdot);CHKERRQ(ierr);
-
-  ierr = DMSetMatType(da,MATAIJ);CHKERRQ(ierr);
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
   ierr = TSSetType(ts,TSCN);CHKERRQ(ierr);
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
-  ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
   ierr = DMDATSSetIFunctionLocal(da,INSERT_VALUES,(DMDATSIFunctionLocal)IFunctionLocal,&appctx);CHKERRQ(ierr);
   ierr = DMDATSSetIJacobianLocal(da,(DMDATSIJacobianLocal)IJacobianLocal,&appctx);CHKERRQ(ierr);
 
@@ -106,6 +86,7 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSSetMaxTime(ts,2000.0);CHKERRQ(ierr);
   ierr = TSSetTimeStep(ts,10);CHKERRQ(ierr);
+  ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
   ierr = TSSetFromOptions(ts);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -117,9 +98,6 @@ int main(int argc,char **argv)
      Free work space.  All PETSc objects should be destroyed when they
      are no longer needed.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = VecDestroy(&matctx.X);CHKERRQ(ierr);
-  ierr = VecDestroy(&matctx.Xdot);CHKERRQ(ierr);
-  ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
   ierr = DMDestroy(&da);CHKERRQ(ierr);
@@ -190,6 +168,7 @@ static PetscErrorCode IFunctionLocal(DMDALocalInfo *info,PetscReal t,Field**u,Fi
   */
   xs = info->xs; xm = info->xm;
   ys = info->ys; ym = info->ym;
+
   /*
      Compute function over the locally owned part of the grid
   */
