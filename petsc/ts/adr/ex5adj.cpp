@@ -70,6 +70,7 @@ int main(int argc,char **argv)
   unsigned int   **JP = NULL;
   ISColoring     iscoloring;
   MPI_Comm       comm = MPI_COMM_WORLD;
+  //PetscReal      norm;  // FIXME: Cost gradient norm below
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   ierr = PetscOptionsGetBool(NULL,NULL,"-forwardonly",&forwardonly,NULL);CHKERRQ(ierr);
@@ -159,7 +160,6 @@ int main(int argc,char **argv)
     n = m;             // Number of independent variables
 
     // Trace function evaluation so that ADOL-C has tape to read from
-    ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
     if (!implicitform) {
       ierr = RHSFunction(ts,1.0,x,r,&appctx);CHKERRQ(ierr);
     } else {
@@ -167,23 +167,29 @@ int main(int argc,char **argv)
     }
 
     // Generate sparsity pattern
+    // FIXME: This sparsity pattern does not quite match the DM sparsity pattern
+    ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
     JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
     jac_pat(tag,m,n,u_vec,JP,ctrl);
-    ierr = GetColoring(da,m,n,JP,&iscoloring);CHKERRQ(ierr);
+    if (appctx.sparse_view) {
+      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
+    }
+
+    // Extract coloring
+    ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
     ierr = CountColors(iscoloring,&p);CHKERRQ(ierr);
 
     // Generate seed matrix
     Seed = myalloc2(n,p);
     ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
     ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+    if (appctx.sparse_view) {
+      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+    }
 
     // Generate recovery matrix
     Rec = myalloc2(m,p);
     ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
-    if (appctx.sparse_view) {
-      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
-      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
-    }
 
     // Store results and free workspace
     appctx.Seed = Seed;
@@ -258,6 +264,9 @@ int main(int argc,char **argv)
     ierr = InitializeLambda(da,lambda[0],0.5,0.5);CHKERRQ(ierr);
     ierr = TSSetCostGradients(ts,1,lambda,NULL);CHKERRQ(ierr);
     ierr = TSAdjointSolve(ts);CHKERRQ(ierr);
+    //ierr = TSGetCostGradients(ts,NULL,&lambda,NULL);CHKERRQ(ierr);  // FIXME
+    //ierr = VecNorm(lambda,NORM_2,&norm);CHKERRQ(ierr);
+    //ierr = PetscPrintf(comm,"Norm of adjoint solution: %.4e\n",norm);CHKERRQ(ierr);
     ierr = VecDestroy(&lambda[0]);CHKERRQ(ierr);
   }
 

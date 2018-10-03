@@ -64,7 +64,9 @@ PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **sparsity)
   iscoloring - index set coloring corresponding to the sparsity pattern under the given coloring type
 
   Notes:
-  FIXME: only currently works for DM_BOUNDARY_NONE or DM_BOUNDARY_GHOSTED
+  Implementation works fine for DM_BOUNDARY_NONE or DM_BOUNDARY_GHOSTED. If DM_BOUNDARY_PERIODIC is
+  used then implementation only currently works in parallel, where processors should not own two
+  opposite boundaries which have been identified by the periodicity.
 @*/
 PetscErrorCode GetColoring(DM da,ISColoring *iscoloring)
 {
