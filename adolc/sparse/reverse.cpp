@@ -1,4 +1,4 @@
-#include <petscsnes.h>
+#include <petscts.h>
 #include <adolc/adolc.h>
 #include <adolc/adolc_sparse.h>
 #include "example_utils.cpp"
@@ -13,13 +13,13 @@ int main(int argc,char **args)
 
   ierr = PetscInitialize(&argc,&args,(char*)0,NULL);if (ierr) return ierr;
 
-  PetscInt n = 6,m = 3,i,j;
-  PetscScalar x[n],c[m];
-  adouble xad[n],cad[m];
-
 /****************************************************************************/
 /*******                function evaluation                   ***************/
 /****************************************************************************/
+
+  PetscInt n = 6,m = 3,i,j;
+  PetscScalar x[n],c[m];
+  adouble xad[n],cad[m];
 
   for(i=0;i<n;i++)
     x[i] = log(1.0+i);
@@ -52,7 +52,7 @@ int main(int argc,char **args)
   ierr = PrintMat(comm," Jacobian:",m,n,Jdense);CHKERRQ(ierr);
 
 /****************************************************************************/
-/*******       sparse Jacobians, separate drivers             ***************/
+/*******            reverse mode with matrix assembly         ***************/
 /****************************************************************************/
 
 /*--------------------------------------------------------------------------*/
@@ -63,16 +63,22 @@ int main(int argc,char **args)
   PetscInt      ctrl[3] = {0,0,0};
 
   JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
-  jac_pat(tag, m, n, x, JP, ctrl);
+  jac_pat(tag,m,n,x,JP,ctrl);
 
-  ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
+  ierr = PetscPrintf(comm," Sparsity pattern: \n");CHKERRQ(ierr);
+  for (i=0;i<m;i++) {
+    ierr = PetscPrintf(comm," %d: ",i);CHKERRQ(ierr);
+    for (j=1;j<= (int) JP[i][0];j++)
+      ierr = PetscPrintf(comm," %d ",JP[i][j]);CHKERRQ(ierr);
+    ierr = PetscPrintf(comm,"\n");CHKERRQ(ierr);
+  }
 
 /*--------------------------------------------------------------------------*/
 /*                                                     preallocate nonzeros */
 /*--------------------------------------------------------------------------*/
 
   Mat             J;
-  PetscInt        k,p = 0,nnz[m];
+  PetscInt        k,nnz[m];
   PetscScalar     one = 1.;
 
   // Get number of nonzeros per row
@@ -91,109 +97,89 @@ int main(int argc,char **args)
   }
   ierr = MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatSetOption(J,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr);
 
 /*--------------------------------------------------------------------------*/
-/*                                      obtain a colouring for the Jacobian */
+/*                                                            trace forward */
 /*--------------------------------------------------------------------------*/
 
-  ISColoring      iscoloring;
-  MatColoring     coloring;
+  PetscInt        q = m;
 
-  /*
-    Colour Jacobian using 'smallest last' method
-
-    NOTE: Other methods may be selected from the command line using
-            -mat_coloring_type <sl,lf,id>
-          ('natural' only works for square Jacobians, and 'greedy' and 'jp'
-          are for parallel programs.)
-
-          FIXME: Why is there a seg fault in id case?
-  */
-  ierr = MatColoringCreate(J,&coloring);CHKERRQ(ierr);
-  ierr = MatColoringSetType(coloring,MATCOLORINGSL);CHKERRQ(ierr);
-  ierr = MatColoringSetFromOptions(coloring);CHKERRQ(ierr);
-  ierr = MatColoringApply(coloring,&iscoloring);CHKERRQ(ierr);
+  zos_forward(tag,m,n,1,x,c);
+  ierr = PetscPrintf(comm,"\n c = ");CHKERRQ(ierr);
+  for(j=0;j<m;j++)
+      ierr = PetscPrintf(comm," %e ",c[j]);CHKERRQ(ierr);
+  ierr = PetscPrintf(comm,"\n\n");CHKERRQ(ierr);
 
 /*--------------------------------------------------------------------------*/
-/*                                                              seed matrix */
+/*                                                        back out Jacobian */
 /*--------------------------------------------------------------------------*/
 
-  PetscScalar     **Seed = NULL;
-  PetscInt        size;
-  IS              *is;
-  const PetscInt  *indices;
+  PetscScalar **I,**Jrev;
 
-  ierr = ISColoringGetIS(iscoloring,&p,&is);CHKERRQ(ierr);
-  Seed = myalloc2(n,p);
-  for (i=0;i<p;i++) {					// Loop over colours
-    ierr = ISGetLocalSize(is[i],&size);CHKERRQ(ierr);
-    ierr = ISGetIndices(is[i],&indices);CHKERRQ(ierr);
-    for (j=0;j<size;j++)				// Loop over associated entries
-      Seed[indices[j]][i] = 1.;
-    ierr = ISRestoreIndices(is[i],&indices);CHKERRQ(ierr);
-  }
-  ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
-  ierr = PrintMat(comm," Seed matrix:",n,p,Seed);CHKERRQ(ierr);
-
-/*--------------------------------------------------------------------------*/
-/*                                                      compressed Jacobian */
-/*--------------------------------------------------------------------------*/
-
-  PetscScalar **Jcomp;
-
-  Jcomp = myalloc2(m,p);
-
-  fov_forward(tag,m,n,p,x,Seed,c,Jcomp);
-  ierr = PrintMat(PETSC_COMM_WORLD," Compressed Jacobian:",m,p,Jcomp);CHKERRQ(ierr);
-
-/*--------------------------------------------------------------------------*/
-/*                                                         recover Jacobian */
-/*--------------------------------------------------------------------------*/
-
-  PetscInt    colour;
-  PetscScalar **Jdecomp,**Rec;
-
-  Jdecomp = myalloc2(m,n);
-  Rec = myalloc2(m,p);
-
-  for (i=0;i<m;i++) {
-    for (colour=0;colour<p;colour++) {
-      Rec[i][colour] = -1.;
-      for (k=1;k<=(PetscInt) JP[i][0];k++) {
-        j = (PetscInt) JP[i][k];
-        if (Seed[j][colour] == 1.) {
-          Rec[i][colour] = j;
-          break;
-        }
-      }
+  I = myallocI2(q);
+  Jrev = myalloc2(q,n);
+  fov_reverse(tag,m,n,q,I,Jrev);
+  ierr = PrintMat(comm," Jacobian by reverse mode:",q,n,Jrev);CHKERRQ(ierr);
+  for (i=0; i<q; i++) {
+    for (j=0; j<n; j++) {
+      ierr = MatSetValues(J,1,&i,1,&j,&Jrev[i][j],INSERT_VALUES);CHKERRQ(ierr);
     }
   }
-  for (i=0;i<m;i++) {
-    for (colour=0;colour<p;colour++) {
-      j = (PetscInt) Rec[i][colour];
-      if (j != -1)
-        Jdecomp[i][j] = Jcomp[i][colour];
-    }
-  }
+  ierr = MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  //ierr = MatView(J,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
-  ierr = PrintMat(comm," Recovered Jacobian:",m,n,Jdecomp);CHKERRQ(ierr);
+/*--------------------------------------------------------------------------*/
+/*                          Jacobian transpose vector product, the long way */
+/*--------------------------------------------------------------------------*/
 
+  Vec      C,Action;
+  PetscInt ix[3] = {0,1,2};
+
+  ierr = VecCreate(comm,&C);CHKERRQ(ierr);
+  ierr = VecSetSizes(C,PETSC_DECIDE,m);CHKERRQ(ierr);
+  ierr = VecSetFromOptions(C);CHKERRQ(ierr);
+  ierr = VecSetValues(C,m,ix,c,INSERT_VALUES);CHKERRQ(ierr);
+  //ierr = VecView(C,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+
+  ierr = VecCreate(comm,&Action);CHKERRQ(ierr);
+  ierr = VecSetSizes(Action,PETSC_DECIDE,n);CHKERRQ(ierr);
+  ierr = VecSetFromOptions(Action);CHKERRQ(ierr);
+  ierr = MatMultTranspose(J,C,Action);CHKERRQ(ierr);
+  ierr = PetscPrintf(comm,"Jacobian transpose vector product:\n");CHKERRQ(ierr);
+  ierr = VecView(Action,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+
+/****************************************************************************/
+/*******            reverse mode matrix free                  ***************/
+/****************************************************************************/
+
+  PetscScalar **u,**action;
+
+  q = 1;
+  u = myalloc2(q,m);
+  for (i=0; i<m; i++)
+    u[0][i] = c[i];
+  action = myalloc2(q,n);
+
+  fov_reverse(tag,m,n,q,u,action);
+  ierr = PrintMat(comm," Matrix free Jacobian transpose vector product:",q,n,action);CHKERRQ(ierr);
 
 /****************************************************************************/
 /*******       free workspace and finalise                    ***************/
 /****************************************************************************/
 
-  myfree2(Rec);
-  myfree2(Jdecomp);
-  myfree2(Jcomp);
-  myfree2(Seed);
-  myfree2(Jdense);
-  ierr = MatColoringDestroy(&coloring);CHKERRQ(ierr);
-  ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+  myfree2(action);
+  myfree2(u);
+  ierr = VecDestroy(&Action);CHKERRQ(ierr);
+  ierr = VecDestroy(&C);CHKERRQ(ierr);
+  myfree2(Jrev);
+  myfreeI2(m,I);
   ierr = MatDestroy(&J);CHKERRQ(ierr);
   for (i=0;i<m;i++)
     free(JP[i]);
   free(JP);
+  myfree2(Jdense);
   ierr = PetscFinalize();
 
   return ierr;
