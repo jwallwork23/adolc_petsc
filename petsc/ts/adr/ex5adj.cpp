@@ -57,7 +57,7 @@ extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]);
 int main(int argc,char **argv)
 {
   TS             ts;                  		/* ODE integrator */
-  Vec            x,r;                  		/* solution, residual */
+  Vec            x,r,xdot;             		/* solution, residual, derivative */
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
@@ -100,6 +100,7 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&r);CHKERRQ(ierr);
+  ierr = VecDuplicate(x,&xdot);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Allocate memory for (local) active fields (called AFields) and store 
@@ -157,12 +158,12 @@ int main(int argc,char **argv)
     m = dofs*gxm*gym;  // Number of dependent variables
     n = m;             // Number of independent variables
 
-    // Trace RHSFunction, so that ADOL-C has tape to read from
+    // Trace function evaluation so that ADOL-C has tape to read from
     ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
     if (!implicitform) {
       ierr = RHSFunction(ts,1.0,x,r,&appctx);CHKERRQ(ierr);
     } else {
-      exit(1); // FIXME!
+      ierr = IFunction(ts,1.0,x,xdot,r,&appctx);CHKERRQ(ierr);
     }
 
     // Generate sparsity pattern
@@ -263,6 +264,7 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Free work space and call destructors for AFields.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = VecDestroy(&xdot);CHKERRQ(ierr);
   ierr = VecDestroy(&r);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);

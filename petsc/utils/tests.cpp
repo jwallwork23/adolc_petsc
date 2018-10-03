@@ -2,7 +2,16 @@
 #include <petscdmda.h>
 
 /*@C
-  TODO: Documentation
+  Test to verify that the zero order scalar evaluation of forward mode AD yields the same
+  result as evaluating the PDE residual.
+
+  Input parameters:
+  da   - distributed array upon which variables are defined
+  f    - values of residual evaluation
+  u    - independent variable values upon which to evaluate
+  tag  - identifier for active session
+  view - sanity check: toggle whether to print comparisons of nonzero values (to check
+         there are some)
 */
 PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,PetscInt tag,PetscBool view)
 {
@@ -18,7 +27,7 @@ PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,PetscInt tag,Pets
   m = gxm*gym;
   n = m;
 
-  /* Convert to a 1-array */
+  /* Convert to a 1-array TODO: use wrapper function in allocation.cpp */
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++)
