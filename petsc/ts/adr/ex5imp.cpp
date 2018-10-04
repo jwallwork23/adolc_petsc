@@ -4,8 +4,8 @@ static char help[] = "Demonstrates automatic Jacobian generation using ADOL-C fo
   See ex5.c for details on the equation.
 
   Here implicit Crank-Nicolson timestepping is used to solve the same problem as in ex5.c. Another
-  key difference is that functions and Jacobians may optionally be calculated in a local sense. The
-  the local implementations IFunctionLocal and IJacobianLocal are passed to the TS solver using
+  key difference is that functions and Jacobians are calculated in a local sense. The the local
+  implementations IFunctionLocal and IJacobianLocal are passed to the TS solver using
   DMTSSetIFunctionLocal and DMTSSetIJacobianLocal.
 
   Credit for the non-AD implementation to Hong Zhang.
