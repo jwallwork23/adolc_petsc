@@ -264,6 +264,7 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
   adouble        uc,uxx,uyy,vc,vxx,vyy;
   PetscErrorCode ierr;
   AField         **f_a = appctx->f_a,**u_a = appctx->u_a;
+  PetscScalar    dummy;
 
   PetscFunctionBegin;
   hx = 2.50/(PetscReal)(info->mx); sx = 1.0/(hx*hx);
@@ -309,8 +310,13 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
   */
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
-      f_a[j][i].u >>= f[j][i].u;	// FIXME: f does not have ghost points
-      f_a[j][i].v >>= f[j][i].v;
+      if ((i < xs) || (i >= xs+xm) || (j < ys) || (j >= ys+ym)) {
+        f_a[j][i].u >>= dummy;
+        f_a[j][i].v >>= dummy;
+      } else {
+        f_a[j][i].u >>= f[j][i].u;
+        f_a[j][i].v >>= f[j][i].v;
+      }
     }
   }
   trace_off();  // ----------------------------------------------- End of active section
@@ -400,6 +406,7 @@ static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field*
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,xm,ym,gxs,gxm,gys,gym,m,n,dofs = 2;
   PetscScalar    *u_vec,**J;
+  Vec            D;		/* corresponding to diagonal */
 
   PetscFunctionBegin;
   xm = info->xm; gxs = info->gxs; gxm = info->gxm;
@@ -440,17 +447,17 @@ static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field*
   /*
     Assemble local matrix
   */
-  ierr = PetscLogFlops(19*xm*ym);CHKERRQ(ierr);
+  ierr = PetscLogFlops(19*xm*ym);CHKERRQ(ierr);	// TODO: Is this still relevant?
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
   /*
-    Next, assemble a*M
+    Next, add a*M
   */
-  for (i=0; i<m; i++) {
-    ierr = MatSetValuesLocal(A,1,&i,1,&i,&a,ADD_VALUES);CHKERRQ(ierr);
-  }
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatCreateVecs(A,NULL,&D);CHKERRQ(ierr);
+  ierr = VecSet(D,a);CHKERRQ(ierr);
+  ierr = MatDiagonalSet(A,D,ADD_VALUES);     /* Combine a*M and -df/dx parts */
+  ierr = VecDestroy(&D);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
