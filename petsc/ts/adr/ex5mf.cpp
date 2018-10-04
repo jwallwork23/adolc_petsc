@@ -84,27 +84,27 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     Create matrix free context
     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = DMSetMatType(da,MATSHELL);CHKERRQ(ierr);
   ierr = DMCreateMatrix(da,&A);CHKERRQ(ierr);
-//  ierr = DMSetMatType(da,MATSHELL);CHKERRQ(ierr);
-//  ierr = MatShellSetContext(A,&matctx);CHKERRQ(ierr);
-//  ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))MyMult);CHKERRQ(ierr);
+  ierr = MatShellSetContext(A,&matctx);CHKERRQ(ierr);
+  ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))MyMult);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.X);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.Xdot);CHKERRQ(ierr);
 
-//  ierr = DMSetMatType(da,MATAIJ);CHKERRQ(ierr);
-//  ierr = DMCreateMatrix(da,&appctx.Jac);CHKERRQ(ierr);
+  ierr = DMSetMatType(da,MATAIJ);CHKERRQ(ierr);
+  ierr = DMCreateMatrix(da,&appctx.Jac);CHKERRQ(ierr);
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
   ierr = TSSetType(ts,TSCN);CHKERRQ(ierr);
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
-//  ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
+  ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
   ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
   ierr = DMDATSSetIFunctionLocal(da,INSERT_VALUES,(DMDATSIFunctionLocal)IFunctionLocal,&appctx);CHKERRQ(ierr);
-  ierr = DMDATSSetIJacobianLocal(da,(DMDATSIJacobianLocal)IJacobianLocal,&appctx);CHKERRQ(ierr);
+//  ierr = DMDATSSetIJacobianLocal(da,(DMDATSIJacobianLocal)IJacobianLocal,&appctx);CHKERRQ(ierr);
 //  ierr = TSSetIFunction(ts,NULL,IFunction,&appctx);CHKERRQ(ierr);
-//  ierr = TSSetIJacobian(ts,A,A,IJacobian,&appctx);CHKERRQ(ierr);
+  ierr = TSSetIJacobian(ts,A,A,IJacobian,&appctx);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set initial conditions
@@ -116,10 +116,8 @@ int main(int argc,char **argv)
      Set solver options
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSSetMaxTime(ts,2000.0);CHKERRQ(ierr);
-  ierr = TSSetTimeStep(ts,.0001);CHKERRQ(ierr);
+  ierr = TSSetTimeStep(ts,10);CHKERRQ(ierr);
   ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
-  //ierr = TSSetDuration(ts,10,2000.0);CHKERRQ(ierr);
-  //ierr = TSSetInitialTimeStep(ts,0.0,10);CHKERRQ(ierr);
   ierr = TSSetFromOptions(ts);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -133,7 +131,7 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = VecDestroy(&matctx.X);CHKERRQ(ierr);
   ierr = VecDestroy(&matctx.Xdot);CHKERRQ(ierr);
-//  ierr = MatDestroy(&appctx.Jac);CHKERRQ(ierr);
+  ierr = MatDestroy(&appctx.Jac);CHKERRQ(ierr);
   ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
