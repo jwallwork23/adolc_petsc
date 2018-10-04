@@ -885,6 +885,11 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   PetscFunctionReturn(0);
 }
 
+/*
+  For an implicit Jacobian we may use the rule that
+     G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
+  where a = d(xdot)/dx is a constant.
+*/
 PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat BB,void *ctx)
 {
   AppCtx         *appctx = (AppCtx*)ctx;
@@ -926,12 +931,6 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
       u_vec[k++] = u[j][i].v;
     }
   }
-
-  /*
-    For an implicit Jacobian we may use the rule that
-       G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
-    where a = d(xdot)/dx is a constant.
-  */
 
   /*
     First, calculate the -df/dx part using ADOL-C

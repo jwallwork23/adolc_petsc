@@ -36,8 +36,8 @@ typedef struct {
   PetscReal D1,D2,gamma,kappa;
   PetscBool no_an;
   AField    **u_a,**f_a;
-  Mat       Jac;
-  PetscInt  m,n; // Number of local nodes, including ghost points
+  Mat       Jac;		// Only needed in 'by hand' version
+  PetscInt  m,n;                // Number of local nodes, including ghost points
 } AppCtx;
 
 /* Matrix (free) context */
@@ -111,14 +111,14 @@ int main(int argc,char **argv)
   ierr = MatShellSetContext(A,&matctx);CHKERRQ(ierr);
   if (byhand) {
     ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))MyMult);CHKERRQ(ierr);
+    ierr = DMSetMatType(da,MATAIJ);CHKERRQ(ierr);
+    ierr = DMCreateMatrix(da,&appctx.Jac);CHKERRQ(ierr);
   } else {
     ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))JacobianVectorProduct);CHKERRQ(ierr);
   }
   ierr = VecDuplicate(x,&matctx.X);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.Xdot);CHKERRQ(ierr);
 
-  ierr = DMSetMatType(da,MATAIJ);CHKERRQ(ierr);
-  ierr = DMCreateMatrix(da,&appctx.Jac);CHKERRQ(ierr);
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -167,7 +167,8 @@ int main(int argc,char **argv)
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Set Jacobian
+     Set Jacobian. In this case, IJacobian simply acts to pass context
+     information to the matrix-free Jacobian vector product.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSSetIJacobian(ts,A,A,IJacobian,&appctx);CHKERRQ(ierr);
 
@@ -196,7 +197,9 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = VecDestroy(&matctx.X);CHKERRQ(ierr);
   ierr = VecDestroy(&matctx.Xdot);CHKERRQ(ierr);
-  ierr = MatDestroy(&appctx.Jac);CHKERRQ(ierr);
+  if (byhand) {
+    ierr = MatDestroy(&appctx.Jac);CHKERRQ(ierr);
+  }
   ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
@@ -366,8 +369,8 @@ PetscErrorCode RHSJacobianByHand(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 
 static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A_shell,Mat B,void *ctx)
 {
-  PetscErrorCode    ierr;
   MatCtx            *mctx;
+  PetscErrorCode    ierr;
 
   PetscFunctionBeginUser;
   ierr = MatShellGetContext(A_shell,(void **)&mctx);CHKERRQ(ierr);
@@ -375,7 +378,7 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   mctx->time  = t;
   mctx->shift = a;
   if (mctx->ts != ts) mctx->ts = ts;
-  if (mctx->actx != ctx) mctx->actx  = static_cast<AppCtx*>(ctx);
+  if (mctx->actx != ctx) mctx->actx = static_cast<AppCtx*>(ctx);
   ierr = VecCopy(X,mctx->X);CHKERRQ(ierr);
   ierr = VecCopy(Xdot,mctx->Xdot);CHKERRQ(ierr);
   PetscFunctionReturn(0);
@@ -395,39 +398,65 @@ static PetscErrorCode MyMult(Mat A_shell,Vec X,Vec Y)
   PetscFunctionReturn(0);
 }
 
+
+/*
+  For an implicit Jacobian we may use the rule that
+     G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
+  where a = d(xdot)/dx is a constant.
+*/
 static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
 {
   MatCtx            *mctx;
   PetscErrorCode    ierr;
   PetscInt          m,n,i;
-  const PetscScalar *dat_ro;
-  PetscScalar       *action,*dat;
+  const PetscScalar *x0;
+  PetscScalar       *action,*x1;
+  Vec               S,localX0,localX1;
+  DM                da;
 
   PetscFunctionBegin;
 
   /* Read data and allocate memory */
   ierr = MatShellGetContext(A_shell,(void**)&mctx);CHKERRQ(ierr);
   m = mctx->actx->m;n = mctx->actx->n;
-  ierr = PetscMalloc1(n,&dat_ro);CHKERRQ(ierr);
-  ierr = PetscMalloc1(n,&dat);CHKERRQ(ierr);
-  ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(mctx->X,&dat_ro);CHKERRQ(ierr);
-  //ierr = VecGetArrayRead(X,&dat_ro);CHKERRQ(ierr);
-  for (i=0; i<n; i++)
-    dat[i] = dat_ro[i]; // FIXME: How to avoid this conversion from read only?
 
-  /* Compute action of Jacobian on vector */
-  fos_forward(tag,m,n,0,dat,dat,NULL,action);
-  ierr = VecRestoreArrayRead(mctx->X,&dat_ro);CHKERRQ(ierr);
-  //ierr = VecRestoreArrayRead(X,&dat_ro);CHKERRQ(ierr);
+  /* Get local input vectors containing data x0 and x1*/
+  ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localX0);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localX1);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
+
+  /* Extract data */
+  ierr = PetscMalloc1(n,&x0);CHKERRQ(ierr);
+  ierr = PetscMalloc1(n,&x1);CHKERRQ(ierr);
+  ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(localX0,&x0);CHKERRQ(ierr);
+  ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
+
+  /* First, calculate action of the -df/dx part using ADOL-C */
+  fos_forward(tag,m,n,0,x0,x1,NULL,action);
   for (i=0; i<m; i++) {
     ierr = VecSetValuesLocal(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
   }
-
-  /* Free memory */
   ierr = PetscFree(action);CHKERRQ(ierr);
-  ierr = PetscFree(dat);CHKERRQ(ierr);
-  ierr = PetscFree(dat_ro);CHKERRQ(ierr);
+
+  /* Set values for action of a*M */ 
+  ierr = VecDuplicate(Y,&S);
+  ierr = VecSet(S,mctx->shift);CHKERRQ(ierr);
+  ierr = VecAYPX(Y,-1,S);CHKERRQ(ierr);
+  ierr = VecDestroy(&S);CHKERRQ(ierr);
+
+  /* Restore local vector */
+  ierr = VecRestoreArray(localX1,&x1);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(localX0,&x0);CHKERRQ(ierr);
+  ierr = PetscFree(x1);CHKERRQ(ierr);
+  ierr = PetscFree(x0);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localX1);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localX0);CHKERRQ(ierr);
+
   PetscFunctionReturn(0);
 }
 
