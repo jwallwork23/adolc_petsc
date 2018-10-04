@@ -61,7 +61,7 @@ typedef struct {
 
 typedef struct {
   PetscReal   D1,D2,gamma,kappa;
-  PetscBool   zos,zos_view,no_an,sparse,sparse_view;
+  PetscBool   zos,zos_view,no_an,sparse,sparse_view,sparse_view_done;
   AField      **u_a,**f_a;
   PetscScalar **Seed,**Rec;
   PetscInt    p;
@@ -100,7 +100,7 @@ int main(int argc,char **argv)
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   PetscFunctionBeginUser;
-  appctx.zos = PETSC_FALSE;appctx.zos_view = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_view = PETSC_FALSE;
+  appctx.zos = PETSC_FALSE;appctx.zos_view = PETSC_FALSE;appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_view = PETSC_FALSE;appctx.sparse_view_done = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&appctx.zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&appctx.zos_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
@@ -511,7 +511,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   PetscScalar    *u_vec,**J = NULL,*f_vec;
   Field          **u;
   Vec            localU;
-  MPI_Comm       comm = MPI_COMM_WORLD;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
@@ -544,32 +543,10 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     }
   }
 
-  /*
-    Calculate Jacobian using ADOL-C
-  */
-  if (appctx->sparse) {
+  if (!appctx->sparse) {
 
     /*
-      Compute Jacobian in compressed format and recover from this, using seed and recovery matrices
-      computed earlier.
-    */
-    ierr = PetscMalloc1(m,&f_vec);CHKERRQ(ierr);
-    J = myalloc2(m,appctx->p);
-    fov_forward(tag,m,n,appctx->p,u_vec,appctx->Seed,f_vec,J);
-    ierr = PetscFree(f_vec);CHKERRQ(ierr);
-    if (appctx->sparse_view) {
-      ierr = TSGetStepNumber(ts,&k);
-      if (k == 0) {
-        ierr = PrintMat(comm,"Compressed Jacobian:",m,appctx->p,J);CHKERRQ(ierr);
-      }
-    }
-    ierr = RecoverJacobian(A,m,appctx->p,appctx->Rec,J);CHKERRQ(ierr);
-    myfree2(J);
-
-  } else {
-
-    /*
-      Default method of computing full Jacobian (not recommended!)
+      Default method of computing full Jacobian without exploiting sparsity (not recommended!)
     */
     J = myalloc2(m,n);
     jacobian(tag,m,n,u_vec,J);
@@ -581,13 +558,32 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
       }
     }
     myfree2(J);
+
+  } else {
+
+    /*
+      Compute Jacobian in compressed format and recover from this, using seed and recovery matrices
+      computed earlier.
+    */
+    ierr = PetscMalloc1(m,&f_vec);CHKERRQ(ierr);
+    J = myalloc2(m,appctx->p);
+    fov_forward(tag,m,n,appctx->p,u_vec,appctx->Seed,f_vec,J);
+    ierr = PetscFree(f_vec);CHKERRQ(ierr);
+    if (appctx->sparse_view) {
+      if (!appctx->sparse_view_done) {
+        ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian:",m,appctx->p,J);CHKERRQ(ierr);
+        appctx->sparse_view_done = PETSC_TRUE;
+      }
+    }
+    ierr = RecoverJacobian(A,m,appctx->p,appctx->Rec,J);CHKERRQ(ierr);
+    myfree2(J);
   }
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*
      Restore vectors
   */
-  ierr = PetscLogFlops(19*xm*ym);CHKERRQ(ierr);
+  ierr = PetscLogFlops(19*xm*ym);CHKERRQ(ierr);		// TODO: Is this still relevant?
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
 

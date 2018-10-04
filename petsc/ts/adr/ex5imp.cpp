@@ -33,7 +33,7 @@ typedef struct {
 /* Application context */
 typedef struct {
   PetscReal   D1,D2,gamma,kappa;
-  PetscBool   no_an,sparse,sparse_view;
+  PetscBool   no_an,sparse,sparse_view,sparse_view_done;
   AField      **u_a,**f_a;
   PetscScalar **Seed,**Rec;
   PetscInt    p;
@@ -70,7 +70,7 @@ int main(int argc,char **argv)
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   PetscFunctionBeginUser;
-  appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_view = PETSC_FALSE;
+  appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_view = PETSC_FALSE;appctx.sparse_view_done = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse_view",&appctx.sparse_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
@@ -519,9 +519,10 @@ static PetscErrorCode IJacobianLocalByHand(DMDALocalInfo *info,PetscReal t,Field
 
 static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,PetscReal a,Mat A,Mat B,void *ptr)
 {
+  AppCtx         *appctx = (AppCtx*)ptr;
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,xm,ym,gxs,gxm,gys,gym,m,n,dofs = 2;
-  PetscScalar    *u_vec,**J;
+  PetscScalar    *u_vec,*f_vec,**J;
   Vec            D;		/* corresponding to diagonal */
 
   PetscFunctionBegin;
@@ -543,22 +544,45 @@ static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field*
     For an implicit Jacobian we may use the rule that
        G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
     where a = d(xdot)/dx is a constant.
-  */
 
-  /*
-    First, calculate the -df/dx part using ADOL-C
+    First, calculate the -df/dx part using ADOL-C...
   */
-  J = myalloc2(m,n);
-  jacobian(tag,m,n,u_vec,J);
-  ierr = PetscFree(u_vec);CHKERRQ(ierr);
-  for (i=0; i<m; i++) {
-    for (j=0; j<n; j++) {
-      if (fabs(J[i][j]) > 1.e-16) {
-        ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+  if (!appctx->sparse) {
+
+    /*
+      Default method of computing full Jacobian (not recommended!)
+    */
+    J = myalloc2(m,n);
+    jacobian(tag,m,n,u_vec,J);
+    ierr = PetscFree(u_vec);CHKERRQ(ierr);
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+        }
       }
     }
+    myfree2(J);
+  } else {
+
+    /*
+      Compute Jacobian in compressed format and recover from this, using seed and recovery matrices
+      computed earlier.
+    */
+    ierr = PetscMalloc1(m,&f_vec);CHKERRQ(ierr);
+    J = myalloc2(m,appctx->p);
+    fov_forward(tag,m,n,appctx->p,u_vec,appctx->Seed,f_vec,J);
+    ierr = PetscFree(f_vec);CHKERRQ(ierr);
+    if (appctx->sparse_view) {
+      if (!appctx->sparse_view_done) {
+        ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian:",m,appctx->p,J);CHKERRQ(ierr);
+        appctx->sparse_view_done = PETSC_TRUE;
+      }
+    }
+    ierr = RecoverJacobian(A,m,appctx->p,appctx->Rec,J);CHKERRQ(ierr);
+    myfree2(J);
   }
-  myfree2(J);
+  ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*
     Assemble local matrix
