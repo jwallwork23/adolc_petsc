@@ -14,7 +14,9 @@ static char help[] = "Demonstrates automatic Jacobian generation using ADOL-C fo
 #include <petscdm.h>
 #include <petscdmda.h>
 #include <petscts.h>
-#include <adolc/adolc.h>	// Include ADOL-C
+#include <adolc/adolc.h>          // Include ADOL-C
+#include <adolc/adolc_sparse.h>   // Include ADOL-C sparse drivers
+#include "../../utils/sparse.cpp"
 
 #define tag 1
 
@@ -31,8 +33,10 @@ typedef struct {
 /* Application context */
 typedef struct {
   PetscReal   D1,D2,gamma,kappa;
-  PetscBool   no_an;
+  PetscBool   no_an,sparse,sparse_view;
   AField      **u_a,**f_a;
+  PetscScalar **Seed,**Rec;
+  PetscInt    p;
 } AppCtx;
 
 /*
@@ -41,27 +45,34 @@ typedef struct {
 extern PetscErrorCode InitialConditions(DM,Vec);
 static PetscErrorCode IFunctionLocalPassive(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
 static PetscErrorCode IFunctionLocalActive(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
+static PetscErrorCode IFunction(TS,PetscReal,Vec,Vec,Vec,void*);
 static PetscErrorCode IJacobianLocalByHand(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
 static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
-extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]);
+extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]); // TODO: Generalise
 
 int main(int argc,char **argv)
 {
   TS             ts;                  /* ODE integrator */
-  Vec            x;                   /* solution */
+  Vec            x,r,xdot;            /* solution, residual, derivative */
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;
-  PetscInt       gxs,gys,gxm,gym,dof;
+  PetscInt       gxs,gys,gxm,gym,dofs = 2,i,m,n,p,ctrl[3] = {0,0,0};
   AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
+  PetscScalar    **Seed = NULL,**Rec = NULL,*u_vec;
+  unsigned int   **JP = NULL;
+  ISColoring     iscoloring;
   PetscBool      byhand = PETSC_FALSE;
+  MPI_Comm       comm = MPI_COMM_WORLD;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   PetscFunctionBeginUser;
-  appctx.no_an = PETSC_FALSE;
+  appctx.no_an = PETSC_FALSE;appctx.sparse = PETSC_FALSE;appctx.sparse_view = PETSC_FALSE;
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse",&appctx.sparse,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse_view",&appctx.sparse_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
@@ -83,22 +94,39 @@ int main(int argc,char **argv)
      vectors that are the same types
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
-  ierr = VecGetSize(x,&dof);CHKERRQ(ierr);
+  ierr = VecDuplicate(x,&r);CHKERRQ(ierr);
+  ierr = VecDuplicate(x,&xdot);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Allocate memory for (local) active fields (called AFields) and store 
-     references in the application context. The AFields are reused at
-     each active section, so need only be created once.
-
-     NOTE: Memory for ADOL-C active variables (such as adouble and AField)
-           cannot be allocated using PetscMalloc, as this does not call the
-           relevant class constructor. Instead, we use the C++ keyword `new`.
-
-           It is also important to deconstruct and free memory appropriately.
+     Create timestepping solver context and set problem residual
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
+  ierr = TSSetType(ts,TSCN);CHKERRQ(ierr);
+  ierr = TSSetDM(ts,da);CHKERRQ(ierr);
+  ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
+  if (!appctx.no_an) {
+    ierr = DMDATSSetIFunctionLocal(da,INSERT_VALUES,(DMDATSIFunctionLocal)IFunctionLocalActive,&appctx);CHKERRQ(ierr);
+  }
+  else {
+    ierr = DMDATSSetIFunctionLocal(da,INSERT_VALUES,(DMDATSIFunctionLocal)IFunctionLocalPassive,&appctx);CHKERRQ(ierr);
+  }
+
   if (!appctx.no_an) {
 
+    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+      Allocate memory for (local) active fields (called AFields) and store 
+      references in the application context. The AFields are reused at
+      each active section, so need only be created once.
+
+      NOTE: Memory for ADOL-C active variables (such as adouble and AField)
+            cannot be allocated using PetscMalloc, as this does not call the
+            relevant class constructor. Instead, we use the C++ keyword `new`.
+
+            It is also important to deconstruct and free memory appropriately.
+       - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+    m = dofs*gxm*gym;  // Number of dependent variables
+    n = m;             // Number of independent variables
 
     // Create contiguous 1-arrays of AFields
     u_c = new AField[gxm*gym];
@@ -115,22 +143,57 @@ int main(int argc,char **argv)
     // Store active variables in context
     appctx.u_a = u_a;
     appctx.f_a = f_a;
+
+    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+      In the case where ADOL-C generates the Jacobian in compressed format,
+      seed and recovery matrices are required. Since the sparsity structure
+      of the Jacobian does not change over the course of the time
+      integration, we can save computational effort by only generating
+      these objects once.
+       - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+    if (appctx.sparse) {
+
+      // Trace function evaluation, so that ADOL-C has tape to read from
+      ierr = IFunction(ts,1.0,x,xdot,r,&appctx);CHKERRQ(ierr); // FIXME
+
+      // Generate sparsity pattern and create an associated colouring
+      ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
+      JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
+      jac_pat(tag,m,n,u_vec,JP,ctrl);
+      if (appctx.sparse_view) {
+        ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
+      }
+
+      // Extract colouring
+      ierr = GetColoring(da,m,n,JP,&iscoloring);CHKERRQ(ierr);
+      ierr = CountColors(iscoloring,&p);CHKERRQ(ierr);
+
+      // Generate seed matrix
+      Seed = myalloc2(n,p);
+      ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
+      ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+      if (appctx.sparse_view) {
+        ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+      }
+
+      // Generate recovery matrix
+      Rec = myalloc2(m,p);
+      ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
+
+      // Store results and free workspace
+      appctx.Seed = Seed;
+      appctx.Rec = Rec;
+      appctx.p = p;
+      for (i=0;i<m;i++)
+        free(JP[i]);
+      free(JP);
+      ierr = PetscFree(u_vec);CHKERRQ(ierr);
+    }
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Create timestepping solver context
-     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
-  ierr = TSSetType(ts,TSCN);CHKERRQ(ierr);
-  ierr = TSSetDM(ts,da);CHKERRQ(ierr);
-  ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
-  if (!appctx.no_an) {
-    ierr = DMDATSSetIFunctionLocal(da,INSERT_VALUES,(DMDATSIFunctionLocal)IFunctionLocalActive,&appctx);CHKERRQ(ierr);
-  }
-  else {
-    ierr = DMDATSSetIFunctionLocal(da,INSERT_VALUES,(DMDATSIFunctionLocal)IFunctionLocalPassive,&appctx);CHKERRQ(ierr);
-  }
-
+     Set Jacobian
+   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if (!byhand) {
     ierr = DMDATSSetIJacobianLocal(da,(DMDATSIJacobianLocal)IJacobianLocalAdolc,&appctx);CHKERRQ(ierr);
   } else {
@@ -159,9 +222,15 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Free work space and call destructors for AFields.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = VecDestroy(&xdot);CHKERRQ(ierr);
+  ierr = VecDestroy(&r);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
   if (!appctx.no_an) {
+    if (appctx.sparse) {
+      myfree2(Rec);
+      myfree2(Seed);
+    }
     f_a += gys;
     u_a += gys;
     delete[] f_a;
@@ -323,6 +392,53 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
+
+static PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
+{
+  AppCtx         *appctx = (AppCtx*)ptr;
+  DM             da;
+  DMDALocalInfo  info;
+  PetscErrorCode ierr;
+  Field          **u,**f,**udot;
+  Vec            localU;
+
+  PetscFunctionBegin;
+  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
+  ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
+
+  /*
+     Scatter ghost points to local vector,using the 2-step process
+        DMGlobalToLocalBegin(),DMGlobalToLocalEnd().
+     By placing code between these two statements, computations can be
+     done while messages are in transition.
+  */
+  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+
+  /*
+     Get pointers to vector data
+  */
+  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMDAVecGetArray(da,F,&f);CHKERRQ(ierr);
+  ierr = DMDAVecGetArrayRead(da,Udot,&udot);CHKERRQ(ierr);
+
+  if (!appctx->no_an) {
+    ierr = IFunctionLocalActive(&info,ftime,u,udot,f,appctx);CHKERRQ(ierr);
+  } else {
+    ierr = IFunctionLocalPassive(&info,ftime,u,udot,f,appctx);CHKERRQ(ierr);
+  }
+
+  /*
+     Restore vectors
+  */
+  ierr = DMDAVecRestoreArray(da,F,&f);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,Udot,&udot);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+
 
 static PetscErrorCode IJacobianLocalByHand(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,PetscReal a,Mat A,Mat B,void *ptr)
 {

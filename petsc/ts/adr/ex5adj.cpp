@@ -64,7 +64,7 @@ int main(int argc,char **argv)
   Vec            lambda[1];
   PetscScalar    *x_ptr;
   PetscBool      forwardonly=PETSC_FALSE,implicitform=PETSC_FALSE,byhand=PETSC_FALSE;
-  PetscInt       xs,ys,xm,ym,gxs,gys,gxm,gym,i,m,n,p,dofs = 2,ctrl[3] = {0,0,0};
+  PetscInt       gxs,gys,gxm,gym,i,m,n,p,dofs = 2,ctrl[3] = {0,0,0};
   AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
   PetscScalar    **Seed = NULL,**Rec = NULL,*u_vec;
   unsigned int   **JP = NULL;
@@ -116,6 +116,8 @@ int main(int argc,char **argv)
   if (!appctx.no_an) {
 
     ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+    m = dofs*gxm*gym;  // Number of dependent variables
+    n = m;             // Number of independent variables
 
     // Create contiguous 1-arrays of AFields
     u_c = new AField[gxm*gym];
@@ -153,10 +155,6 @@ int main(int argc,char **argv)
     time integration, we can save computational effort by only generating these objects once.
   */
   if ((appctx.sparse) && (!appctx.no_an)) {
-
-    ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-    m = dofs*gxm*gym;  // Number of dependent variables
-    n = m;             // Number of independent variables
 
     // Trace function evaluation so that ADOL-C has tape to read from
     ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
@@ -740,8 +738,6 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   PetscReal      hx,hy,sx,sy;
   Field          **u,**f,**udot;
   Vec            localU,localF;
-
-  // FIXME: localUdot???
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
