@@ -8,7 +8,7 @@ static char help[] = "Demonstrates automatic Jacobian generation using ADOL-C fo
   the local implementations IFunctionLocal and IJacobianLocal are passed to the TS solver using
   DMTSSetIFunctionLocal and DMTSSetIJacobianLocal.
 
-  Credit for this implementation to Hong Zhang.
+  Credit for the non-AD implementation to Hong Zhang.
 */
 
 #include <petscdm.h>

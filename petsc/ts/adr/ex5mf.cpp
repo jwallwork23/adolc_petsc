@@ -1,39 +1,16 @@
-static char help[] = "Demonstrates Pattern Formation with Reaction-Diffusion Equations.\n";
+static char help[] = "Demonstrates automatic, matrix-free Jacobian generation using ADOL-C for a time-dependent PDE in 2d, solved using implicit timestepping.\n";
 
 /*
-     Page 21, Pattern Formation with Reaction-Diffusion Equations
+  See ex5.c for details on the equation.
 
-        u_t = D1 (u_xx + u_yy)  - u*v^2 + gama(1 -u)
-        v_t = D2 (v_xx + v_yy)  + u*v^2 - (gamma + kappa)v
+  Here implicit Crank-Nicolson timestepping is used to solve the same problem as in ex5.c. Another
+  key difference is that functions and Jacobians may optionally be calculated in a local sense. The
+  the local implementations IFunctionLocal and IJacobianLocal are passed to the TS solver using
+  DMTSSetIFunctionLocal and DMTSSetIJacobianLocal.
 
-    Unlike in the book this uses periodic boundary conditions instead of Neumann
-    (since they are easier for finite differences).
+  Credit for the non-AD implementation to Hong Zhang.
 */
 
-/*
-      Helpful runtime monitor options:
-           -ts_monitor_draw_solution
-           -draw_save -draw_save_movie
-
-      Helpful runtime linear solver options:
-           -pc_type mg -pc_mg_galerkin -da_refine 1 -snes_monitor -ksp_monitor -ts_view  (note that these Jacobians are so well-conditioned multigrid may not be the best solver)
-
-      Point your browser to localhost:8080 to monitor the simulation
-           ./ex5  -ts_view_pre saws  -stack_view saws -draw_save -draw_save_single_file -x_virtual -ts_monitor_draw_solution -saws_root .
-
-*/
-
-/*
-
-   Include "petscdmda.h" so that we can use distributed arrays (DMDAs).
-   Include "petscts.h" so that we can use SNES solvers.  Note that this
-   file automatically includes:
-     petscsys.h       - base PETSc routines   petscvec.h - vectors
-     petscmat.h - matrices
-     petscis.h     - index sets            petscksp.h - Krylov subspace methods
-     petscviewer.h - viewers               petscpc.h  - preconditioners
-     petscksp.h   - linear solvers
-*/
 #include <petscdm.h>
 #include <petscdmda.h>
 #include <petscts.h>
@@ -413,7 +390,7 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   mctx->time  = t;
   mctx->shift = a;
   if (mctx->ts != ts) mctx->ts = ts;
-  if (mctx->actx != ctx) mctx->actx  = ctx;
+  if (mctx->actx != ctx) mctx->actx  = static_cast<AppCtx*>(ctx);
   ierr = VecCopy(X,mctx->X);CHKERRQ(ierr);
   ierr = VecCopy(Xdot,mctx->Xdot);CHKERRQ(ierr);
   PetscFunctionReturn(0);
