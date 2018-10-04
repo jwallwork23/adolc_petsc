@@ -17,7 +17,9 @@ static char help[] = "Demonstrates automatic, matrix-free Jacobian generation us
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>          // Include ADOL-C
-#include "../../utils/matfree.cpp"
+//#include "../../utils/matfree.cpp"
+
+#define tag 1
 
 /* (Passive) field for two PDEs */
 typedef struct {
@@ -35,6 +37,7 @@ typedef struct {
   PetscBool no_an;
   AField    **u_a,**f_a;
   Mat       Jac;
+  PetscInt  m,n; // Number of local nodes, including ghost points
 } AppCtx;
 
 /* Matrix (free) context */
@@ -54,6 +57,7 @@ extern PetscErrorCode InitialConditions(DM,Vec);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
 static PetscErrorCode IJacobian(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
 static PetscErrorCode MyMult(Mat,Vec,Vec);
+static PetscErrorCode JacobianVectorProduct(Mat,Vec,Vec);
 static PetscErrorCode IFunctionLocalPassive(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
 static PetscErrorCode IFunctionLocalActive(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
 extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]); // TODO: Generalise
@@ -143,6 +147,7 @@ int main(int argc,char **argv)
             It is also important to deconstruct and free memory appropriately.
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+    appctx.m = 2*gxm*gym;appctx.n = 2*gxm*gym;
 
     // Create contiguous 1-arrays of AFields
     u_c = new AField[gxm*gym];
@@ -387,6 +392,42 @@ static PetscErrorCode MyMult(Mat A_shell,Vec X,Vec Y)
   ierr = MatScale(mctx->actx->Jac,-1);CHKERRQ(ierr);
   ierr = MatShift(mctx->actx->Jac,mctx->shift);CHKERRQ(ierr);
   ierr = MatMult(mctx->actx->Jac,X,Y);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
+{
+  MatCtx            *mctx;
+  PetscErrorCode    ierr;
+  PetscInt          m,n,i;
+  const PetscScalar *dat_ro;
+  PetscScalar       *action,*dat;
+
+  PetscFunctionBegin;
+
+  /* Read data and allocate memory */
+  ierr = MatShellGetContext(A_shell,(void**)&mctx);CHKERRQ(ierr);
+  m = mctx->actx->m;n = mctx->actx->n;
+  ierr = PetscMalloc1(n,&dat_ro);CHKERRQ(ierr);
+  ierr = PetscMalloc1(n,&dat);CHKERRQ(ierr);
+  ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(mctx->X,&dat_ro);CHKERRQ(ierr);
+  //ierr = VecGetArrayRead(X,&dat_ro);CHKERRQ(ierr);
+  for (i=0; i<n; i++)
+    dat[i] = dat_ro[i]; // FIXME: How to avoid this conversion from read only?
+
+  /* Compute action of Jacobian on vector */
+  fos_forward(tag,m,n,0,dat,dat,NULL,action);
+  ierr = VecRestoreArrayRead(mctx->X,&dat_ro);CHKERRQ(ierr);
+  //ierr = VecRestoreArrayRead(X,&dat_ro);CHKERRQ(ierr);
+  for (i=0; i<m; i++) {
+    ierr = VecSetValuesLocal(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
+  }
+
+  /* Free memory */
+  ierr = PetscFree(action);CHKERRQ(ierr);
+  ierr = PetscFree(dat);CHKERRQ(ierr);
+  ierr = PetscFree(dat_ro);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
