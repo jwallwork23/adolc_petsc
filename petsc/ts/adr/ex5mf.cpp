@@ -14,16 +14,31 @@ static char help[] = "Demonstrates automatic, matrix-free Jacobian generation us
 #include <petscdm.h>
 #include <petscdmda.h>
 #include <petscts.h>
+#include <adolc/adolc.h>          // Include ADOL-C
+#include <adolc/adolc_sparse.h>   // Include ADOL-C sparse drivers
+#include "../../utils/sparse.cpp"
 
+#define tag 1
+
+/* (Passive) field for two PDEs */
 typedef struct {
   PetscScalar u,v;
 } Field;
 
+/* Active field for two PDEs */
+typedef struct {
+  adouble u,v;
+} AField;
+
+/* Application context */
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
+  PetscBool no_an;
+  AField    **u_a,**f_a;
   Mat       Jac;
 } AppCtx;
 
+/* Matrix (free) context */
 typedef struct {
   PetscReal time;
   Vec       X;
@@ -41,8 +56,10 @@ extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
 static PetscErrorCode IFunction(TS,PetscReal,Vec,Vec,Vec,void*);
 static PetscErrorCode IJacobian(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
 static PetscErrorCode MyMult(Mat,Vec,Vec);
-static PetscErrorCode IFunctionLocal(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
-static PetscErrorCode IJacobianLocal(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
+static PetscErrorCode IFunctionLocalPassive(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
+static PetscErrorCode IFunctionLocalActive(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
+static PetscErrorCode IJacobianLocalByHand(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
+extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]); // TODO: Generalise
 
 int main(int argc,char **argv)
 {
@@ -53,13 +70,18 @@ int main(int argc,char **argv)
   AppCtx         appctx;
   MatCtx         matctx;
   Mat            A;                   /* Jacobian matrix */
-  PetscInt       dof;
+  PetscInt       gxs,gys,gxm,gym;
+  AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
+  PetscBool      byhand = PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   PetscInitialize(&argc,&argv,(char*)0,help);
   PetscFunctionBeginUser;
+  appctx.no_an = PETSC_FALSE;
+  ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
   appctx.gamma = .024;
@@ -79,7 +101,6 @@ int main(int argc,char **argv)
      vectors that are the same types
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
-  ierr = VecGetSize(x,&dof);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     Create matrix free context
@@ -101,10 +122,54 @@ int main(int argc,char **argv)
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
   ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
-  ierr = DMDATSSetIFunctionLocal(da,INSERT_VALUES,(DMDATSIFunctionLocal)IFunctionLocal,&appctx);CHKERRQ(ierr);
-//  ierr = DMDATSSetIJacobianLocal(da,(DMDATSIJacobianLocal)IJacobianLocal,&appctx);CHKERRQ(ierr);
+  if (appctx.no_an) {
+    ierr = DMDATSSetIFunctionLocal(da,INSERT_VALUES,(DMDATSIFunctionLocal)IFunctionLocalPassive,&appctx);CHKERRQ(ierr);
+  } else {
+    ierr = DMDATSSetIFunctionLocal(da,INSERT_VALUES,(DMDATSIFunctionLocal)IFunctionLocalActive,&appctx);CHKERRQ(ierr);
+  }
 //  ierr = TSSetIFunction(ts,NULL,IFunction,&appctx);CHKERRQ(ierr);
-  ierr = TSSetIJacobian(ts,A,A,IJacobian,&appctx);CHKERRQ(ierr);
+
+  if (!appctx.no_an) {
+
+    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+      Allocate memory for (local) active fields (called AFields) and store 
+      references in the application context. The AFields are reused at
+      each active section, so need only be created once.
+
+      NOTE: Memory for ADOL-C active variables (such as adouble and AField)
+            cannot be allocated using PetscMalloc, as this does not call the
+            relevant class constructor. Instead, we use the C++ keyword `new`.
+
+            It is also important to deconstruct and free memory appropriately.
+       - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+    ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+
+    // Create contiguous 1-arrays of AFields
+    u_c = new AField[gxm*gym];
+    f_c = new AField[gxm*gym];
+
+    // Corresponding 2-arrays of AFields
+    u_a = new AField*[gym];
+    f_a = new AField*[gym];
+
+    // Align indices between array types and endow ghost points
+    ierr = AFieldGiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
+    ierr = AFieldGiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
+
+    // Store active variables in context
+    appctx.u_a = u_a;
+    appctx.f_a = f_a;
+  }
+
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Set Jacobian
+   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  if (byhand) {
+  //  ierr = DMDATSSetIJacobianLocal(da,(DMDATSIJacobianLocal)IJacobianLocal,&appctx);CHKERRQ(ierr);
+    ierr = TSSetIJacobian(ts,A,A,IJacobian,&appctx);CHKERRQ(ierr);
+  } else {
+    // TODO
+  }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set initial conditions
@@ -135,6 +200,14 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
+  if (!appctx.no_an) {
+    f_a += gys;
+    u_a += gys;
+    delete[] f_a;
+    delete[] u_a;
+    delete[] f_c;
+    delete[] u_c;
+  }
   ierr = DMDestroy(&da);CHKERRQ(ierr);
 
   ierr = PetscFinalize();
@@ -408,7 +481,7 @@ static PetscErrorCode MyMult(Mat A_shell,Vec X,Vec Y)
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode IFunctionLocal(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,Field**f,void *ptr)
+static PetscErrorCode IFunctionLocalPassive(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,Field**f,void *ptr)
 {
   AppCtx         *appctx = (AppCtx*)ptr;
   PetscInt       i,j,xs,ys,xm,ym;
@@ -444,7 +517,75 @@ static PetscErrorCode IFunctionLocal(DMDALocalInfo *info,PetscReal t,Field**u,Fi
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode IJacobianLocal(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,PetscReal a,Mat A,Mat B,void *ptr)
+static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,Field**f,void *ptr)
+{
+  AppCtx         *appctx = (AppCtx*)ptr;
+  PetscInt       i,j,xs,ys,xm,ym,gxs,gys,gxm,gym;
+  PetscReal      hx,hy,sx,sy;
+  adouble        uc,uxx,uyy,vc,vxx,vyy;
+  PetscErrorCode ierr;
+  AField         **f_a = appctx->f_a,**u_a = appctx->u_a;
+  PetscScalar    dummy;
+
+  PetscFunctionBegin;
+  hx = 2.50/(PetscReal)(info->mx); sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(info->my); sy = 1.0/(hy*hy);
+  xs = info->xs; xm = info->xm; gxs = info->gxs; gxm = info->gxm;
+  ys = info->ys; ym = info->ym; gys = info->gys; gym = info->gym;
+
+  trace_on(tag);  // ----------------------------------------------- Start of active section
+
+  /*
+    Mark independence
+
+    NOTE: Ghost points are marked as independent, in place of the points they represent on
+          other processors / on other boundaries.
+  */
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
+      u_a[j][i].u <<= u[j][i].u;
+      u_a[j][i].v <<= u[j][i].v;
+    }
+  }
+  /*
+     Compute function over the locally owned part of the grid
+  */
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      uc        = u_a[j][i].u;
+      uxx       = (-2.0*uc + u_a[j][i-1].u + u_a[j][i+1].u)*sx;
+      uyy       = (-2.0*uc + u_a[j-1][i].u + u_a[j+1][i].u)*sy;
+      vc        = u_a[j][i].v;
+      vxx       = (-2.0*vc + u_a[j][i-1].v + u_a[j][i+1].v)*sx;
+      vyy       = (-2.0*vc + u_a[j-1][i].v + u_a[j+1][i].v)*sy;
+      f_a[j][i].u = udot[j][i].u - appctx->D1*(uxx + uyy) + uc*vc*vc - appctx->gamma*(1.0 - uc);
+      f_a[j][i].v = udot[j][i].v - appctx->D2*(vxx + vyy) - uc*vc*vc + (appctx->gamma + appctx->kappa)*vc;
+    }
+  }
+
+  /*
+    Mark dependence
+
+    NOTE: Ghost points are marked as dependent in order to vastly simplify index notation
+          during Jacobian assembly.
+  */
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
+      if ((i < xs) || (i >= xs+xm) || (j < ys) || (j >= ys+ym)) {
+        f_a[j][i].u >>= dummy;
+        f_a[j][i].v >>= dummy;
+      } else {
+        f_a[j][i].u >>= f[j][i].u;
+        f_a[j][i].v >>= f[j][i].v;
+      }
+    }
+  }
+  trace_off();  // ----------------------------------------------- End of active section
+  ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+static PetscErrorCode IJacobianLocalByHand(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,PetscReal a,Mat A,Mat B,void *ptr)
 {
   AppCtx         *appctx = (AppCtx*)ptr;     /* user-defined application context */
   PetscErrorCode ierr;
@@ -518,6 +659,23 @@ static PetscErrorCode IJacobianLocal(DMDALocalInfo *info,PetscReal t,Field**u,Fi
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
 
+  PetscFunctionReturn(0);
+}
+
+/*
+  Shift indices in AField to endow it with ghost points.  // TODO: Generalise
+*/
+PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
+{
+  PetscErrorCode ierr;
+  PetscInt       gxs,gys,gxm,gym,j;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  for (j=0; j<gym; j++) {
+    (*a2d)[j] = cgs + j*gxm - gxs;
+  }
+  *a2d -= gys;
   PetscFunctionReturn(0);
 }
 
