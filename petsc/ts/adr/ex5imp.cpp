@@ -523,7 +523,6 @@ static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field*
   PetscErrorCode ierr;
   PetscInt       i,j,k = 0,xm,ym,gxs,gxm,gys,gym,m,n,dofs = 2;
   PetscScalar    *u_vec,*f_vec,**J;
-  Vec            D;		/* corresponding to diagonal */
 
   PetscFunctionBegin;
   xm = info->xm; gxs = info->gxs; gxm = info->gxm;
@@ -590,14 +589,7 @@ static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field*
   ierr = PetscLogFlops(19*xm*ym);CHKERRQ(ierr);	// TODO: Is this still relevant?
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-
-  /*
-    Next, add a*M
-  */
-  ierr = MatCreateVecs(A,NULL,&D);CHKERRQ(ierr);
-  ierr = VecSet(D,a);CHKERRQ(ierr);
-  ierr = MatDiagonalSet(A,D,ADD_VALUES);     /* Combine a*M and -df/dx parts */
-  ierr = VecDestroy(&D);CHKERRQ(ierr);
+  ierr = MatShift(A,a);     /* Add a*M */
   PetscFunctionReturn(0);
 }
 

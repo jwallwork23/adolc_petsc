@@ -898,8 +898,7 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   PetscInt       i,j,k = 0,xm,ym,gxs,gys,gxm,gym,m,n,dofs = 2;
   PetscScalar    *u_vec,**J,*f_vec;
   Field          **u;
-  Vec            localU,D;
-  MPI_Comm       comm = MPI_COMM_WORLD;
+  Vec            localU;
 
   PetscFunctionBegin;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
@@ -935,7 +934,23 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   /*
     First, calculate the -df/dx part using ADOL-C
   */
-  if (appctx->sparse) {
+  if (!appctx->sparse) {
+
+    /*
+      Default method of computing full Jacobian without exploiting sparsity (not recommended!)
+    */
+    J = myalloc2(m,n);
+    jacobian(tag,m,n,u_vec,J);
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+    myfree2(J);
+
+  } else {
 
     /*
       Compute Jacobian in compressed format and recover from this, using seed and recovery matrices
@@ -947,33 +962,14 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
     ierr = PetscFree(f_vec);CHKERRQ(ierr);
     if (appctx->sparse_view) {
       if (!appctx->sparse_view_done) {
-        ierr = PrintMat(comm,"Compressed Jacobian:",m,appctx->p,J);CHKERRQ(ierr);
+        ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian:",m,appctx->p,J);CHKERRQ(ierr);
         appctx->sparse_view_done = PETSC_TRUE;
       }
     }
     ierr = RecoverJacobian(A,m,appctx->p,appctx->Rec,J);CHKERRQ(ierr);
     myfree2(J);
-
-  } else {
-
-    J = myalloc2(m,n);
-    jacobian(tag,m,n,u_vec,J);
-    for (i=0; i<m; i++) {
-      for (j=0; j<n; j++) {
-        if (fabs(J[i][j]) > 1.e-16) {
-          ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
-        }
-      }
-    }
-    myfree2(J);
   }
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
-
-  /*
-    Next, assemble a*M
-  */
-  ierr = VecDuplicate(U,&D);CHKERRQ(ierr);
-  ierr = VecSet(D,a);CHKERRQ(ierr);
 
   /*
      Restore vectors
@@ -987,8 +983,7 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   */
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatDiagonalSet(A,D,ADD_VALUES);     /* Combine a*M and -df/dx parts */
-  ierr = VecDestroy(&D);CHKERRQ(ierr);
+  ierr = MatShift(A,a);CHKERRQ(ierr);     /* Add a*M */
   PetscFunctionReturn(0);
 }
 

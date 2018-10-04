@@ -411,16 +411,16 @@ static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   PetscInt          m,n,i;
   const PetscScalar *x0;
   PetscScalar       *action,*x1;
-  Vec               S,localX0,localX1;
+  Vec               localX0,localX1;
   DM                da;
 
   PetscFunctionBegin;
 
-  /* Read data and allocate memory */
+  /* Get matrix-free context info */
   ierr = MatShellGetContext(A_shell,(void**)&mctx);CHKERRQ(ierr);
   m = mctx->actx->m;n = mctx->actx->n;
 
-  /* Get local input vectors containing data x0 and x1*/
+  /* Get local input vectors and extract data, x0 and x1*/
   ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localX0);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localX1);CHKERRQ(ierr);
@@ -428,32 +428,24 @@ static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
-
-  /* Extract data */
-  ierr = PetscMalloc1(n,&x0);CHKERRQ(ierr);
-  ierr = PetscMalloc1(n,&x1);CHKERRQ(ierr);
-  ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(localX0,&x0);CHKERRQ(ierr);
-  ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
+  ierr = DMDAVecGetArrayRead(da,localX0,&x0);CHKERRQ(ierr);
+  ierr = DMDAVecGetArray(da,localX1,&x1);CHKERRQ(ierr);
 
   /* First, calculate action of the -df/dx part using ADOL-C */
-  fos_forward(tag,m,n,0,x0,x1,NULL,action);
+  ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
+  fos_forward(tag,m,n,0,x0,x1,NULL,action);	// TODO: Could replace NULL to implement ZOS test
   for (i=0; i<m; i++) {
     ierr = VecSetValuesLocal(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
   }
   ierr = PetscFree(action);CHKERRQ(ierr);
 
-  /* Set values for action of a*M */ 
-  ierr = VecDuplicate(Y,&S);
-  ierr = VecSet(S,mctx->shift);CHKERRQ(ierr);
-  ierr = VecAYPX(Y,-1,S);CHKERRQ(ierr);
-  ierr = VecDestroy(&S);CHKERRQ(ierr);
+  /* Second, shift by action of a*M */ 
+  ierr = VecScale(Y,-1);CHKERRQ(ierr);
+  ierr = VecAXPY(Y,mctx->shift,mctx->X);CHKERRQ(ierr);
 
   /* Restore local vector */
-  ierr = VecRestoreArray(localX1,&x1);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(localX0,&x0);CHKERRQ(ierr);
-  ierr = PetscFree(x1);CHKERRQ(ierr);
-  ierr = PetscFree(x0);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArray(da,localX1,&x1);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,localX0,&x0);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localX1);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localX0);CHKERRQ(ierr);
 
