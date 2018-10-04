@@ -13,5 +13,4 @@ ex5imp: ex5imp.o
 	${CLINKER} -o $@ $^ ${PETSC_TS_LIB}
 	${RM} $^
 
-
 include ${PETSC_DIR}/lib/petsc/conf/test
