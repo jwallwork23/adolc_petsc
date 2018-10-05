@@ -448,7 +448,6 @@ static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = DMDAVecRestoreArrayRead(da,localX0,&x0);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localX1);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localX0);CHKERRQ(ierr);
-
   PetscFunctionReturn(0);
 }
 
@@ -464,14 +463,10 @@ static PetscErrorCode IFunctionLocalPassive(DMDALocalInfo *info,PetscReal t,Fiel
   hx = 2.50/(PetscReal)(info->mx); sx = 1.0/(hx*hx);
   hy = 2.50/(PetscReal)(info->my); sy = 1.0/(hy*hy);
 
-  /*
-     Get local grid boundaries
-  */
+  /* Get local grid boundaries */
   xs = info->xs; xm = info->xm; ys = info->ys; ym = info->ym;
 
-  /*
-     Compute function over the locally owned part of the grid
-  */
+  /* Compute function over the locally owned part of the grid */
   for (j=ys; j<ys+ym; j++) {
     for (i=xs; i<xs+xm; i++) {
       uc        = u[j][i].u;

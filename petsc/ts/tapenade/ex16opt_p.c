@@ -18,7 +18,8 @@ Input parameters include:\n\
 #include <petsctao.h>
 #include <petscts.h>
 #include <petscmat.h>
-#include "ex16adj_d.h"  /* ##### Include local function and its derivative ##### */
+#include "ex16adj_d.h"   /* ##### Include local function and its derivative w.r.t. independent variables ##### */
+#include "ex16adjp_d.h"  /* ##### Include local function and its derivative w.r.t. p ##### */
 
 typedef struct _n_User *User;
 struct _n_User {
