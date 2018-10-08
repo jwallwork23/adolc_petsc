@@ -20,6 +20,7 @@ static char help[] = "Demonstrates adjoint sensitivity analysis for Reaction-Dif
 #include <petscts.h>
 #include <adolc/adolc.h>
 #include <adolc/adolc_sparse.h>
+#include "../../utils/allocation.cpp"
 #include "../../utils/drivers.cpp"
 
 #define tag 1
@@ -213,8 +214,10 @@ int main(int argc,char **argv)
         free(JP[i]);
       free(JP);
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
-    } else
-      Seed = myallocI2(adctx->n);
+    } else {
+      Seed = myalloc2(adctx->n,adctx->n);
+      ierr = Subidentity(adctx->n,0,Seed);
+    }
     adctx->Seed = Seed;
   }
 
@@ -297,11 +300,9 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&r);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
-  if (adctx->sparse) {
+  if (adctx->sparse)
     myfree2(Rec);
-    myfree2(Seed);
-  } else
-    myfreeI2(adctx->n,Seed);
+  myfree2(Seed);
   if (!adctx->no_an) {
     f_a += gys;
     u_a += gys;
