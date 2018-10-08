@@ -187,7 +187,6 @@ int main(int argc,char **argv)
       ierr = RHSFunction(ts,1.0,x,r,&appctx);CHKERRQ(ierr);
 
       // Generate sparsity pattern and create an associated colouring
-      // FIXME: This sparsity pattern does not quite match the DM sparsity pattern
       ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
       JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
       jac_pat(tag,adctx->m,adctx->n,u_vec,JP,ctrl);
@@ -226,9 +225,8 @@ int main(int argc,char **argv)
     /*
       Printing for ZOS test
     */
-    if (adctx->zos) {
+    if (adctx->zos)
       PetscPrintf(comm,"    If ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 is O(1.e-8), ADOL-C function evaluation\n      is probably correct.\n");
-    }
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
