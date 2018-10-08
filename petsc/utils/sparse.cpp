@@ -1,6 +1,4 @@
 #include <petscdm.h>
-#include <petscdmda.h>
-#include <petscts.h>
 
 /*@C
   Simple matrix printing

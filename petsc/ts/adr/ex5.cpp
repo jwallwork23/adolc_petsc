@@ -86,7 +86,7 @@ int main(int argc,char **argv)
   DM             da;
   AppCtx         appctx;
   AdolcCtx       *adctx;
-  PetscInt       gxs,gys,gxm,gym,i,m,n,p,dofs = 2,ctrl[3] = {0,0,0};
+  PetscInt       gxs,gys,gxm,gym,i,dofs = 2,ctrl[3] = {0,0,0};
   AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
   PetscScalar    **Seed = NULL,**Rec = NULL,*u_vec;
   unsigned int   **JP = NULL;
@@ -153,8 +153,8 @@ int main(int argc,char **argv)
             It is also important to deconstruct and free memory appropriately.
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-    m = dofs*gxm*gym;  // Number of dependent variables
-    n = m;             // Number of independent variables
+    adctx->m = dofs*gxm*gym;  // Number of dependent variables
+    adctx->n = dofs*gxm*gym;  // Number of independent variables
 
     // Create contiguous 1-arrays of AFields
     u_c = new AField[gxm*gym];
@@ -186,34 +186,33 @@ int main(int argc,char **argv)
 
       // Generate sparsity pattern and create an associated colouring
       // FIXME: This sparsity pattern does not quite match the DM sparsity pattern
-      ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-      JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
-      jac_pat(tag,m,n,u_vec,JP,ctrl);
+      ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
+      JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
+      jac_pat(tag,adctx->m,adctx->n,u_vec,JP,ctrl);
       if (adctx->sparse_view) {
-        ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
+        ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
       }
 
       // Extract colouring
       ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
-      ierr = CountColors(iscoloring,&p);CHKERRQ(ierr);
+      ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
 
       // Generate seed matrix
-      Seed = myalloc2(n,p);
+      Seed = myalloc2(adctx->n,adctx->p);
       ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
       ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
       if (adctx->sparse_view) {
-        ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+        ierr = PrintMat(comm,"Seed matrix:",adctx->n,adctx->p,Seed);CHKERRQ(ierr);
       }
 
       // Generate recovery matrix
-      Rec = myalloc2(m,p);
-      ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
+      Rec = myalloc2(adctx->m,adctx->p);
+      ierr = GetRecoveryMatrix(Seed,JP,adctx->m,adctx->p,Rec);CHKERRQ(ierr);
 
       // Store results and free workspace
       adctx->Seed = Seed;
       adctx->Rec = Rec;
-      adctx->p = p;
-      for (i=0;i<m;i++)
+      for (i=0;i<adctx->m;i++)
         free(JP[i]);
       free(JP);
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
@@ -510,7 +509,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,gxs,gys,gxm,gym,m,n,dofs = 2;
+  PetscInt       i,j,k = 0,gxs,gys,gxm,gym;
   PetscScalar    *u_vec;
   Field          **u;
   Vec            localU;
@@ -535,9 +534,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
   /* Convert array of structs to a 1-array, so this can be read by ADOL-C */
-  m = dofs*gxm*gym;    // Number of dependent variables
-  n = m;               // Number of independent variables
-  ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
+  ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
       u_vec[k++] = u[j][i].u;
@@ -548,7 +545,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   /*
     Compute Jacobian using ADOL-C
   */
-  ierr = AdolcComputeRHSJacobian(A,m,n,u_vec,appctx->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeRHSJacobian(A,u_vec,appctx->adctx);CHKERRQ(ierr);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*
@@ -691,7 +688,7 @@ PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx)
 {
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
-  PetscInt       m,n,gxs,gys,gxm,gym,i,j,k = 0,dofs = 2;
+  PetscInt       gxs,gys,gxm,gym,i,j,k = 0,dofs = 2;
   PetscScalar    diff = 0,norm = 0,*u_vec,*fz;
   MPI_Comm       comm = MPI_COMM_WORLD;
 
@@ -699,11 +696,9 @@ PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx)
 
   /* Get extent of region owned by processor */
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  m = dofs*gxm*gym;
-  n = m;
 
   /* Convert to a 1-array */
-  ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
+  ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++)
       u_vec[k] = u[j][i].u;k++;
@@ -712,8 +707,8 @@ PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx)
   k = 0;
 
   /* Zero order scalar evaluation vs. calling RHS function */
-  ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
-  zos_forward(tag,m,n,0,u_vec,fz);
+  ierr = PetscMalloc1(appctx->adctx->m,&fz);CHKERRQ(ierr);
+  zos_forward(tag,appctx->adctx->m,appctx->adctx->n,0,u_vec,fz);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
       if ((appctx->adctx->zos_view) && ((fabs(f[j][i].u) > 1.e-16) || (fabs(fz[k]) > 1.e-16)))

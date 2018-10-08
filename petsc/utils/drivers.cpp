@@ -1,15 +1,11 @@
-#include <petscdm.h>
-#include <petscdmda.h>
-#include <petscts.h>
 #include "sparse.cpp"
 
 #define tag 1
 
-
 typedef struct {
   PetscBool   zos,zos_view,no_an,sparse,sparse_view,sparse_view_done;
   PetscScalar **Seed,**Rec;
-  PetscInt    p;
+  PetscInt    m,n,p;
 } AdolcCtx;
 
 
@@ -18,18 +14,17 @@ typedef struct {
   recovery matrices. If sparse mode is used, full Jacobian is assembled (not recommended!).
 
   Input parameters:
-  m,n   - number of dependent and independent variables, respectively
   u_vec - vector at which to evaluate Jacobian
   ctx   - ADOL-C context, as defined above
 
   Output parameter:
   A     - Mat object corresponding to Jacobian
 @*/
-PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscInt m,PetscInt n,PetscScalar *u_vec,void *ctx)
+PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscScalar *u_vec,void *ctx)
 {
   AdolcCtx       *adctx = (AdolcCtx*)ctx;
   PetscErrorCode ierr;
-  PetscInt       i,j;
+  PetscInt       i,j,m = adctx->m,n = adctx->n;
   PetscScalar    **J,*f_vec;
 
   PetscFunctionBegin;
