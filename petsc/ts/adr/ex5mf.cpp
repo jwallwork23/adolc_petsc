@@ -4,9 +4,9 @@ static char help[] = "Demonstrates automatic, matrix-free Jacobian generation us
   See ex5.c for details on the equation.
 
   Here implicit Crank-Nicolson timestepping is used to solve the same problem as in ex5.c. Another
-  key difference is that functions are calculated in a local sense, as in ex5imp, using the local
-  implementations IFunctionLocalPassive and IFunctionLocalActive, passed to the TS solver using
-  DMTSSetIFunctionLocal. The Jacobian is generated matrix-free using MyMult, which overloads the
+  key difference is that functions are calculated in a local sense, using the local implementations
+  IFunctionLocalPassive and IFunctionLocalActive, as in ex5imp. These are passed to the TS solver
+  using DMTSSetIFunctionLocal. The Jacobian is generated matrix-free using MyMult, which overloads the
   MatMult operation. The function IJacobian acts to pass TS context information to the matrix-free
   context.
 
@@ -17,7 +17,7 @@ static char help[] = "Demonstrates automatic, matrix-free Jacobian generation us
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>          // Include ADOL-C
-//#include "../../utils/matfree.cpp"
+//#include "../../utils/matfree.cpp" // TODO: Update this utility file
 
 #define tag 1
 
@@ -36,8 +36,8 @@ typedef struct {
   PetscReal D1,D2,gamma,kappa;
   PetscBool no_an;
   AField    **u_a,**f_a;
-  Mat       Jac;		// Only needed in 'by hand' version
-  PetscInt  m,n;                // Number of local nodes, including ghost points
+  Mat       Jac;		// Note: This is only needed in 'by hand' version
+  PetscInt  m,n;                // Dependent/indpendent variables (#local nodes, inc. ghost points)
 } AppCtx;
 
 /* Matrix (free) context */
@@ -68,10 +68,10 @@ int main(int argc,char **argv)
   Vec            x;                   /* solution */
   PetscErrorCode ierr;
   DM             da;
-  AppCtx         appctx;
-  MatCtx         matctx;
+  AppCtx         appctx;              /* Application context */
+  MatCtx         matctx;              /* Matrix (free) context */
   Mat            A;                   /* Jacobian matrix */
-  PetscInt       gxs,gys,gxm,gym;
+  PetscInt       gys,gxm,gym;
   AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
   PetscBool      byhand = PETSC_FALSE;
 
@@ -146,7 +146,7 @@ int main(int argc,char **argv)
 
             It is also important to deconstruct and free memory appropriately.
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-    ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+    ierr = DMDAGetGhostCorners(da,NULL,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
     appctx.m = 2*gxm*gym;appctx.n = 2*gxm*gym;
 
     // Create contiguous 1-arrays of AFields
@@ -378,7 +378,7 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   mctx->time  = t;
   mctx->shift = a;
   if (mctx->ts != ts) mctx->ts = ts;
-  if (mctx->actx != ctx) mctx->actx = static_cast<AppCtx*>(ctx);
+  if (mctx->actx != ctx) mctx->actx = static_cast<AppCtx*>(ctx); // Required in C++
   ierr = VecCopy(X,mctx->X);CHKERRQ(ierr);
   ierr = VecCopy(Xdot,mctx->Xdot);CHKERRQ(ierr);
   PetscFunctionReturn(0);
@@ -402,7 +402,8 @@ static PetscErrorCode MyMult(Mat A_shell,Vec X,Vec Y)
 /*
   For an implicit Jacobian we may use the rule that
      G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
-  where a = d(xdot)/dx is a constant.
+  where a = d(xdot)/dx is a constant. Evaluated at x0 and acting upon a vector x1:
+     (dG/dx)(x0) * x1 = (a*M - df/dx)(x0) * x1.
 */
 static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
 {
@@ -441,7 +442,7 @@ static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
 
   /* Second, shift by action of a*M */ 
   ierr = VecScale(Y,-1);CHKERRQ(ierr);
-  ierr = VecAXPY(Y,mctx->shift,mctx->X);CHKERRQ(ierr);
+  ierr = VecAXPY(Y,mctx->shift,X);CHKERRQ(ierr);
 
   /* Restore local vector */
   ierr = DMDAVecRestoreArray(da,localX1,&x1);CHKERRQ(ierr);
