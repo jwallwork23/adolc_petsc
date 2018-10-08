@@ -62,7 +62,7 @@ int main(int argc,char **argv)
   TS             ts;                    /* nonlinear solver */
   Vec            u,r;                   /* solution, residual vector */
   Mat            J;                     /* Jacobian matrix */
-  PetscInt       steps,xs,ys,xm,ym,gxs,gys,gxm,gym,i,m,n,p,ctrl[3] = {0,0,0};
+  PetscInt       steps,xs,ys,xm,ym,gxs,gys,gxm,gym,i,ctrl[3] = {0,0,0};
   PetscErrorCode ierr;
   DM             da;
   PetscReal      ftime,dt;
@@ -114,8 +114,8 @@ int main(int argc,char **argv)
            It is also important to deconstruct and free memory appropriately.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  m = gxm*gym;  // Number of dependent variables
-  n = gxm*gym;  // Number of independent variables
+  adctx->m = gxm*gym;  // Number of dependent variables
+  adctx->n = gxm*gym;  // Number of independent variables
 
   if (!adctx->no_an) {
 
@@ -153,46 +153,47 @@ int main(int argc,char **argv)
     are required. Since the sparsity structure of the Jacobian does not change over the course of the
     time integration, we can save computational effort by only generating these objects once.
   */
-  if ((adctx->sparse) && (!adctx->no_an)) {
+  if (!adctx->no_an) {
+    if (adctx->sparse) {
 
-    ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+      ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
-    // Trace RHSFunction, so that ADOL-C has tape to read from
-    ierr = RHSFunction(ts,1.0,u,r,&user);CHKERRQ(ierr);
+      // Trace RHSFunction, so that ADOL-C has tape to read from
+      ierr = RHSFunction(ts,1.0,u,r,&user);CHKERRQ(ierr);
 
-    // Generate sparsity pattern and create an associated colouring
-    // FIXME: This sparsity pattern does not quite match the DM sparsity pattern
-    ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-    JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
-    jac_pat(tag,m,n,u_vec,JP,ctrl);
-    if (user.adctx->sparse_view) {
-      ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
-    }
+      // Generate sparsity pattern and create an associated colouring
+      ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
+      JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
+      jac_pat(tag,adctx->m,adctx->n,u_vec,JP,ctrl);
+      if (user.adctx->sparse_view) {
+        ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
+      }
 
-    // Extract colouring
-    ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
-    ierr = CountColors(iscoloring,&p);CHKERRQ(ierr);
+      // Extract colouring
+      ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
+      ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
 
-    // Generate seed matrix
-    Seed = myalloc2(n,p);
-    ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
-    ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
-    if (user.adctx->sparse_view) {
-      ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
-    }
+      // Generate seed matrix
+      Seed = myalloc2(adctx->n,adctx->p);
+      ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
+      ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+      if (user.adctx->sparse_view) {
+        ierr = PrintMat(comm,"Seed matrix:",adctx->n,adctx->p,Seed);CHKERRQ(ierr);
+      }
 
-    // Generate recovery matrix
-    Rec = myalloc2(m,p);
-    ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
+      // Generate recovery matrix
+      Rec = myalloc2(adctx->m,adctx->p);
+      ierr = GetRecoveryMatrix(Seed,JP,adctx->m,adctx->p,Rec);CHKERRQ(ierr);
 
-    // Store results and free workspace
-    user.adctx->Seed = Seed;
-    user.adctx->Rec = Rec;
-    user.adctx->p = p;
-    for (i=0;i<m;i++)
-      free(JP[i]);
-    free(JP);
-    ierr = PetscFree(u_vec);CHKERRQ(ierr);
+      // Store results and free workspace
+      adctx->Rec = Rec;
+      for (i=0;i<adctx->m;i++)
+        free(JP[i]);
+      free(JP);
+      ierr = PetscFree(u_vec);CHKERRQ(ierr);
+    } else
+      Seed = myallocI2(adctx->n);
+    adctx->Seed = Seed;
   }
 
   /* Set Jacobian */
@@ -235,7 +236,8 @@ int main(int argc,char **argv)
   if (adctx->sparse) {
     myfree2(Rec);
     myfree2(Seed);
-  }
+  } else
+    myfreeI2(adctx->n,Seed);
   if (!adctx->no_an) {
     f_a += gys;
     u_a += gys;
@@ -491,7 +493,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       gxs,gys,gxm,gym,m,n;
   PetscScalar    **u,*u_vec;
   Vec            localU;
 
@@ -511,19 +512,14 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   /* Get pointers to vector data */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
 
-  /* Get ghosted grid boundaries */
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  m = gxm*gym;  // Number of dependent variables
-  n = m;        // Number of independent variables
-
   /* Convert 2-array to a 1-array, so this can be read by ADOL-C */
-  ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
+  ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
   ierr = ConvertTo1Array2d(da,u,u_vec);CHKERRQ(ierr);
 
   /*
     Calculate Jacobian using ADOL-C
   */
-  ierr = AdolcComputeRHSJacobian(J,m,n,u_vec,appctx->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeRHSJacobian(J,u_vec,appctx->adctx);CHKERRQ(ierr);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*

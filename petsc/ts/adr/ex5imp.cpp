@@ -47,6 +47,7 @@ static PetscErrorCode IFunction(TS,PetscReal,Vec,Vec,Vec,void*);
 static PetscErrorCode IJacobianLocalByHand(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
 static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]); // TODO: Generalise
+extern PetscErrorCode ConvertTo1Array2d(DM da,Field **u,PetscScalar *u_vec); // TODO:Generalise
 
 int main(int argc,char **argv)
 {
@@ -56,7 +57,7 @@ int main(int argc,char **argv)
   DM             da;
   AppCtx         appctx;
   AdolcCtx       *adctx;
-  PetscInt       gxs,gys,gxm,gym,dofs = 2,i,m,n,p,ctrl[3] = {0,0,0};
+  PetscInt       gxs,gys,gxm,gym,dofs = 2,i,ctrl[3] = {0,0,0};
   AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
   PetscScalar    **Seed = NULL,**Rec = NULL,*u_vec;
   unsigned int   **JP = NULL;
@@ -126,8 +127,8 @@ int main(int argc,char **argv)
             It is also important to deconstruct and free memory appropriately.
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-    m = dofs*gxm*gym;  // Number of dependent variables
-    n = m;             // Number of independent variables
+    adctx->m = dofs*gxm*gym;  // Number of dependent variables
+    adctx->n = dofs*gxm*gym;  // Number of independent variables
 
     // Create contiguous 1-arrays of AFields
     u_c = new AField[gxm*gym];
@@ -158,38 +159,38 @@ int main(int argc,char **argv)
       ierr = IFunction(ts,1.0,x,xdot,r,&appctx);CHKERRQ(ierr); // FIXME
 
       // Generate sparsity pattern and create an associated colouring
-      ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-      JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
-      jac_pat(tag,m,n,u_vec,JP,ctrl);
+      ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
+      JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
+      jac_pat(tag,adctx->m,adctx->n,u_vec,JP,ctrl);
       if (adctx->sparse_view) {
-        ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
+        ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
       }
 
       // Extract colouring
       ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
-      ierr = CountColors(iscoloring,&p);CHKERRQ(ierr);
+      ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
 
       // Generate seed matrix
-      Seed = myalloc2(n,p);
+      Seed = myalloc2(adctx->n,adctx->p);
       ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
       ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
       if (adctx->sparse_view) {
-        ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+        ierr = PrintMat(comm,"Seed matrix:",adctx->n,adctx->p,Seed);CHKERRQ(ierr);
       }
 
       // Generate recovery matrix
-      Rec = myalloc2(m,p);
-      ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
+      Rec = myalloc2(adctx->m,adctx->p);
+      ierr = GetRecoveryMatrix(Seed,JP,adctx->m,adctx->p,Rec);CHKERRQ(ierr);
 
       // Store results and free workspace
-      adctx->Seed = Seed;
       adctx->Rec = Rec;
-      adctx->p = p;
-      for (i=0;i<m;i++)
+      for (i=0;i<adctx->m;i++)
         free(JP[i]);
       free(JP);
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
-    }
+    } else
+      Seed = myallocI2(adctx->n);
+    adctx->Seed = Seed;
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -231,7 +232,8 @@ int main(int argc,char **argv)
     if (adctx->sparse) {
       myfree2(Rec);
       myfree2(Seed);
-    }
+    } else
+      myfreeI2(adctx->n,Seed);
     f_a += gys;
     u_a += gys;
     delete[] f_a;
@@ -523,22 +525,13 @@ static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field*
 {
   AppCtx         *appctx = (AppCtx*)ptr;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,gxs,gxm,gys,gym,m,n,dofs = 2;
   PetscScalar    *u_vec;
 
   PetscFunctionBegin;
-  gxs = info->gxs;gxm = info->gxm;gys = info->gys;gym = info->gym;
 
   /* Convert array of structs to a 2-array, so this can be read by ADOL-C */
-  m = dofs*gxm*gym;  // Number of dependent variables
-  n = m;             // Number of independent variables
-  ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
-      u_vec[k++] = u[j][i].u;
-      u_vec[k++] = u[j][i].v;
-    }
-  }
+  ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
+  ierr = ConvertTo1Array2d(info->da,u,u_vec);CHKERRQ(ierr);
 
   /*
     For an implicit Jacobian we may use the rule that
@@ -549,7 +542,7 @@ static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field*
 
     First, calculate the -df/dx part using ADOL-C...
   */
-  ierr = AdolcComputeRHSJacobian(A,m,n,u_vec,appctx->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeRHSJacobian(A,u_vec,appctx->adctx);CHKERRQ(ierr);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*
@@ -575,6 +568,25 @@ PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
     (*a2d)[j] = cgs + j*gxm - gxs;
   }
   *a2d -= gys;
+  PetscFunctionReturn(0);
+}
+
+/* 
+  Convert a 2-array Field defined on a DMDA to a 1-array TODO: Generalise
+*/
+PetscErrorCode ConvertTo1Array2d(DM da,Field **u,PetscScalar *u_vec)
+{
+  PetscErrorCode ierr;
+  PetscInt       i,j,k = 0,gxs,gys,gxm,gym;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
+      u_vec[k++] = u[j][i].u;
+      u_vec[k++] = u[j][i].v;
+    }
+  }
   PetscFunctionReturn(0);
 }
 
