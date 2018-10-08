@@ -439,6 +439,8 @@ static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
     ierr = VecSetValuesLocal(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
   }
   ierr = PetscFree(action);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
 
   /* Second, shift by action of a*M */ 
   ierr = VecScale(Y,-1);CHKERRQ(ierr);
