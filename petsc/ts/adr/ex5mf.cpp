@@ -378,7 +378,7 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   mctx->time  = t;
   mctx->shift = a;
   if (mctx->ts != ts) mctx->ts = ts;
-  if (mctx->actx != ctx) mctx->actx = static_cast<AppCtx*>(ctx); // Required in C++
+  if (mctx->actx != ctx) mctx->actx = (AppCtx*) ctx;
   ierr = VecCopy(X,mctx->X);CHKERRQ(ierr);
   ierr = VecCopy(Xdot,mctx->Xdot);CHKERRQ(ierr);
   PetscFunctionReturn(0);
