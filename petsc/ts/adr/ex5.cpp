@@ -273,8 +273,8 @@ int main(int argc,char **argv)
     delete[] f_c;
     delete[] u_c;
   }
-  ierr = PetscFree(adctx);CHKERRQ(ierr);
   ierr = DMDestroy(&da);CHKERRQ(ierr);
+  ierr = PetscFree(adctx);CHKERRQ(ierr);
 
   ierr = PetscFinalize();
   return ierr;
