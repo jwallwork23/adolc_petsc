@@ -24,27 +24,26 @@ PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscScalar *u_vec,void *ctx)
 {
   AdolcCtx       *adctx = (AdolcCtx*)ctx;
   PetscErrorCode ierr;
-  PetscInt       i,j,m = adctx->m,n = adctx->n;
-  PetscScalar    **J,*f_vec;
+  PetscInt       i,j,m = adctx->m,n = adctx->n,p = adctx->p;
+  PetscScalar    **J;
 
   PetscFunctionBegin;
 
   if (adctx->sparse) {
-    ierr = PetscMalloc1(m,&f_vec);CHKERRQ(ierr);
-    J = myalloc2(m,adctx->p);
-    fov_forward(tag,m,n,adctx->p,u_vec,adctx->Seed,f_vec,J);
-    ierr = PetscFree(f_vec);CHKERRQ(ierr);
+    J = myalloc2(m,p);
+    fov_forward(tag,m,n,p,u_vec,adctx->Seed,NULL,J);
     if (adctx->sparse_view) {
       if (!adctx->sparse_view_done) {
-        ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian:",m,adctx->p,J);CHKERRQ(ierr);
+        ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian:",m,p,J);CHKERRQ(ierr);
         adctx->sparse_view_done = PETSC_TRUE;
       }
     }
-    ierr = RecoverJacobian(A,m,adctx->p,adctx->Rec,J);CHKERRQ(ierr);
+    ierr = RecoverJacobian(A,m,p,adctx->Rec,J);CHKERRQ(ierr);
     myfree2(J);
   } else {
     J = myalloc2(m,n);
-    jacobian(tag,m,n,u_vec,J);
+    fov_forward(tag,m,n,m,u_vec,adctx->Seed,NULL,J);
+    //jacobian(tag,m,n,u_vec,J);
     for (i=0; i<m; i++) {
       for (j=0; j<n; j++) {
         if (fabs(J[i][j]) > 1.e-16) {

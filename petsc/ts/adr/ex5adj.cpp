@@ -208,13 +208,14 @@ int main(int argc,char **argv)
       ierr = GetRecoveryMatrix(Seed,JP,adctx->m,adctx->p,Rec);CHKERRQ(ierr);
 
       // Store results and free workspace
-      adctx->Seed = Seed;
       adctx->Rec = Rec;
       for (i=0;i<adctx->m;i++)
         free(JP[i]);
       free(JP);
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
-    }
+    } else
+      Seed = myallocI2(adctx->n);
+    adctx->Seed = Seed;
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -299,7 +300,8 @@ int main(int argc,char **argv)
   if (adctx->sparse) {
     myfree2(Rec);
     myfree2(Seed);
-  }
+  } else
+    myfreeI2(adctx->n,Seed);
   if (!adctx->no_an) {
     f_a += gys;
     u_a += gys;

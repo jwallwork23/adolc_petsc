@@ -153,44 +153,47 @@ int main(int argc,char **argv)
     are required. Since the sparsity structure of the Jacobian does not change over the course of the
     time integration, we can save computational effort by only generating these objects once.
   */
-  if ((adctx->sparse) && (!adctx->no_an)) {
+  if (!adctx->no_an) {
+    if (adctx->sparse) {
 
-    ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+      ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
-    // Trace RHSFunction, so that ADOL-C has tape to read from
-    ierr = RHSFunction(ts,1.0,u,r,&user);CHKERRQ(ierr);
+      // Trace RHSFunction, so that ADOL-C has tape to read from
+      ierr = RHSFunction(ts,1.0,u,r,&user);CHKERRQ(ierr);
 
-    // Generate sparsity pattern and create an associated colouring
-    ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
-    JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
-    jac_pat(tag,adctx->m,adctx->n,u_vec,JP,ctrl);
-    if (user.adctx->sparse_view) {
-      ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
-    }
+      // Generate sparsity pattern and create an associated colouring
+      ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
+      JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
+      jac_pat(tag,adctx->m,adctx->n,u_vec,JP,ctrl);
+      if (user.adctx->sparse_view) {
+        ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
+      }
 
-    // Extract colouring
-    ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
-    ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
+      // Extract colouring
+      ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
+      ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
 
-    // Generate seed matrix
-    Seed = myalloc2(adctx->n,adctx->p);
-    ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
-    ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
-    if (user.adctx->sparse_view) {
-      ierr = PrintMat(comm,"Seed matrix:",adctx->n,adctx->p,Seed);CHKERRQ(ierr);
-    }
+      // Generate seed matrix
+      Seed = myalloc2(adctx->n,adctx->p);
+      ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
+      ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+      if (user.adctx->sparse_view) {
+        ierr = PrintMat(comm,"Seed matrix:",adctx->n,adctx->p,Seed);CHKERRQ(ierr);
+      }
 
-    // Generate recovery matrix
-    Rec = myalloc2(adctx->m,adctx->p);
-    ierr = GetRecoveryMatrix(Seed,JP,adctx->m,adctx->p,Rec);CHKERRQ(ierr);
+      // Generate recovery matrix
+      Rec = myalloc2(adctx->m,adctx->p);
+      ierr = GetRecoveryMatrix(Seed,JP,adctx->m,adctx->p,Rec);CHKERRQ(ierr);
 
-    // Store results and free workspace
+      // Store results and free workspace
+      adctx->Rec = Rec;
+      for (i=0;i<adctx->m;i++)
+        free(JP[i]);
+      free(JP);
+      ierr = PetscFree(u_vec);CHKERRQ(ierr);
+    } else
+      Seed = myallocI2(adctx->n);
     adctx->Seed = Seed;
-    adctx->Rec = Rec;
-    for (i=0;i<adctx->m;i++)
-      free(JP[i]);
-    free(JP);
-    ierr = PetscFree(u_vec);CHKERRQ(ierr);
   }
 
   /* Set Jacobian */
@@ -233,7 +236,8 @@ int main(int argc,char **argv)
   if (adctx->sparse) {
     myfree2(Rec);
     myfree2(Seed);
-  }
+  } else
+    myfreeI2(adctx->n,Seed);
   if (!adctx->no_an) {
     f_a += gys;
     u_a += gys;
