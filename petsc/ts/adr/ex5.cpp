@@ -47,7 +47,8 @@ static char help[] = "Demonstrates automatic Jacobian generation using ADOL-C fo
 #include <petscts.h>
 #include <adolc/adolc.h>	// Include ADOL-C
 #include <adolc/adolc_sparse.h> // Include ADOL-C sparse drivers
-#include "../../utils/sparse.cpp"
+#include "../../utils/drivers.cpp"
+//#include "../../utils/sparse.cpp"
 
 #define tag 1
 
@@ -544,22 +545,11 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
     }
   }
 
+  /*
+    Compute Jacobian using ADOL-C
+  */
   if (!appctx->sparse) {
-
-    /*
-      Default method of computing full Jacobian without exploiting sparsity (not recommended!)
-    */
-    J = myalloc2(m,n);
-    jacobian(tag,m,n,u_vec,J);
-    for (i=0; i<m; i++) {
-      for (j=0; j<n; j++) {
-        if (fabs(J[i][j]) > 1.e-16) {
-          ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
-        }
-      }
-    }
-    myfree2(J);
-
+    ierr = AdolcComputeJacobian(A,m,n,u_vec);CHKERRQ(ierr);
   } else {
 
     /*
