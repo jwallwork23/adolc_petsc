@@ -1,30 +1,37 @@
 #include "ex5_d.h"
-#include "../utils.c"	// TODO: Replace all relative paths with absolute ones
 
+/*
+  Compute Jacobian using naive approach of propagating canonical Cartesian basis through the forward mode of AD.
+*/
+void ComputeJacobian(Field **f,Field **u,int gxs,int gxm,int gys,int gym,double hx,double hy,int My,void *ptr,double **J){
 
-void ComputeJacobian(Field **f,Field **u,int xs,int xm,int ys,int ym,double hx,double hy,int My,void *ptr,double J[2*(xs+xm)*(ys+ym)][2*(xs+xm)*(ys+ym)]){
-
-  int    N = 2*(xs+xm)*(ys+ym),i,j,l,k;
+  int    i,j,l,k,n = 2*gxm*gym;
   Field  **fd,**seed;
 
-  for (j=ys; j<ym; j++) {
-    for (i=xs; i<xm; i++) {
+  // TODO: Need to allocate memory for seed and fd
+
+  for (j=gys; j<gym; j++) {
+    for (i=gxs; i<gxm; i++) {
       seed[j][i].u = 1.;
-      RHSLocal_d(f,fd,u,seed,xs,xm,ys,ym,hx,hy,ptr,ptr);
+      RHSLocal_d(f,fd,u,seed,gxs,gxm,gys,gym,hx,hy,ptr,ptr);
       seed[j][i].u = 0.;
-      for (l=ys; l<ym; l++) {
-        for (k=xs; k<xm; k++) {
-          J[coord_map(k,l,0,My,2)][coord_map(i,j,0,My,2)] = fd[l][k].u;
+      for (l=gys; l<gym; l++) {
+        for (k=gxs; k<gxm; k++) {
+          J[l][k] = fd[l][k].u;
         }
       }
       seed[j][i].v = 1.;
-      RHSLocal_d(f,fd,u,seed,xs,xm,ys,ym,hx,hy,ptr,ptr);
+      RHSLocal_d(f,fd,u,seed,gxs,gxm,gys,gym,hx,hy,ptr,ptr);
       seed[j][i].v = 0.;
-      for (l=ys; l<ym; l++) {
-        for (k=xs; k<xm; k++) {
-          J[coord_map(k,l,1,My,2)][coord_map(i,j,1,My,2)] = fd[l][k].v;
+      for (l=gys; l<gym; l++) {
+        for (k=gxs; k<gxm; k++) {
+          J[l][k] = fd[l][k].v;
         }
       }
     }
   }
+
+  // TODO: Need to free memory for seed and fd
+
 }
+

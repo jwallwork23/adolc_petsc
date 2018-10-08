@@ -59,19 +59,16 @@ PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **sparsity)
 
   Input parameters:
   da         - distributed array
-  m,n        - number of rows and columns, respectively
-  sparsity   - matrix sparsity pattern, typically computed using an ADOL-C function such as jac_pat
-  or hess_pat
 
   Output parameter:
   iscoloring - index set coloring corresponding to the sparsity pattern under the given coloring type
 
   Notes:
-  Use -mat_coloring_type <sl,lf,id,natural,greedy,jp> to change coloring type used
-  FIXME: only natural is currently working in serial case if BCs are considered
-  FIXME: jp and greedy run in parallel case, but give Jacobians leading to divergence
+  Implementation works fine for DM_BOUNDARY_NONE or DM_BOUNDARY_GHOSTED. If DM_BOUNDARY_PERIODIC is
+  used then implementation only currently works in parallel, where processors should not own two
+  opposite boundaries which have been identified by the periodicity.
 @*/
-PetscErrorCode GetColoring(DM da,PetscInt m,PetscInt n,unsigned int **sparsity,ISColoring *iscoloring)
+PetscErrorCode GetColoring(DM da,ISColoring *iscoloring)
 {
   PetscErrorCode         ierr;
   Mat                    P;		/* Mat containing nonzero entries */

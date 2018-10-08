@@ -21,6 +21,8 @@ typedef struct {
 
   Output parameters:
   y - product of J and x
+
+  TODO: Update from ex5mf and use this version
 @*/
 PetscErrorCode JacobianVectorProduct(Mat J,Vec x,Vec y)
 {

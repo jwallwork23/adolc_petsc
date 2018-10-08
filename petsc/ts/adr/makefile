@@ -4,7 +4,7 @@ FFLAGS			=
 CXXFLAGS		= -std=c++11
 CPPFLAGS		=
 FPPFLAGS		=
-CLEANFILES		= ex1 ex5 ex5adj ex5imp binaryoutput *.tap *.info *.txt *.o
+CLEANFILES		= ex1 ex5 ex5adj ex5imp ex5mf binaryoutput *.tap *.info *.txt *.o
 
 INCLUDES		= -I./
 INCLUDES		+= -I${ADOLC_HOME}/ADOL-C/include
@@ -26,6 +26,10 @@ ex1: ex1.o
 	${RM} $^
 
 ex5: ex5.o
+	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
+	${RM} $^
+
+ex5mf: ex5mf.o
 	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
 	${RM} $^
 

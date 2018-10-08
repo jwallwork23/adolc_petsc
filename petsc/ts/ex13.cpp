@@ -34,8 +34,7 @@ static char help[] = "Demonstrates automatic Jacobian computation using ADOL-C f
 #include <adolc/adolc.h>	// Include ADOL-C
 #include <adolc/adolc_sparse.h> // Include ADOL-C sparse drivers
 #include "../utils/allocation.cpp"
-#include "../utils/matfree.cpp"
-#include "../utils/sparse.cpp"
+#include "../utils/drivers.cpp"
 #include "../utils/tests.cpp"
 
 /*
@@ -43,10 +42,8 @@ static char help[] = "Demonstrates automatic Jacobian computation using ADOL-C f
 */
 typedef struct {
   PetscReal   c;
-  PetscBool   zos,zos_view,no_an,sparse,sparse_view;
   adouble     **u_a,**f_a;
-  PetscScalar **Seed,**Rec; /* Jacobian seed and recovery matrices */
-  PetscInt    p;
+  AdolcCtx    *adctx;
 } AppCtx;
 
 /* (Slightly modified) functions included in original code of ex13.c */
@@ -58,6 +55,7 @@ extern PetscErrorCode FormInitialSolution(DM,Vec,void*);
 /* Problem specific functions for the purpose of automatic Jacobian computation */
 extern PetscErrorCode RHSJacobianADOLC(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *ptr);
+extern PetscErrorCode RHSJacobianPassContext(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx);
 
 int main(int argc,char **argv)
 {
@@ -69,6 +67,7 @@ int main(int argc,char **argv)
   DM             da;
   PetscReal      ftime,dt;
   AppCtx         user;                  /* user-defined work context */
+  AdolcCtx       *adctx;
   adouble        **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;  /* active variables */
   PetscScalar    **Seed = NULL,**Rec = NULL,*u_vec;
   unsigned int   **JP = NULL;
@@ -77,13 +76,14 @@ int main(int argc,char **argv)
   MPI_Comm       comm = MPI_COMM_WORLD;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
-  user.no_an = PETSC_FALSE;user.zos = PETSC_FALSE;user.zos_view = PETSC_FALSE;user.sparse = PETSC_FALSE;user.sparse_view = PETSC_FALSE;
-  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&user.zos,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&user.zos_view,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse",&user.sparse,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse_view",&user.sparse_view,NULL);CHKERRQ(ierr);
+  ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
+  adctx->no_an = PETSC_FALSE;adctx->zos = PETSC_FALSE;adctx->zos_view = PETSC_FALSE;adctx->sparse = PETSC_FALSE;adctx->sparse_view = PETSC_FALSE;
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&adctx->zos,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&adctx->zos_view,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse",&adctx->sparse,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse_view",&adctx->sparse_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&user.no_an,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&adctx->no_an,NULL);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
@@ -100,6 +100,7 @@ int main(int argc,char **argv)
 
   /* Initialize user application context */
   user.c = -30.0;
+  user.adctx = adctx;
 
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Allocate memory for (local) active arrays and store references in the
@@ -112,9 +113,11 @@ int main(int argc,char **argv)
 
            It is also important to deconstruct and free memory appropriately.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  if (!user.no_an) {
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  m = gxm*gym;  // Number of dependent variables
+  n = gxm*gym;  // Number of independent variables
 
-    ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  if (!adctx->no_an) {
 
     // Create contiguous 1-arrays of AFields
     u_c = new adouble[gxm*gym];
@@ -133,7 +136,7 @@ int main(int argc,char **argv)
     user.f_a = f_a;
   }
 
-  if (user.zos) {
+  if (adctx->zos) {
     PetscPrintf(comm,"    If ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 is O(1.e-8), ADOL-C function evaluation\n      is probably correct.\n");
   }
 
@@ -150,32 +153,31 @@ int main(int argc,char **argv)
     are required. Since the sparsity structure of the Jacobian does not change over the course of the
     time integration, we can save computational effort by only generating these objects once.
   */
-  if ((user.sparse) && (!user.no_an)) {
+  if ((adctx->sparse) && (!adctx->no_an)) {
 
     ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-    m = gxm*gym;  // Number of dependent variables
-    n = gxm*gym;  // Number of independent variables
 
     // Trace RHSFunction, so that ADOL-C has tape to read from
     ierr = RHSFunction(ts,1.0,u,r,&user);CHKERRQ(ierr);
 
     // Generate sparsity pattern and create an associated colouring
+    // FIXME: This sparsity pattern does not quite match the DM sparsity pattern
     ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
     JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
     jac_pat(tag,m,n,u_vec,JP,ctrl);
-    if (user.sparse_view) {
+    if (user.adctx->sparse_view) {
       ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
     }
 
     // Extract colouring
-    ierr = GetColoring(da,m,n,JP,&iscoloring);CHKERRQ(ierr);
+    ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
     ierr = CountColors(iscoloring,&p);CHKERRQ(ierr);
 
     // Generate seed matrix
     Seed = myalloc2(n,p);
     ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
     ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
-    if (user.sparse_view) {
+    if (user.adctx->sparse_view) {
       ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
     }
 
@@ -184,9 +186,9 @@ int main(int argc,char **argv)
     ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
 
     // Store results and free workspace
-    user.Seed = Seed;
-    user.Rec = Rec;
-    user.p = p;
+    user.adctx->Seed = Seed;
+    user.adctx->Rec = Rec;
+    user.adctx->p = p;
     for (i=0;i<m;i++)
       free(JP[i]);
     free(JP);
@@ -230,11 +232,11 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = MatDestroy(&J);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
-  if (user.sparse) {
+  if (adctx->sparse) {
     myfree2(Rec);
     myfree2(Seed);
   }
-  if (!user.no_an) {
+  if (!adctx->no_an) {
     f_a += gys;
     u_a += gys;
     delete[] f_a;
@@ -245,6 +247,7 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&u);CHKERRQ(ierr);
   ierr = VecDestroy(&r);CHKERRQ(ierr);
   ierr = DMDestroy(&da);CHKERRQ(ierr);
+  ierr = PetscFree(adctx);CHKERRQ(ierr);
 
   ierr = PetscFinalize();
   return ierr;
@@ -385,12 +388,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   ierr = DMDAGetCorners(da,NULL,NULL,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
   /* Compute function over the locally owned part of the grid */
-  if (!user->no_an) {
+  if (!user->adctx->no_an) {
     ierr = RHSLocalActive(da,f,u,user);CHKERRQ(ierr);
 
     /* Test zeroth order scalar evaluation in ADOL-C gives the same result */
-    if (user->zos) {
-      ierr = TestZOS2d(da,f,u,user->zos_view);CHKERRQ(ierr);
+    if (user->adctx->zos) {
+      ierr = TestZOS2d(da,f,u,user->adctx->zos_view);CHKERRQ(ierr);
     }
   } else {
     ierr = RHSLocalPassive(da,f,u,user);CHKERRQ(ierr);
@@ -488,10 +491,9 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   AppCtx         *appctx = (AppCtx*)ctx;
   PetscErrorCode ierr;
   DM             da;
-  PetscInt       i,j,k = 0,gxs,gys,gxm,gym,m,n;
-  PetscScalar    **u,*u_vec,**Jac = NULL,*f_vec;
+  PetscInt       gxs,gys,gxm,gym,m,n;
+  PetscScalar    **u,*u_vec;
   Vec            localU;
-  MPI_Comm       comm = MPI_COMM_WORLD;
 
   PetscFunctionBeginUser;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
@@ -521,41 +523,7 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   /*
     Calculate Jacobian using ADOL-C
   */
-
-  if (appctx->sparse) {
-
-    /*
-      Compute Jacobian in compressed format and recover from this, using seed and recovery matrices
-      computed earlier.
-    */
-    ierr = PetscMalloc1(m,&f_vec);CHKERRQ(ierr);
-    Jac = myalloc2(m,appctx->p);
-    fov_forward(tag,m,n,appctx->p,u_vec,appctx->Seed,f_vec,Jac);
-    ierr = PetscFree(f_vec);CHKERRQ(ierr);
-    if (appctx->sparse_view) {
-      ierr = TSGetStepNumber(ts,&k);
-      if (k == 0) {
-        ierr = PrintMat(comm,"Compressed Jacobian:",m,appctx->p,Jac);CHKERRQ(ierr);
-      }
-    }
-    ierr = RecoverJacobian(J,m,appctx->p,appctx->Rec,Jac);CHKERRQ(ierr);
-    myfree2(Jac);
-
-  } else {
-
-    /*
-      Default method of computing full Jacobian (not recommended!).
-    */
-    Jac = myalloc2(m,n);
-    jacobian(tag,m,n,u_vec,Jac);
-    for (i=0; i<m; i++) {
-      for (j=0; j<n; j++) {
-        if (fabs(Jac[i][j]) > 1.e-16)	// TODO: Instead use where nonzeros expected
-          ierr = MatSetValuesLocal(J,1,&i,1,&j,&Jac[i][j],INSERT_VALUES);CHKERRQ(ierr);
-      }
-    }
-    myfree2(Jac);
-  }
+  ierr = AdolcComputeRHSJacobian(J,m,n,u_vec,appctx->adctx);CHKERRQ(ierr);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*
