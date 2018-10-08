@@ -50,8 +50,9 @@ extern PetscErrorCode InitializeLambda(DM,Vec,PetscReal,PetscReal);
 extern PetscErrorCode RHSJacobianADOLC(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode IJacobianADOLC(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
 
-/* Utility functions for automatic Jacobian computation */
+/* Utility functions for automatic Jacobian computation TODO: generalise these*/
 extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]);
+extern PetscErrorCode ConvertTo1Array2d(DM da,Field **u,PetscScalar *u_vec);
 
 int main(int argc,char **argv)
 {
@@ -64,7 +65,7 @@ int main(int argc,char **argv)
   Vec            lambda[1];
   PetscScalar    *x_ptr;
   PetscBool      forwardonly=PETSC_FALSE,implicitform=PETSC_FALSE,byhand=PETSC_FALSE;
-  PetscInt       gxs,gys,gxm,gym,i,m,n,p,dofs = 2,ctrl[3] = {0,0,0};
+  PetscInt       gxs,gys,gxm,gym,i,dofs = 2,ctrl[3] = {0,0,0};
   AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
   PetscScalar    **Seed = NULL,**Rec = NULL,*u_vec;
   unsigned int   **JP = NULL;
@@ -132,8 +133,8 @@ int main(int argc,char **argv)
             It is also important to deconstruct and free memory appropriately.
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-    m = dofs*gxm*gym;  // Number of dependent variables
-    n = m;             // Number of independent variables
+    adctx->m = dofs*gxm*gym;  // Number of dependent variables
+    adctx->n = dofs*gxm*gym;  // Number of independent variables
 
     // Create contiguous 1-arrays of AFields
     u_c = new AField[gxm*gym];
@@ -161,7 +162,7 @@ int main(int argc,char **argv)
     if (adctx->sparse) {
 
       // Trace function evaluation so that ADOL-C has tape to read from
-      ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
+      ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
       if (!implicitform) {
         ierr = RHSFunction(ts,1.0,x,r,&appctx);CHKERRQ(ierr);
       } else {
@@ -169,10 +170,10 @@ int main(int argc,char **argv)
       }
 
       // Generate sparsity pattern
-      JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
-      jac_pat(tag,m,n,u_vec,JP,ctrl);
+      JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
+      jac_pat(tag,adctx->m,adctx->n,u_vec,JP,ctrl);
       if (adctx->sparse_view) {
-        ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
+        ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
       }
 
       // Trace function evaluation so that ADOL-C has tape to read from
@@ -183,39 +184,38 @@ int main(int argc,char **argv)
       }
 
       // Generate sparsity pattern
-      // FIXME: This sparsity pattern does not quite match the DM sparsity pattern
-      ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-      JP = (unsigned int **) malloc(m*sizeof(unsigned int*));
-      jac_pat(tag,m,n,u_vec,JP,ctrl);
+      ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
+      JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
+      jac_pat(tag,adctx->m,adctx->n,u_vec,JP,ctrl);
       if (adctx->sparse_view) {
-        ierr = PrintSparsity(comm,m,JP);CHKERRQ(ierr);
+        ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
       }
 
       // Extract coloring
       ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
-      ierr = CountColors(iscoloring,&p);CHKERRQ(ierr);
+      ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
 
       // Generate seed matrix
-      Seed = myalloc2(n,p);
+      Seed = myalloc2(adctx->n,adctx->p);
       ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
       ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
       if (adctx->sparse_view) {
-        ierr = PrintMat(comm,"Seed matrix:",n,p,Seed);CHKERRQ(ierr);
+        ierr = PrintMat(comm,"Seed matrix:",adctx->n,adctx->p,Seed);CHKERRQ(ierr);
       }
 
       // Generate recovery matrix
-      Rec = myalloc2(m,p);
-      ierr = GetRecoveryMatrix(Seed,JP,m,p,Rec);CHKERRQ(ierr);
+      Rec = myalloc2(adctx->m,adctx->p);
+      ierr = GetRecoveryMatrix(Seed,JP,adctx->m,adctx->p,Rec);CHKERRQ(ierr);
 
       // Store results and free workspace
-      adctx->Seed = Seed;
       adctx->Rec = Rec;
-      adctx->p = p;
-      for (i=0;i<m;i++)
+      for (i=0;i<adctx->m;i++)
         free(JP[i]);
       free(JP);
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
-    }
+    } else
+      Seed = myallocI2(adctx->n);
+    adctx->Seed = Seed;
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -300,7 +300,8 @@ int main(int argc,char **argv)
   if (adctx->sparse) {
     myfree2(Rec);
     myfree2(Seed);
-  }
+  } else
+    myfreeI2(adctx->n,Seed);
   if (!adctx->no_an) {
     f_a += gys;
     u_a += gys;
@@ -533,7 +534,6 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,gxs,gys,gxm,gym,m,n,dofs = 2;
   PetscScalar    *u_vec;
   Field          **u;
   Vec            localU;
@@ -557,24 +557,13 @@ PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
 
   /*
-     Get local grid boundaries and total degrees of freedom on this process
-  */
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-
-  /*
     Convert array of structs to a 1-array, so this can be read by ADOL-C
   */
-  m = dofs*gxm*gym;  // Number of dependent variables
-  n = m;             // Number of independent variables
-  ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
-      u_vec[k++] = u[j][i].u;
-      u_vec[k++] = u[j][i].v;
-    }
-  }
+  ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
+  ierr = ConvertTo1Array2d(da,u,u_vec);CHKERRQ(ierr);
 
-  ierr = AdolcComputeRHSJacobian(A,m,n,u_vec,appctx->adctx);CHKERRQ(ierr);
+  /* Compute Jacobian using ADOL-C */
+  ierr = AdolcComputeRHSJacobian(A,u_vec,appctx->adctx);CHKERRQ(ierr);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*
@@ -858,7 +847,6 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   AppCtx         *appctx = (AppCtx*)ctx;
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,gxs,gys,gxm,gym,m,n,dofs = 2;
   PetscScalar    *u_vec;
   Field          **u;
   Vec            localU;
@@ -879,26 +867,16 @@ PetscErrorCode IJacobianADOLC(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   /* Get pointers to vector data */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
 
-  /* Get local and ghosted grid boundaries */
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-
   /* Convert array of structs to a 2-array, so this can be read by ADOL-C */
-  m = dofs*gxm*gym;  // Number of dependent variables
-  n = m;             // Number of independent variables
-  ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
-      u_vec[k++] = u[j][i].u;
-      u_vec[k++] = u[j][i].v;
-    }
-  }
+  ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
+  ierr = ConvertTo1Array2d(da,u,u_vec);CHKERRQ(ierr);
 
   /*
     First, calculate the -df/dx part using ADOL-C
 
     TODO: AdolcComputeIJacobian
   */
-  ierr = AdolcComputeRHSJacobian(A,m,n,u_vec,appctx->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeRHSJacobian(A,u_vec,appctx->adctx);CHKERRQ(ierr);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*
@@ -1048,6 +1026,26 @@ PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
   *a2d -= gys;
   PetscFunctionReturn(0);
 }
+
+/* 
+  Convert a 2-array Field defined on a DMDA to a 1-array TODO: Generalise
+*/
+PetscErrorCode ConvertTo1Array2d(DM da,Field **u,PetscScalar *u_vec)
+{
+  PetscErrorCode ierr;
+  PetscInt       i,j,k = 0,gxs,gys,gxm,gym;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
+      u_vec[k++] = u[j][i].u;
+      u_vec[k++] = u[j][i].v;
+    }
+  }
+  PetscFunctionReturn(0);
+}
+
 
 /*TEST
 
