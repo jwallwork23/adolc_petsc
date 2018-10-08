@@ -47,6 +47,7 @@ static char help[] = "Demonstrates automatic Jacobian generation using ADOL-C fo
 #include <petscts.h>
 #include <adolc/adolc.h>	// Include ADOL-C
 #include <adolc/adolc_sparse.h> // Include ADOL-C sparse drivers
+#include "../../utils/allocation.cpp"
 #include "../../utils/drivers.cpp"
 
 #define tag 1
@@ -216,8 +217,10 @@ int main(int argc,char **argv)
         free(JP[i]);
       free(JP);
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
-    } else
-      Seed = myallocI2(adctx->n);
+    } else {
+      Seed = myalloc2(adctx->n,adctx->n);
+      ierr = Subidentity(adctx->n,0,Seed);CHKERRQ(ierr);
+    }
     adctx->Seed = Seed;
 
     /*
@@ -263,11 +266,9 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
   if (!adctx->no_an) {
-    if (adctx->sparse) {
+    if (adctx->sparse)
       myfree2(Rec);
-      myfree2(Seed);
-    } else
-      myfreeI2(adctx->n,Seed);
+    myfree2(Seed);
     f_a += gys;
     u_a += gys;
     delete[] f_a;

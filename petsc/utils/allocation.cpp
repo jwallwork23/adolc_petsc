@@ -6,6 +6,7 @@ extern PetscErrorCode GiveGhostPoints2d(DM da,void *cgs,void *a2d);
 extern PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[]);
 extern PetscErrorCode ConvertTo1Array(DM da,PetscScalar **u,PetscScalar *u_vec);
 extern PetscErrorCode ConvertTo1Array2d(DM da,PetscScalar **u,PetscScalar *u_vec);
+extern PetscErrorCode Subidentity(PetscInt p,PetscInt s,PetscScalar **S);
 
 /*@C
   Wrapper function for allocating contiguous memory in a 2d array
@@ -109,6 +110,18 @@ PetscErrorCode ConvertTo1Array2d(DM da,PetscScalar **u,PetscScalar *u_vec)
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++)
       u_vec[k++] = u[j][i];
+  }
+  PetscFunctionReturn(0);
+}
+
+/* TODO: docs */
+PetscErrorCode Subidentity(PetscInt p,PetscInt s,PetscScalar **S)
+{
+  PetscInt       i;
+
+  PetscFunctionBegin;
+  for (i=0; i<p; i++) {
+    S[i+s][i] = 1.;
   }
   PetscFunctionReturn(0);
 }
