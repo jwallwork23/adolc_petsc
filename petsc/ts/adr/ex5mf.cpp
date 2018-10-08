@@ -443,7 +443,6 @@ static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
 
   /* Second, shift by action of a*M */ 
-  ierr = VecScale(Y,-1);CHKERRQ(ierr);
   ierr = VecAXPY(Y,mctx->shift,X);CHKERRQ(ierr);
 
   /* Restore local vector */
