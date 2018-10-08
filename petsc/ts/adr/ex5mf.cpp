@@ -443,11 +443,16 @@ static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   /* First, calculate action of the -df/dx part using ADOL-C */
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
   fos_forward(tag,m,n,0,x0,x1,NULL,action);	// TODO: Could replace NULL to implement ZOS test
-/*
+
   for (i=0; i<m; i++) {
     ierr = VecSetValues(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
   }
-*/
+
+
+  //ISLocalToGlobalMapping ltog;
+  //ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
+  //ierr = VecSetLocalToGlobalMapping(Y,ltog);CHKERRQ(ierr);
+/*
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
       for (d=0; d<2; d++) {
@@ -459,7 +464,7 @@ static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
       }
     }
   }
-
+*/
   ierr = PetscFree(action);CHKERRQ(ierr);
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
