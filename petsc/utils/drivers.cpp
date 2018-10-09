@@ -1,13 +1,7 @@
+#include "contexts.cpp"
 #include "sparse.cpp"
 
 #define tag 1
-
-typedef struct {
-  PetscBool   zos,zos_view,no_an,sparse,sparse_view,sparse_view_done;
-  PetscScalar **Seed,**Rec;
-  PetscInt    m,n,p;
-} AdolcCtx;
-
 
 /*@C
   Compute Jacobian in compressed format and recover from this, using precomputed seed and

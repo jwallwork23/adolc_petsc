@@ -17,7 +17,7 @@ static char help[] = "Demonstrates automatic, matrix-free Jacobian generation us
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>          // Include ADOL-C
-//#include "../../utils/matfree.cpp" // TODO: How to put MatCtx in this utility file?
+#include "../../utils/matfree.cpp" // TODO: How to put MatCtx in this utility file?
 
 #define tag 1
 
@@ -36,19 +36,7 @@ typedef struct {
   PetscReal D1,D2,gamma,kappa;
   PetscBool no_an;
   AField    **u_a,**f_a;
-  Mat       Jac;		// Note: This is only needed in 'by hand' version
-  PetscInt  m,n;                // Dependent/indpendent variables (#local nodes, inc. ghost points)
 } AppCtx;
-
-/* Matrix (free) context */
-typedef struct {
-  PetscReal time;
-  Vec       X;
-  Vec       Xdot;
-  PetscReal shift;
-  AppCtx    *actx;
-  TS        ts;
-} MatCtx;
 
 /*
    User-defined routines
@@ -56,8 +44,6 @@ typedef struct {
 extern PetscErrorCode InitialConditions(DM,Vec);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
 static PetscErrorCode IJacobian(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
-static PetscErrorCode MyMult(Mat,Vec,Vec);
-static PetscErrorCode JacobianVectorProduct(Mat,Vec,Vec);
 static PetscErrorCode IFunctionLocalPassive(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
 static PetscErrorCode IFunctionLocalActive(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
 extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]); // TODO: Generalise
@@ -73,7 +59,6 @@ int main(int argc,char **argv)
   Mat            A;                   /* Jacobian matrix */
   PetscInt       gys,gxm,gym;
   AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
-  PetscBool      byhand = PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
@@ -81,7 +66,6 @@ int main(int argc,char **argv)
   PetscInitialize(&argc,&argv,(char*)0,help);
   PetscFunctionBeginUser;
   appctx.no_an = PETSC_FALSE;
-  ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&appctx.no_an,NULL);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
@@ -109,13 +93,7 @@ int main(int argc,char **argv)
   ierr = DMSetMatType(da,MATSHELL);CHKERRQ(ierr);
   ierr = DMCreateMatrix(da,&A);CHKERRQ(ierr);
   ierr = MatShellSetContext(A,&matctx);CHKERRQ(ierr);
-  if (byhand) {
-    ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))MyMult);CHKERRQ(ierr);
-    ierr = DMSetMatType(da,MATAIJ);CHKERRQ(ierr);
-    ierr = DMCreateMatrix(da,&appctx.Jac);CHKERRQ(ierr);
-  } else {
-    ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))JacobianVectorProduct);CHKERRQ(ierr);
-  }
+  ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))JacobianVectorProduct);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.X);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.Xdot);CHKERRQ(ierr);
 
@@ -147,8 +125,8 @@ int main(int argc,char **argv)
             It is also important to deconstruct and free memory appropriately.
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = DMDAGetGhostCorners(da,NULL,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-    appctx.m = 2*gxm*gym;
-    appctx.n = 2*gxm*gym;
+    matctx.m = 2*gxm*gym;
+    matctx.n = 2*gxm*gym;
 
     // Create contiguous 1-arrays of AFields
     u_c = new AField[gxm*gym];
@@ -198,9 +176,6 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = VecDestroy(&matctx.X);CHKERRQ(ierr);
   ierr = VecDestroy(&matctx.Xdot);CHKERRQ(ierr);
-  if (byhand) {
-    ierr = MatDestroy(&appctx.Jac);CHKERRQ(ierr);
-  }
   ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
@@ -379,99 +354,8 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   mctx->time  = t;
   mctx->shift = a;
   if (mctx->ts != ts) mctx->ts = ts;
-  if (mctx->actx != ctx) mctx->actx = (AppCtx*) ctx;
   ierr = VecCopy(X,mctx->X);CHKERRQ(ierr);
   ierr = VecCopy(Xdot,mctx->Xdot);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-static PetscErrorCode MyMult(Mat A_shell,Vec X,Vec Y)
-{
-  MatCtx         *mctx;
-  PetscErrorCode ierr;
-
-  PetscFunctionBeginUser;
-  ierr = MatShellGetContext(A_shell,(void**)&mctx);CHKERRQ(ierr);
-  ierr = RHSJacobianByHand(mctx->ts,mctx->time,mctx->X,mctx->actx->Jac,mctx->actx->Jac,mctx->actx);CHKERRQ(ierr);
-  ierr = MatScale(mctx->actx->Jac,-1);CHKERRQ(ierr);
-  ierr = MatShift(mctx->actx->Jac,mctx->shift);CHKERRQ(ierr);
-  ierr = MatMult(mctx->actx->Jac,X,Y);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-
-/*
-  For an implicit Jacobian we may use the rule that
-     G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
-  where a = d(xdot)/dx is a constant. Evaluated at x0 and acting upon a vector x1:
-     (dG/dx)(x0) * x1 = (a*M - df/dx)(x0) * x1.
-*/
-static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
-{
-  MatCtx            *mctx;
-  PetscErrorCode    ierr;
-  PetscInt          m,n,i;
-  const PetscScalar *x0;
-  PetscScalar       *action,*x1;
-  Vec               localX0,localX1;
-  DM                da;
-
-  PetscFunctionBegin;
-
-  /* Get matrix-free context info */
-  ierr = MatShellGetContext(A_shell,(void**)&mctx);CHKERRQ(ierr);
-  m = mctx->actx->m;
-  n = mctx->actx->n;
-
-  /* Get local input vectors and extract data, x0 and x1*/
-  ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
-
-  ierr = DMGetLocalVector(da,&localX0);CHKERRQ(ierr);
-  ierr = DMGetLocalVector(da,&localX1);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
-  ierr = DMDAVecGetArrayRead(da,localX0,&x0);CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da,localX1,&x1);CHKERRQ(ierr);
-
-  /* First, calculate action of the -df/dx part using ADOL-C */
-  ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
-  fos_forward(tag,m,n,0,x0,x1,NULL,action);	// TODO: Could replace NULL to implement ZOS test
-
-  // TODO: temp --------------------------------------
-  PetscInt xs,ys,xm,ym,gxs,gys,gxm,gym,d,j,k = 0;
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
-      for (d=0; d<2; d++) {
-        if ((i >= xs) && (i < xs+xm) && (j >= ys) && (j < ys+ym)) { 
-          ierr = VecSetValuesLocal(Y,1,&k,&action[k],INSERT_VALUES);CHKERRQ(ierr);
-        }
-        k++;
-      }
-    }
-  }
-  // -------------------------------------------------- 
-/*
-  for (i=0; i<m; i++) {
-    ierr = VecSetValuesLocal(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
-  }
-*/
-  ierr = PetscFree(action);CHKERRQ(ierr);
-  ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
-  ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
-
-  /* Second, shift by action of a*M */ 
-  ierr = VecAXPY(Y,mctx->shift,X);CHKERRQ(ierr);
-
-  /* Restore local vector */
-  ierr = DMDAVecRestoreArray(da,localX1,&x1);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArrayRead(da,localX0,&x0);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localX1);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localX0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
