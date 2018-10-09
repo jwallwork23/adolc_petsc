@@ -18,8 +18,8 @@ CC 			= g++
 include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules
 
-sparse.o: ../../utils/sparse.cpp
-	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
+#sparse.o: ../../utils/sparse.cpp
+#	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
 
 ex1: ex1.o
 	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)

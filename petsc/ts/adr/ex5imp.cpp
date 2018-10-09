@@ -34,7 +34,7 @@ typedef struct {
 /* Application context */
 typedef struct {
   PetscReal   D1,D2,gamma,kappa;
-  AField      **u_a,**f_a;
+  AField      **u_a,**f_a,**udot_a;
   AdolcCtx    *adctx;
 } AppCtx;
 
@@ -59,7 +59,7 @@ int main(int argc,char **argv)
   AppCtx         appctx;
   AdolcCtx       *adctx;
   PetscInt       gxs,gys,gxm,gym,dofs = 2,i,ctrl[3] = {0,0,0};
-  AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
+  AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL,**udot_a = NULL,*udot_c = NULL;
   PetscScalar    **Seed = NULL,**Rec = NULL,*u_vec;
   unsigned int   **JP = NULL;
   ISColoring     iscoloring;
@@ -134,18 +134,22 @@ int main(int argc,char **argv)
     // Create contiguous 1-arrays of AFields
     u_c = new AField[gxm*gym];
     f_c = new AField[gxm*gym];
+    udot_c = new AField[gxm*gym];
 
     // Corresponding 2-arrays of AFields
     u_a = new AField*[gym];
     f_a = new AField*[gym];
+    udot_a = new AField*[gym];
 
     // Align indices between array types and endow ghost points
     ierr = AFieldGiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
     ierr = AFieldGiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
+    ierr = AFieldGiveGhostPoints2d(da,udot_c,&udot_a);CHKERRQ(ierr);
 
     // Store active variables in context
     appctx.u_a = u_a;
     appctx.f_a = f_a;
+    appctx.udot_a = udot_a;
 
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
       In the case where ADOL-C generates the Jacobian in compressed format,
@@ -190,7 +194,8 @@ int main(int argc,char **argv)
       free(JP);
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
     } else {
-      Seed = myalloc2(adctx->n,adctx->n);
+      adctx->p = adctx->n;
+      Seed = myalloc2(2*adctx->n,adctx->p);
       ierr = Subidentity(adctx->n,0,Seed);CHKERRQ(ierr);
     }
     adctx->Seed = Seed;
@@ -235,10 +240,13 @@ int main(int argc,char **argv)
     if (adctx->sparse)
       myfree2(Rec);
     myfree2(Seed);
+    udot_a += gys;
     f_a += gys;
     u_a += gys;
+    delete[] udot_a;
     delete[] f_a;
     delete[] u_a;
+    delete[] udot_c;
     delete[] f_c;
     delete[] u_c;
   }
@@ -337,7 +345,7 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
   PetscReal      hx,hy,sx,sy;
   adouble        uc,uxx,uyy,vc,vxx,vyy;
   PetscErrorCode ierr;
-  AField         **f_a = appctx->f_a,**u_a = appctx->u_a;
+  AField         **f_a = appctx->f_a,**u_a = appctx->u_a,**udot_a = appctx->udot_a;
   PetscScalar    dummy;
 
   PetscFunctionBegin;
@@ -349,7 +357,7 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
   trace_on(tag);  // ----------------------------------------------- Start of active section
 
   /*
-    Mark independence
+    Mark independence on u and udot at each point
 
     NOTE: Ghost points are marked as independent, in place of the points they represent on
           other processors / on other boundaries.
@@ -360,6 +368,15 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
       u_a[j][i].v <<= u[j][i].v;
     }
   }
+/*
+  // TODO: use this, or similar. May need to get local udot
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      udot_a[j][i].u <<= udot[j][i].u;
+      udot_a[j][i].v <<= udot[j][i].v;
+    }
+  }
+*/
   /*
      Compute function over the locally owned part of the grid
   */
@@ -373,6 +390,8 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
       vyy       = (-2.0*vc + u_a[j-1][i].v + u_a[j+1][i].v)*sy;
       f_a[j][i].u = udot[j][i].u - appctx->D1*(uxx + uyy) + uc*vc*vc - appctx->gamma*(1.0 - uc);
       f_a[j][i].v = udot[j][i].v - appctx->D2*(vxx + vyy) - uc*vc*vc + (appctx->gamma + appctx->kappa)*vc;
+      //f_a[j][i].u = udot_a[j][i].u - appctx->D1*(uxx + uyy) + uc*vc*vc - appctx->gamma*(1.0 - uc);
+      //f_a[j][i].v = udot_a[j][i].v - appctx->D2*(vxx + vyy) - uc*vc*vc + (appctx->gamma + appctx->kappa)*vc;
     }
   }
 
@@ -530,7 +549,11 @@ static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field*
 
   PetscFunctionBegin;
 
-  /* Convert array of structs to a 2-array, so this can be read by ADOL-C */
+  /*
+    Convert array of structs to a 2-array, so this can be read by ADOL-C
+
+    TODO: Generalise and then put these allocations into Jacobian computation function
+  */
   ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
   ierr = ConvertTo1Array2d(info->da,u,u_vec);CHKERRQ(ierr);
 
@@ -551,7 +574,7 @@ static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field*
   */
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatShift(A,a);     /* Add a*M */
+  ierr = MatShift(A,a);     /* Add a*M TODO: see above */
   PetscFunctionReturn(0);
 }
 
