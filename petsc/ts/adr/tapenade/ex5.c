@@ -50,7 +50,7 @@ typedef struct {
    User-defined routines
 */
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*),InitialConditions(DM,Vec);
-extern PetscErrorCode RHSJacobian(TS,PetscReal,Vec,Mat,Mat,void*);
+extern PetscErrorCode RHSJacobianTapenade(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
 
 int main(int argc,char **argv)
@@ -60,15 +60,18 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   DM             da;
   AppCtxPetsc    appctx;
-  PetscBool      analytic=PETSC_FALSE;
+  PetscBool      byhand=PETSC_FALSE;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   PetscFunctionBeginUser;
-  ierr = PetscOptionsGetBool(NULL,NULL,"-analytic",&analytic,NULL);CHKERRQ(ierr);
-  appctx.D1    = 8.0e-5;appctx.D2    = 4.0e-5;appctx.gamma = .024;appctx.kappa = .06;
+  ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
+  appctx.D1    = 8.0e-5;
+  appctx.D2    = 4.0e-5;
+  appctx.gamma = .024;
+  appctx.kappa = .06;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
@@ -96,8 +99,8 @@ int main(int argc,char **argv)
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
   ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
-  if (!analytic) {
-    ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobian,&appctx);CHKERRQ(ierr);
+  if (!byhand) {
+    ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianTapenade,&appctx);CHKERRQ(ierr);
   } else {
     ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianByHand,&appctx);CHKERRQ(ierr);
   }
@@ -164,8 +167,10 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   hy = 2.50/(PetscReal)(My);
 
   /* -------------------- FIXME: not ideal ---------------------------- */
-  constants.D1 = appctx->D1;constants.D2 = appctx->D1;
-  constants.gamma = appctx->gamma;constants.kappa = appctx->kappa;
+  constants.D1 = appctx->D1;
+  constants.D2 = appctx->D1;
+  constants.gamma = appctx->gamma;
+  constants.kappa = appctx->kappa;
   /* ------------------------------------------------------------------ */
 
   /*
@@ -252,13 +257,13 @@ PetscErrorCode InitialConditions(DM da,Vec U)
 /*
   Calculate Jacobian using Tapenade.
 */
-PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
+PetscErrorCode RHSJacobianTapenade(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
 {
   AppCtxPetsc    *appctx = (AppCtxPetsc*)ctx;	/* user-defined application context */
   AppCtx         constants;			// FIXME: this setup is not ideal
   DM             da;
   PetscErrorCode ierr;
-  PetscInt       Mx,My,xs,ys,xm,ym,N,row[1],col[1],i,j;
+  PetscInt       Mx,My,xs,ys,xm,ym,i,j,m;
   PetscScalar    hx,hy;
   Field          **u;
   Field          **f;
@@ -275,8 +280,10 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   hy = 2.50/(PetscReal)(My);
 
   /* -------------------- FIXME: not ideal ---------------------------- */
-  constants.D1 = appctx->D1;constants.D2 = appctx->D1;
-  constants.gamma = appctx->gamma;constants.kappa = appctx->kappa;
+  constants.D1 = appctx->D1;
+  constants.D2 = appctx->D1;
+  constants.gamma = appctx->gamma;
+  constants.kappa = appctx->kappa;
   /* ------------------------------------------------------------------ */
 
   /*
@@ -300,18 +307,17 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
      Get local grid boundaries
   */
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-  N = 2*(xs+xm)*(ys+ym);
-  PetscScalar J[N][N];
+  m = 2*xm*ym;
+  PetscScalar J[m][m]; // TODO: Use dynamic allocation
 
   // Compute Jacobian
   ComputeJacobian(f,u,xs,xm,ys,ym,hx,hy,My,&constants,J);
 
   // Insert entries one-by-one
-  for(j=0;j<N;j++){
-    for(i=0;i<N;i++){
-      if(fabs(J[j][i])!=0.){
-        row[0] = j; col[0] = i; // TODO: better to insert row-by-row, similarly as with the stencil
-        ierr = MatSetValues(A,1,row,1,col,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
+  for(i=0;i<m;i++){
+    for(j=0;j<m;j++){
+      if(fabs(J[i][j])>1.e-16){
+        ierr = MatSetValues(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
       }
     }
   }
@@ -325,7 +331,7 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
+  //ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 

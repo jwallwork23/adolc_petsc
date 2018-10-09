@@ -49,6 +49,7 @@ static PetscErrorCode IJacobianLocalByHand(DMDALocalInfo*,PetscReal,Field**,Fiel
 static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]); // TODO: Generalise
 extern PetscErrorCode ConvertTo1Array2d(DM da,Field **u,PetscScalar *u_vec); // TODO:Generalise
+extern PetscErrorCode CombineTo1Array2d(DM da,Field **u,Field **v,PetscScalar *u_vec); // TODO: Generalise
 
 int main(int argc,char **argv)
 {
@@ -195,7 +196,8 @@ int main(int argc,char **argv)
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
     } else {
       adctx->p = adctx->n;
-      Seed = myalloc2(2*adctx->n,adctx->p);
+      Seed = myalloc2(adctx->n,adctx->p);
+      //Seed = myalloc2(2*adctx->n,adctx->p);
       ierr = Subidentity(adctx->n,0,Seed);CHKERRQ(ierr);
     }
     adctx->Seed = Seed;
@@ -346,7 +348,7 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
   adouble        uc,uxx,uyy,vc,vxx,vyy;
   PetscErrorCode ierr;
   AField         **f_a = appctx->f_a,**u_a = appctx->u_a,**udot_a = appctx->udot_a;
-  PetscScalar    dummy;
+  PetscScalar    dummy = 0.;
 
   PetscFunctionBegin;
   hx = 2.50/(PetscReal)(info->mx); sx = 1.0/(hx*hx);
@@ -369,11 +371,16 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
     }
   }
 /*
-  // TODO: use this, or similar. May need to get local udot
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      udot_a[j][i].u <<= udot[j][i].u;
-      udot_a[j][i].v <<= udot[j][i].v;
+  // TODO: use this, or similar
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
+      if ((i < xs) || (i >= xs+xm) || (j < ys) || (j >= ys+ym)) {
+        udot_a[j][i].u <<= dummy;
+        udot_a[j][i].v <<= dummy;
+      } else {
+        udot_a[j][i].u <<= udot[j][i].u;
+        udot_a[j][i].v <<= udot[j][i].v;
+      }
     }
   }
 */
@@ -557,6 +564,9 @@ static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field*
   ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
   ierr = ConvertTo1Array2d(info->da,u,u_vec);CHKERRQ(ierr);
 
+  //ierr = PetscMalloc1(2*appctx->adctx->n,&u_vec);CHKERRQ(ierr);
+  //ierr = CombineTo1Array2d(info->da,u,udot,u_vec);CHKERRQ(ierr);
+
   /*
     For an implicit Jacobian we may use the rule that
        G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
@@ -609,6 +619,31 @@ PetscErrorCode ConvertTo1Array2d(DM da,Field **u,PetscScalar *u_vec)
     for (i=gxs; i<gxs+gxm; i++) {
       u_vec[k++] = u[j][i].u;
       u_vec[k++] = u[j][i].v;
+    }
+  }
+  PetscFunctionReturn(0);
+}
+
+/*
+  Convert two 2-array Fields defined on a DMDA to a 1-array TODO: Generalise
+*/
+PetscErrorCode CombineTo1Array2d(DM da,Field **u,Field **v,PetscScalar *u_vec)
+{
+  PetscErrorCode ierr;
+  PetscInt       i,j,k = 0,gxs,gys,gxm,gym;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
+      u_vec[k++] = u[j][i].u;
+      u_vec[k++] = u[j][i].v;
+    }
+  }
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
+      u_vec[k++] = v[j][i].u;
+      u_vec[k++] = v[j][i].v;
     }
   }
   PetscFunctionReturn(0);
