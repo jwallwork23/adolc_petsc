@@ -194,7 +194,8 @@ int main(int argc,char **argv)
       free(JP);
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
     } else {
-      Seed = myalloc2(adctx->n,adctx->n);
+      adctx->p = adctx->n;
+      Seed = myalloc2(2*adctx->n,adctx->p);
       ierr = Subidentity(adctx->n,0,Seed);CHKERRQ(ierr);
     }
     adctx->Seed = Seed;
@@ -356,7 +357,7 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
   trace_on(tag);  // ----------------------------------------------- Start of active section
 
   /*
-    Mark independence
+    Mark independence on u and udot at each point
 
     NOTE: Ghost points are marked as independent, in place of the points they represent on
           other processors / on other boundaries.
@@ -368,9 +369,9 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
     }
   }
 /*
-  // TODO: use this
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
+  // TODO: use this, or similar. May need to get local udot
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
       udot_a[j][i].u <<= udot[j][i].u;
       udot_a[j][i].v <<= udot[j][i].v;
     }
