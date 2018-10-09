@@ -549,7 +549,11 @@ static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field*
 
   PetscFunctionBegin;
 
-  /* Convert array of structs to a 2-array, so this can be read by ADOL-C */
+  /*
+    Convert array of structs to a 2-array, so this can be read by ADOL-C
+
+    TODO: Generalise and then put these allocations into Jacobian computation function
+  */
   ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
   ierr = ConvertTo1Array2d(info->da,u,u_vec);CHKERRQ(ierr);
 
@@ -570,7 +574,7 @@ static PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field*
   */
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatShift(A,a);     /* Add a*M */
+  ierr = MatShift(A,a);     /* Add a*M TODO: see above */
   PetscFunctionReturn(0);
 }
 
