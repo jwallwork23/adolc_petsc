@@ -1,107 +1,157 @@
-#include <petscts.h>
+#include <petscdm.h>
+#include <petscdmda.h>
 #include <adolc/adolc.h>
+#include "contexts.cpp"
 
-#define tag 1	// TODO: Generalise to case where multiple tags may be used
+extern PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y);
+extern PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X);
 
-extern PetscErrorCode JacobianVectorProduct(Mat J,Vec x,Vec y);
-extern PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec y,Vec x);
-
-typedef struct {
-  PetscScalar *indep_vals; // Need to provide a 1-array containing independent variable values
-  PetscBool   trace;       // Toggle whether or not to trace forward, thereby writing to tape
-} AdolcCtx;
-
-/*@C
+/*
   ADOL-C implementation for Jacobian vector product, using the forward mode of AD.
-  Intended to overload MatMult in matrix-free methods
+  Intended to overload MatMult in matrix-free methods where implicit timestepping
+  has been used.
+
+  For an implicit Jacobian we may use the rule that
+     G = M*xdot + f(x)    ==>     dG/dx = a*M + df/dx,
+  where a = d(xdot)/dx is a constant. Evaluated at x0 and acting upon a vector x1:
+     (dG/dx)(x0) * x1 = (a*M + df/dx)(x0) * x1.
 
   Input parameters:
-  J - Jacobian matrix of MatShell type
-  x - vector to be multiplied by J
+  A_shell - Jacobian matrix of MatShell type
+  X       - vector to be multiplied by A_shell
 
   Output parameters:
-  y - product of J and x
-
-  TODO: Update from ex5mf and use this version
-@*/
-PetscErrorCode JacobianVectorProduct(Mat J,Vec x,Vec y)
+  Y       - product of A_shell and X
+*/
+PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
 {
+  MatCtx            *mctx;
   PetscErrorCode    ierr;
   PetscInt          m,n,i;
-  const PetscScalar *dat_ro;
-  PetscScalar       *action,*dat;
+  const PetscScalar *x0;
+  PetscScalar       *action,*x1;
+  Vec               localX0,localX1;
+  DM                da;
 
   PetscFunctionBegin;
 
-  /* Read data and allocate memory */
-  ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
-  ierr = PetscMalloc1(n,&dat_ro);CHKERRQ(ierr);
-  ierr = PetscMalloc1(n,&dat);CHKERRQ(ierr);
+  /* Get matrix-free context info */
+  ierr = MatShellGetContext(A_shell,(void**)&mctx);CHKERRQ(ierr);
+  m = mctx->m;
+  n = mctx->n;
+
+  /* Get local input vectors and extract data, x0 and x1*/
+  ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
+
+  ierr = DMGetLocalVector(da,&localX0);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localX1);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
+  ierr = DMDAVecGetArrayRead(da,localX0,&x0);CHKERRQ(ierr);
+  ierr = DMDAVecGetArray(da,localX1,&x1);CHKERRQ(ierr);
+
+  /* First, calculate action of the -df/dx part using ADOL-C */
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(x,&dat_ro);CHKERRQ(ierr);
-  for (i=0; i<n; i++)
-    dat[i] = dat_ro[i];	// FIXME: How to avoid this conversion from read only?
+  fos_forward(tag,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
 
-  /* Compute action of Jacobian on vector */
-  fos_forward(tag,m,n,0,dat,dat,NULL,action);
-  ierr = VecRestoreArrayRead(x,&dat_ro);CHKERRQ(ierr);
-  for (i=0; i<m; i++) {
-    ierr = VecSetValues(y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
+  // TODO: temp --------------------------------------
+  PetscInt xs,ys,xm,ym,gxs,gys,gxm,gym,d,j,k = 0;
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
+      for (d=0; d<2; d++) {
+        if ((i >= xs) && (i < xs+xm) && (j >= ys) && (j < ys+ym)) {
+          ierr = VecSetValuesLocal(Y,1,&k,&action[k],INSERT_VALUES);CHKERRQ(ierr);
+        }
+        k++;
+      }
+    }
   }
-
-  /* Free memory */
+  // -------------------------------------------------- 
+/*
+  for (i=0; i<m; i++) {
+    ierr = VecSetValuesLocal(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
+  }
+*/
   ierr = PetscFree(action);CHKERRQ(ierr);
-  ierr = PetscFree(dat);CHKERRQ(ierr);
-  ierr = PetscFree(dat_ro);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
+
+  /* Second, shift by action of a*M TODO: Combine this above*/
+  ierr = VecAXPY(Y,mctx->shift,X);CHKERRQ(ierr);
+
+  /* Restore local vector */
+  ierr = DMDAVecRestoreArray(da,localX1,&x1);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,localX0,&x0);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localX1);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localX0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
-/*@C
-  ADOL-C implementation for Jacobian transpose vector product, using reverse mode of AD.
-  Intended to overload MatMultTranspose in matrix-free methods.
 
-  Input parameters:
-  J - MatShell type Jacobian matrix
-  y - vector to be multiplied
-  x - Jacobian transpose vector product
-@*/
 /* Intended to overload MatMultTranspose in matrix-free methods */
-PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec y,Vec x)
+PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
 {
-  AdolcCtx            *ctx;
+  MatCtx            *mctx;
   PetscErrorCode    ierr;
-  PetscInt          i,m,n;
-  const PetscScalar *dat_ro;
-  PetscScalar       *action,*dat;
+  PetscInt          m,n,i;
+  const PetscScalar *y0;
+  //const PetscScalar *dat_ro;
+  PetscScalar       *action,*y1;
+  Vec               localY0,localY1;
+  DM                da;
 
   PetscFunctionBegin;
 
-  /* Read data and allocate memory */
-  ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
-  ierr = PetscMalloc1(m,&dat_ro);CHKERRQ(ierr);
-  ierr = PetscMalloc1(m,&dat);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(y,&dat_ro);CHKERRQ(ierr);
+  /* Get matrix-free context info */
+  ierr = MatShellGetContext(A_shell,(void**)&mctx);CHKERRQ(ierr);
+  m = mctx->m;
+  n = mctx->n;
 
-  /* Trace forward using independent variable values */
-  ierr = MatShellGetContext(J,&ctx);CHKERRQ(ierr);
-  if (ctx->trace)
-    zos_forward(tag,m,n,1,ctx->indep_vals,NULL);
+  /* Get local input vectors and extract data, x0 and x1*/
+  ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
+
+  ierr = DMGetLocalVector(da,&localY0);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localY1);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localY0);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localY0);CHKERRQ(ierr);
+  // TODO: The above should be Y's
+  //ierr = DMGlobalToLocalBegin(da,mctx->Y,INSERT_VALUES,localY0);CHKERRQ(ierr);
+  //ierr = DMGlobalToLocalEnd(da,mctx->Y,INSERT_VALUES,localY0);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,Y,INSERT_VALUES,localY1);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,Y,INSERT_VALUES,localY1);CHKERRQ(ierr);
+  ierr = DMDAVecGetArrayRead(da,localY0,&y0);CHKERRQ(ierr);
+  ierr = DMDAVecGetArray(da,localY1,&y1);CHKERRQ(ierr);
+
+  /* Trace forward using independent variable values    TODO: This should be optional */
+  zos_forward(tag,m,n,1,y0,NULL);
 
   /* Compute action */
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
-  for (i=0; i<m; i++)
-    dat[i] = dat_ro[i];	// TODO: How to avoid this conversion from read only?
-  fos_reverse(tag,m,n,dat,action);
-  ierr = VecRestoreArrayRead(y,&dat_ro);CHKERRQ(ierr);
+  fos_reverse(tag,m,n,y1,action);
+  ierr = VecRestoreArrayRead(Y,&y0);CHKERRQ(ierr);
 
   /* Set values in vector */
   for (i=0; i<n; i++) {
-    ierr = VecSetValues(x,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
+    ierr = VecSetValuesLocal(X,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
   }
 
   /* Free memory */
   ierr = PetscFree(action);CHKERRQ(ierr);
-  ierr = PetscFree(dat);CHKERRQ(ierr);
-  ierr = PetscFree(dat_ro);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(X);
+  ierr = VecAssemblyEnd(X);
+
+  /* Second, shift by action of a*M TODO: Combine this above*/
+  ierr = VecAXPY(X,mctx->shift,Y);CHKERRQ(ierr);
+
+  /* Restore local vector */
+  ierr = DMDAVecRestoreArray(da,localY1,&y1);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,localY0,&y0);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localY1);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localY0);CHKERRQ(ierr);
+
   PetscFunctionReturn(0);
 }

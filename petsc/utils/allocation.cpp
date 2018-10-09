@@ -121,7 +121,7 @@ PetscErrorCode Subidentity(PetscInt p,PetscInt s,PetscScalar **S)
 
   PetscFunctionBegin;
   for (i=0; i<p; i++) {
-    S[i+s][i] = 1.;
+    S[i][i+s] = 1.;
   }
   PetscFunctionReturn(0);
 }

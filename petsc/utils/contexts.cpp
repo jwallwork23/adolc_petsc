@@ -1,0 +1,23 @@
+#include <petscdm.h>
+#include <petscdmda.h>
+#include <adolc/adolc.h>
+
+#define tag 1   // TODO: Generalise to case where multiple tags may be used
+
+
+typedef struct {
+  PetscBool   zos,zos_view,no_an,sparse,sparse_view,sparse_view_done;
+  PetscScalar **Seed,**Rec;
+  PetscInt    m,n,p;
+} AdolcCtx;
+
+/* Matrix (free) context */
+typedef struct {
+  PetscReal time;
+  Vec       X;
+  Vec       Xdot;
+  PetscReal shift;
+  PetscInt  m,n;
+  TS        ts;
+} MatCtx;
+
