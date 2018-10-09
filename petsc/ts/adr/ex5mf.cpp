@@ -148,7 +148,8 @@ int main(int argc,char **argv)
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = DMDAGetCorners(da,NULL,NULL,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
     ierr = DMDAGetGhostCorners(da,NULL,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-    appctx.m = 2*xm*ym;appctx.n = 2*gxm*gym;
+    appctx.m = 2*gxm*gym;
+    appctx.n = 2*gxm*gym;
 
     // Create contiguous 1-arrays of AFields
     u_c = new AField[gxm*gym];
@@ -421,7 +422,8 @@ static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
 
   /* Get matrix-free context info */
   ierr = MatShellGetContext(A_shell,(void**)&mctx);CHKERRQ(ierr);
-  //m = mctx->actx->m;n = mctx->actx->n;
+  m = mctx->actx->m;
+  n = mctx->actx->n;
 
   /* Get local input vectors and extract data, x0 and x1*/
   ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
@@ -429,7 +431,8 @@ static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   // TODO: temp
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  m = 2*xm*ym;n = 2*gxm*gym;
+  //m = 2*xm*ym;
+  //n = 2*gxm*gym;
 
   ierr = DMGetLocalVector(da,&localX0);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localX1);CHKERRQ(ierr);
@@ -444,27 +447,28 @@ static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
   fos_forward(tag,m,n,0,x0,x1,NULL,action);	// TODO: Could replace NULL to implement ZOS test
 
-  for (i=0; i<m; i++) {
-    ierr = VecSetValues(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
-  }
+  //for (i=0; i<m; i++) {
+  //  ierr = VecSetValues(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
+  //}
 
 
   //ISLocalToGlobalMapping ltog;
   //ierr = DMGetLocalToGlobalMapping(da,&ltog);CHKERRQ(ierr);
   //ierr = VecSetLocalToGlobalMapping(Y,ltog);CHKERRQ(ierr);
-/*
+
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
       for (d=0; d<2; d++) {
         if ((i >= xs) && (i < xm) && (j >= ys) && (j < ym)) { 
-          ierr = VecSetValuesLocal(Y,1,&k,&action[l],INSERT_VALUES);CHKERRQ(ierr);
+          //ierr = VecSetValuesLocal(Y,1,&k,&action[l],INSERT_VALUES);CHKERRQ(ierr);
+          ierr = VecSetValuesLocal(Y,1,&k,&action[k],INSERT_VALUES);CHKERRQ(ierr);
           l++;
         }
         k++;
       }
     }
   }
-*/
+
   ierr = PetscFree(action);CHKERRQ(ierr);
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
@@ -520,6 +524,7 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
   adouble        uc,uxx,uyy,vc,vxx,vyy;
   PetscErrorCode ierr;
   AField         **f_a = appctx->f_a,**u_a = appctx->u_a;
+  PetscScalar    dummy;
 
   PetscFunctionBegin;
   hx = 2.50/(PetscReal)(info->mx); sx = 1.0/(hx*hx);
@@ -561,10 +566,21 @@ static PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field
   /*
     Mark dependence
   */
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      f_a[j][i].u >>= f[j][i].u;
-      f_a[j][i].v >>= f[j][i].v;
+  //for (j=ys; j<ys+ym; j++) {
+  //  for (i=xs; i<xs+xm; i++) {
+  //    f_a[j][i].u >>= f[j][i].u;
+  //    f_a[j][i].v >>= f[j][i].v;
+  //  }
+  //}
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
+      if ((i < xs) || (i >= xs+xm) || (j < ys) || (j >= ys+ym)) {
+        f_a[j][i].u >>= dummy;
+        f_a[j][i].v >>= dummy;
+      } else {
+        f_a[j][i].u >>= f[j][i].u;
+        f_a[j][i].v >>= f[j][i].v;
+      }
     }
   }
   trace_off();  // ----------------------------------------------- End of active section
