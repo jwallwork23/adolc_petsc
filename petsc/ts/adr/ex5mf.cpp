@@ -435,9 +435,28 @@ static PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   /* First, calculate action of the -df/dx part using ADOL-C */
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
   fos_forward(tag,m,n,0,x0,x1,NULL,action);	// TODO: Could replace NULL to implement ZOS test
+
+  // TODO: temp --------------------------------------
+  PetscInt xs,ys,xm,ym,gxs,gys,gxm,gym,d,j,k = 0;
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
+      for (d=0; d<2; d++) {
+        if ((i >= xs) && (i < xs+xm) && (j >= ys) && (j < ys+ym)) { 
+          ierr = VecSetValuesLocal(Y,1,&k,&action[k],INSERT_VALUES);CHKERRQ(ierr);
+        }
+        k++;
+      }
+    }
+  }
+  // -------------------------------------------------- 
+/*
   for (i=0; i<m; i++) {
     ierr = VecSetValuesLocal(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
   }
+*/
   ierr = PetscFree(action);CHKERRQ(ierr);
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
