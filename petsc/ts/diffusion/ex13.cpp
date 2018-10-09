@@ -33,9 +33,9 @@ static char help[] = "Demonstrates automatic Jacobian computation using ADOL-C f
 #include <petscts.h>
 #include <adolc/adolc.h>	// Include ADOL-C
 #include <adolc/adolc_sparse.h> // Include ADOL-C sparse drivers
-#include "../utils/allocation.cpp"
-#include "../utils/drivers.cpp"
-#include "../utils/tests.cpp"
+#include "../../utils/allocation.cpp"
+#include "../../utils/drivers.cpp"
+#include "../../utils/tests.cpp"
 
 /*
    User-defined data structures
@@ -62,7 +62,7 @@ int main(int argc,char **argv)
   TS             ts;                    /* nonlinear solver */
   Vec            u,r;                   /* solution, residual vector */
   Mat            J;                     /* Jacobian matrix */
-  PetscInt       steps,xs,ys,xm,ym,gxs,gys,gxm,gym,i,ctrl[3] = {0,0,0};
+  PetscInt       steps,gxs,gys,gxm,gym,i,ctrl[3] = {0,0,0};
   PetscErrorCode ierr;
   DM             da;
   PetscReal      ftime,dt;
@@ -124,8 +124,8 @@ int main(int argc,char **argv)
             It is also important to deconstruct and free memory appropriately.
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-    adctx->m = dofs*gxm*gym;  // Number of dependent variables
-    adctx->n = dofs*gxm*gym;  // Number of independent variables
+    adctx->m = gxm*gym;  // Number of dependent variables
+    adctx->n = gxm*gym;  // Number of independent variables
 
     // Create contiguous 1-arrays of AFields
     u_c = new adouble[gxm*gym];
