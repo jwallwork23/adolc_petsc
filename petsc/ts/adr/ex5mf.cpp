@@ -71,7 +71,7 @@ int main(int argc,char **argv)
   AppCtx         appctx;              /* Application context */
   MatCtx         matctx;              /* Matrix (free) context */
   Mat            A;                   /* Jacobian matrix */
-  PetscInt       xm,ym,gys,gxm,gym;
+  PetscInt       gys,gxm,gym;
   AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
   PetscBool      byhand = PETSC_FALSE;
 
@@ -146,7 +146,6 @@ int main(int argc,char **argv)
 
             It is also important to deconstruct and free memory appropriately.
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-    ierr = DMDAGetCorners(da,NULL,NULL,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
     ierr = DMDAGetGhostCorners(da,NULL,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
     appctx.m = 2*gxm*gym;
     appctx.n = 2*gxm*gym;
