@@ -102,22 +102,30 @@ int main(int argc,char **argv)
   user.c = -30.0;
   user.adctx = adctx;
 
-/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Allocate memory for (local) active arrays and store references in the
-     application context. The active arrays are reused at each active
-     section, so need only be created once.
-
-     NOTE: Memory for ADOL-C active variables cannot be allocated using
-           PetscMalloc, as this does not call the relevant class
-           constructor. Instead, we use the C++ keyword `new`.
-
-           It is also important to deconstruct and free memory appropriately.
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Create timestepping solver context
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  adctx->m = gxm*gym;  // Number of dependent variables
-  adctx->n = gxm*gym;  // Number of independent variables
+  ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
+  ierr = TSSetDM(ts,da);CHKERRQ(ierr);
+  ierr = TSSetType(ts,TSBEULER);CHKERRQ(ierr);
+  ierr = TSSetRHSFunction(ts,r,RHSFunction,&user);CHKERRQ(ierr);
 
   if (!adctx->no_an) {
+
+    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+      Allocate memory for (local) active fields (called AFields) and store 
+      references in the application context. The AFields are reused at
+      each active section, so need only be created once.
+
+      NOTE: Memory for ADOL-C active variables (such as adouble and AField)
+            cannot be allocated using PetscMalloc, as this does not call the
+            relevant class constructor. Instead, we use the C++ keyword `new`.
+
+            It is also important to deconstruct and free memory appropriately.
+       - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+    ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+    adctx->m = dofs*gxm*gym;  // Number of dependent variables
+    adctx->n = dofs*gxm*gym;  // Number of independent variables
 
     // Create contiguous 1-arrays of AFields
     u_c = new adouble[gxm*gym];
@@ -134,29 +142,15 @@ int main(int argc,char **argv)
     // Store active variables in context
     user.u_a = u_a;
     user.f_a = f_a;
-  }
 
-  if (adctx->zos) {
-    PetscPrintf(comm,"    If ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 is O(1.e-8), ADOL-C function evaluation\n      is probably correct.\n");
-  }
-
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Create timestepping solver context
-     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
-  ierr = TSSetDM(ts,da);CHKERRQ(ierr);
-  ierr = TSSetType(ts,TSBEULER);CHKERRQ(ierr);
-  ierr = TSSetRHSFunction(ts,r,RHSFunction,&user);CHKERRQ(ierr);
-
-  /*
-    In the case where ADOL-C generates the Jacobian in compressed format, seed and recovery matrices
-    are required. Since the sparsity structure of the Jacobian does not change over the course of the
-    time integration, we can save computational effort by only generating these objects once.
-  */
-  if (!adctx->no_an) {
+    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+      In the case where ADOL-C generates the Jacobian in compressed format,
+      seed and recovery matrices are required. Since the sparsity structure
+      of the Jacobian does not change over the course of the time
+      integration, we can save computational effort by only generating
+      these objects once.
+       - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     if (adctx->sparse) {
-
-      ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
 
       // Trace RHSFunction, so that ADOL-C has tape to read from
       ierr = RHSFunction(ts,1.0,u,r,&user);CHKERRQ(ierr);
@@ -192,10 +186,14 @@ int main(int argc,char **argv)
       free(JP);
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
     } else {
-      Seed = myalloc2(adctx->n,adctx->n);
+      adctx->p = adctx->n;
+      Seed = myalloc2(adctx->n,adctx->p);
       ierr = Subidentity(adctx->n,0,Seed);CHKERRQ(ierr);
     }
     adctx->Seed = Seed;
+
+    if (adctx->zos)
+      PetscPrintf(comm,"    If ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 is O(1.e-8), ADOL-C function evaluation\n      is probably correct.\n");
   }
 
   /* Set Jacobian */

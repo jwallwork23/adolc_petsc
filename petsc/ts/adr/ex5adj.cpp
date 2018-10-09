@@ -215,7 +215,8 @@ int main(int argc,char **argv)
       free(JP);
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
     } else {
-      Seed = myalloc2(adctx->n,adctx->n);
+      adctx->p = adctx->n;
+      Seed = myalloc2(adctx->n,adctx->p);
       ierr = Subidentity(adctx->n,0,Seed);
     }
     adctx->Seed = Seed;
