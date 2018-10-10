@@ -4,7 +4,8 @@
 extern PetscErrorCode IJacobianLocalByHand(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode IJacobian(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
-extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
+extern PetscErrorCode IJacobianMatFree(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A_shell,Mat B,void *ctx);
+extern PetscErrorCode IJacobianMatFreeHong(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A_shell,Mat B,void *ctx);
 
 /* Explicit timestepping */
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
@@ -128,9 +129,25 @@ PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field**u,Fiel
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode IJacobianMatFreeHong(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A_shell,Mat B,void *ctx)
+{
+  MatCtx            *mctx;
+  PetscErrorCode    ierr;
+
+  PetscFunctionBeginUser;
+  ierr = MatShellGetContext(A_shell,(void **)&mctx);CHKERRQ(ierr);
+
+  mctx->time  = t;
+  mctx->shift = a;
+  if (mctx->ts != ts) mctx->ts = ts;
+  ierr = VecCopy(X,mctx->X);CHKERRQ(ierr);
+  ierr = VecCopy(Xdot,mctx->Xdot);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
 PetscErrorCode IJacobianMatFree(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A_shell,Mat B,void *ctx)
 {
-  MatAppCtx            *mctx;
+  MatAppCtx         *mctx;
   PetscErrorCode    ierr;
 
   PetscFunctionBeginUser;

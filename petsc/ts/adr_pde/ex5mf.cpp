@@ -190,6 +190,7 @@ static PetscErrorCode MyMult(Mat A_shell,Vec X,Vec Y)
   ierr = MatScale(mctx->actx->Jac,-1);CHKERRQ(ierr);
   ierr = MatShift(mctx->actx->Jac,mctx->shift);CHKERRQ(ierr);
   ierr = MatMult(mctx->actx->Jac,X,Y);CHKERRQ(ierr);
+  ierr = VecView(X,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
