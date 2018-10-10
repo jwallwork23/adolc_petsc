@@ -181,14 +181,45 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx)
   PetscErrorCode ierr;
   DM             da;
   DMDALocalInfo  info;
-  PetscInt       i,j;
+  PetscInt       i,j,m;
   PetscReal      hx,hy,sx,sy;
+  PetscScalar    **Jac,**u;
+  Vec            localU;
 
   PetscFunctionBeginUser;
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
   hx   = 1.0/(PetscReal)(info.mx-1); sx = 1.0/(hx*hx);
   hy   = 1.0/(PetscReal)(info.my-1); sy = 1.0/(hy*hy);
+
+  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+
+  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
+
+  m = info.mx*info.my;
+  ierr = PetscMalloc1(m,&Jac);CHKERRQ(ierr);
+  for (i=0;i<m;i++) {
+    ierr = PetscMalloc1(m,&Jac[i]);CHKERRQ(ierr);
+  }
+  ComputeJacobian(u,info.xs,info.ys,info.xm,info.ym,sx,sy,info.mx,info.my,Jac);
+  for(i=0;i<m;i++){
+    for(j=0;j<m;j++){
+      if(fabs(Jac[i][j])>1.e-16){
+        ierr = MatSetValues(Jpre,1,&i,1,&j,&Jac[i][j],INSERT_VALUES);CHKERRQ(ierr);
+      }
+    }
+  }
+  for (i=0;i<m;i++) {
+    ierr = PetscFree(Jac[i]);CHKERRQ(ierr);
+  }
+  ierr = PetscFree(Jac);CHKERRQ(ierr);
+
+  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
+
+
+/*
   for (j=info.ys; j<info.ys+info.ym; j++) {
     for (i=info.xs; i<info.xs+info.xm; i++) {
       PetscInt    nc = 0;
@@ -207,6 +238,7 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx)
       ierr = MatSetValuesStencil(Jpre,1,&row,nc,col,val,INSERT_VALUES);CHKERRQ(ierr);
     }
   }
+*/
   ierr = MatAssemblyBegin(Jpre,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(Jpre,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   if (J != Jpre) {
