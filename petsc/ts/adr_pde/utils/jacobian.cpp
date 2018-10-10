@@ -1,9 +1,14 @@
 #include "tracing.cpp"
 
+/* Implicit timestepping */
 extern PetscErrorCode IJacobianLocalByHand(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode IJacobian(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
+
+/* Explicit timestepping */
+extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
+extern PetscErrorCode RHSJacobianADOLC(TS,PetscReal,Vec,Mat,Mat,void*);
 
 
 PetscErrorCode IJacobianLocalByHand(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,PetscReal a,Mat A,Mat B,void *ptr)
@@ -241,6 +246,56 @@ PetscErrorCode RHSJacobianByHand(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatSetOption(A,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+
+PetscErrorCode RHSJacobianADOLC(TS ts,PetscReal t,Vec U,Mat A,Mat BB,void *ctx)
+{
+  AppCtx         *appctx = (AppCtx*)ctx;
+  DM             da;
+  PetscErrorCode ierr;
+  PetscScalar    *u_vec;
+  Field          **u;
+  Vec            localU;
+
+  PetscFunctionBegin;
+  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
+
+  /*
+     Scatter ghost points to local vector,using the 2-step process
+        DMGlobalToLocalBegin(),DMGlobalToLocalEnd().
+     By placing code between these two statements, computations can be
+     done while messages are in transition.
+  */
+  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+
+  /* Get pointers to vector data */
+  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
+
+  /* Convert array of structs to a 1-array, so this can be read by ADOL-C */
+  ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
+  ierr = ConvertTo1Array2d(da,u,u_vec);CHKERRQ(ierr);
+
+  /*
+    Compute Jacobian using ADOL-C
+  */
+  ierr = AdolcComputeRHSJacobian(A,u_vec,appctx->adctx);CHKERRQ(ierr);
+  ierr = PetscFree(u_vec);CHKERRQ(ierr);
+
+  /*
+     Restore vectors
+  */
+  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
+
+  /*
+    Assemble local matrix
+  */
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
