@@ -2,8 +2,6 @@
 #include <petscdmda.h>
 #include <adolc/adolc.h>
 
-#define tag 1   // TODO: Generalise to case where multiple tags may be used
-
 #ifndef ADOLCCTX
 #define ADOLCCTX
 typedef struct {

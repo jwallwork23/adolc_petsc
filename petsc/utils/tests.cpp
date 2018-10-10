@@ -1,8 +1,6 @@
 #include <petscdm.h>
 #include <petscdmda.h>
 
-#define tag 1
-
 extern PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,PetscBool view);
 
 /*@C
@@ -41,7 +39,7 @@ PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,PetscBool view)
 
   /* Zero order scalar evaluation vs. calling RHS function */
   ierr = PetscMalloc1(m,&fz);CHKERRQ(ierr);
-  zos_forward(tag,m,n,0,u_vec,fz);
+  zos_forward(1,m,n,0,u_vec,fz);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++) {
       if ((view) && ((fabs(f[j][i]) > 1.e-16) || (fabs(fz[k]) > 1.e-16)))

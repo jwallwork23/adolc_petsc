@@ -55,7 +55,7 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
 
   /* First, calculate action of the -df/dx part using ADOL-C */
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
-  fos_forward(tag,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
+  fos_forward(1,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
   ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
@@ -76,7 +76,7 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
 
-  /* Second, shift by action of a*M TODO: Combine this above*/
+  /* Second, shift by action of a*M TODO: Combine this above, using tag 2 */
   ierr = VecAXPY(Y,mctx->shift,X);CHKERRQ(ierr);
 
   /* Restore local vector */
@@ -122,11 +122,11 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = DMDAVecGetArray(da,localY1,&y1);CHKERRQ(ierr);
 
   /* Trace forward using independent variable values    TODO: This should be optional */
-  zos_forward(tag,m,n,1,y0,NULL);
+  zos_forward(3,m,n,1,y0,NULL);
 
   /* Compute action */
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
-  fos_reverse(tag,m,n,y1,action);
+  fos_reverse(3,m,n,y1,action);
   ierr = VecRestoreArrayRead(Y,&y0);CHKERRQ(ierr);
 
   /* Set values in vector */

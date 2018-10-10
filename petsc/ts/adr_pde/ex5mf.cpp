@@ -18,8 +18,6 @@ static char help[] = "Demonstrates automatic, matrix-free Jacobian generation us
 #include "../../utils/matfree.cpp"  // Includes context structures and matrix free drivers
 #include "utils/jacobian.cpp"
 
-#define tag 1
-
 int main(int argc,char **argv)
 {
   TS             ts;                  /* ODE integrator */

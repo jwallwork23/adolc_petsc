@@ -1,8 +1,6 @@
 #include "contexts.cpp"
 #include "sparse.cpp"
 
-#define tag 1
-
 /*@C
   Compute Jacobian in compressed format and recover from this, using precomputed seed and
   recovery matrices. If sparse mode is used, full Jacobian is assembled (not recommended!).
@@ -24,8 +22,8 @@ PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscScalar *u_vec,void *ctx)
   PetscFunctionBegin;
 
   J = myalloc2(m,p);
-  fov_forward(tag,m,n,p,u_vec,adctx->Seed,NULL,J);
-  //jacobian(tag,m,n,u_vec,J);
+  fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+  //jacobian(1,m,n,u_vec,J);
   if (adctx->sparse) {
     if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
       ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian:",m,p,J);CHKERRQ(ierr);
@@ -45,4 +43,4 @@ PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscScalar *u_vec,void *ctx)
   PetscFunctionReturn(0);
 }
 
-// TODO: IJacobian, using dependence upon udot
+// TODO: IJacobian, using dependence upon udot. Tag 2 for mass matrix

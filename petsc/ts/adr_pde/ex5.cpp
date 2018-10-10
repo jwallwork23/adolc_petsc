@@ -49,8 +49,6 @@ static char help[] = "Demonstrates automatic Jacobian generation using ADOL-C fo
 #include <adolc/adolc_sparse.h> // Include ADOL-C sparse drivers
 #include "utils/jacobian.cpp"
 
-#define tag 1
-
 int main(int argc,char **argv)
 {
   TS             ts;                    /* ODE integrator */
@@ -162,7 +160,7 @@ int main(int argc,char **argv)
       // Generate sparsity pattern and create an associated colouring
       ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
       JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
-      jac_pat(tag,adctx->m,adctx->n,u_vec,JP,ctrl);
+      jac_pat(1,adctx->m,adctx->n,u_vec,JP,ctrl);
       if (adctx->sparse_view) {
         ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
       }

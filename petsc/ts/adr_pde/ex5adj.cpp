@@ -22,9 +22,6 @@ static char help[] = "Demonstrates adjoint sensitivity analysis for Reaction-Dif
 #include <adolc/adolc_sparse.h>
 #include "utils/jacobian.cpp"
 
-#define tag 1
-
-
 int main(int argc,char **argv)
 {
   TS             ts;                  		/* ODE integrator */
@@ -143,16 +140,9 @@ int main(int argc,char **argv)
     if (adctx->sparse) {
 
       // Generate sparsity pattern
-      JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
-      jac_pat(tag,adctx->m,adctx->n,u_vec,JP,ctrl);
-      if (adctx->sparse_view) {
-        ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
-      }
-
-      // Generate sparsity pattern
       ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
       JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
-      jac_pat(tag,adctx->m,adctx->n,u_vec,JP,ctrl);
+      jac_pat(1,adctx->m,adctx->n,u_vec,JP,ctrl);
       if (adctx->sparse_view) {
         ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
       }
