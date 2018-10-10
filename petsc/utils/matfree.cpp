@@ -87,18 +87,17 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   PetscFunctionReturn(0);
 }
 
-
 /* Intended to overload MatMultTranspose in matrix-free methods */
 PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
 {
   MatCtx            *mctx;
   PetscErrorCode    ierr;
-  PetscInt          m,n,i;
+  PetscInt          m,n,i,j,k = 0,d;
   const PetscScalar *y0;
-  //const PetscScalar *dat_ro;
   PetscScalar       *action,*y1;
   Vec               localY0,localY1;
   DM                da;
+  DMDALocalInfo     info;
 
   PetscFunctionBegin;
 
@@ -114,7 +113,7 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = DMGetLocalVector(da,&localY1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localY0);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localY0);CHKERRQ(ierr);
-  // TODO: The above should be Y's
+  // TODO: The above should be Y's. Where is MatMultTranspose used in the call sequence?
   //ierr = DMGlobalToLocalBegin(da,mctx->Y,INSERT_VALUES,localY0);CHKERRQ(ierr);
   //ierr = DMGlobalToLocalEnd(da,mctx->Y,INSERT_VALUES,localY0);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,Y,INSERT_VALUES,localY1);CHKERRQ(ierr);
@@ -131,10 +130,22 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = VecRestoreArrayRead(Y,&y0);CHKERRQ(ierr);
 
   /* Set values in vector */
+  ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
+  for (j=info.gys; j<info.gys+info.gym; j++) {
+    for (i=info.gxs; i<info.gxs+info.gxm; i++) {
+      for (d=0; d<2; d++) {
+        if ((i >= info.xs) && (i < info.xs+info.xm) && (j >= info.ys) && (j < info.ys+info.ym)) {
+          ierr = VecSetValuesLocal(Y,1,&k,&action[k],INSERT_VALUES);CHKERRQ(ierr);
+        }
+        k++;
+      }
+    }
+  }
+/*
   for (i=0; i<n; i++) {
     ierr = VecSetValuesLocal(X,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
   }
-
+*/
   /* Free memory */
   ierr = PetscFree(action);CHKERRQ(ierr);
   ierr = VecAssemblyBegin(X);
