@@ -129,7 +129,7 @@ PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field**u,Fiel
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode IJacobianMatFreeHong(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A_shell,Mat B,void *ctx)
+PetscErrorCode IJacobianMatFree(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A_shell,Mat B,void *ctx)
 {
   MatCtx            *mctx;
   PetscErrorCode    ierr;
@@ -145,7 +145,7 @@ PetscErrorCode IJacobianMatFreeHong(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode IJacobianMatFree(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A_shell,Mat B,void *ctx)
+PetscErrorCode IJacobianMatFreeHong(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A_shell,Mat B,void *ctx)
 {
   MatAppCtx         *mctx;
   PetscErrorCode    ierr;
