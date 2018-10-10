@@ -27,11 +27,12 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
 {
   MatCtx            *mctx;
   PetscErrorCode    ierr;
-  PetscInt          m,n,i;
+  PetscInt          m,n,i,j,k = 0,d;
   const PetscScalar *x0;
   PetscScalar       *action,*x1;
   Vec               localX0,localX1;
   DM                da;
+  DMDALocalInfo     info;
 
   PetscFunctionBegin;
 
@@ -49,28 +50,23 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
-  ierr = DMDAVecGetArrayRead(da,localX0,&x0);CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da,localX1,&x1);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(localX0,&x0);CHKERRQ(ierr);
+  ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
 
   /* First, calculate action of the -df/dx part using ADOL-C */
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
   fos_forward(tag,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
-
-  // TODO: temp --------------------------------------
-  PetscInt xs,ys,xm,ym,gxs,gys,gxm,gym,d,j,k = 0;
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
+  ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
+  for (j=info.gys; j<info.gys+info.gym; j++) {
+    for (i=info.gxs; i<info.gxs+info.gxm; i++) {
       for (d=0; d<2; d++) {
-        if ((i >= xs) && (i < xs+xm) && (j >= ys) && (j < ys+ym)) {
+        if ((i >= info.xs) && (i < info.xs+info.xm) && (j >= info.ys) && (j < info.ys+info.ym)) {
           ierr = VecSetValuesLocal(Y,1,&k,&action[k],INSERT_VALUES);CHKERRQ(ierr);
         }
         k++;
       }
     }
   }
-  // -------------------------------------------------- 
 /*
   for (i=0; i<m; i++) {
     ierr = VecSetValuesLocal(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
@@ -84,8 +80,8 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = VecAXPY(Y,mctx->shift,X);CHKERRQ(ierr);
 
   /* Restore local vector */
-  ierr = DMDAVecRestoreArray(da,localX1,&x1);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArrayRead(da,localX0,&x0);CHKERRQ(ierr);
+  ierr = VecRestoreArray(localX1,&x1);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(localX0,&x0);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localX1);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localX0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
