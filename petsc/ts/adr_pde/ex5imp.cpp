@@ -115,9 +115,10 @@ int main(int argc,char **argv)
     appctx.udot_a = udot_a;
 
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-       Trace function just once
+       Trace function just once for x and for xdot, writing to tapes 1 and 2
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = IFunction(ts,0.,x,xdot,r,&appctx);CHKERRQ(ierr);
+    ierr = IFunction2(ts,0.,x,xdot,r,&appctx);CHKERRQ(ierr);
 
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
       In the case where ADOL-C generates the Jacobian in compressed format,
