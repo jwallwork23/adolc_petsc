@@ -110,7 +110,7 @@ int main(int argc,char **argv)
   ierr = TSARKIMEXSetFullyImplicit(ts,PETSC_TRUE);CHKERRQ(ierr);
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
-  ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&appctx);CHKERRQ(ierr);
+  ierr = TSSetRHSFunction(ts,NULL,RHSFunctionPassive,&appctx);CHKERRQ(ierr);
 
   if (!adctx->no_an) {
 
@@ -146,6 +146,11 @@ int main(int argc,char **argv)
     appctx.f_a = f_a;
 
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+       Trace function just once
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+    ierr = RHSFunctionActive(ts,1.0,x,r,&appctx);CHKERRQ(ierr);
+
+    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
       In the case where ADOL-C generates the Jacobian in compressed format,
       seed and recovery matrices are required. Since the sparsity structure
       of the Jacobian does not change over the course of the time
@@ -153,9 +158,6 @@ int main(int argc,char **argv)
       these objects once.
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     if (adctx->sparse) {
-
-      // Trace RHSFunction, so that ADOL-C has tape to read from
-      ierr = RHSFunction(ts,1.0,x,r,&appctx);CHKERRQ(ierr);
 
       // Generate sparsity pattern and create an associated colouring
       ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
@@ -205,7 +207,7 @@ int main(int argc,char **argv)
      Set Jacobian
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if (!byhand) {
-    ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianADOLC,&appctx);CHKERRQ(ierr);
+    ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianAdolc,&appctx);CHKERRQ(ierr);
   } else {
     ierr = TSSetRHSJacobian(ts,NULL,NULL,RHSJacobianByHand,&appctx);CHKERRQ(ierr);
   }

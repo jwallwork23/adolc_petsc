@@ -8,9 +8,8 @@ extern PetscErrorCode IFunctionLocalActive(DMDALocalInfo*,PetscReal,Field**,Fiel
 extern PetscErrorCode IFunction(TS,PetscReal,Vec,Vec,Vec,void*);
 
 /* Explicit timestepping */
-extern PetscErrorCode RHSLocalPassive(DM da,Field **f,Field **u,void *ptr);
-extern PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr);
-extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void*);
+extern PetscErrorCode RHSFunctionActive(TS,PetscReal,Vec,Vec,void*);
+extern PetscErrorCode RHSFunctionPassive(TS,PetscReal,Vec,Vec,void*);
 
 /* Testing */
 extern PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx);
@@ -124,7 +123,6 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
 
   PetscFunctionBegin;
 
-  printf("Hello!\n");
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
@@ -160,22 +158,148 @@ PetscErrorCode IFunction(TS ts,PetscReal ftime,Vec U,Vec Udot,Vec F,void *ptr)
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
-{
-  PetscErrorCode  ierr;
-  AppCtx          *appctx = (AppCtx*)ptr;
-  PetscInt        i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,Mx,My;
-  PetscReal       hx,hy,sx,sy;
-  AField          **f_a = appctx->f_a,**u_a = appctx->u_a;
-  adouble         uc,uxx,uyy,vc,vxx,vyy;
+/* ------------------------------------------------------------------- */
+/*
+   RHSFunction - Evaluates nonlinear function, F(x).
 
-  PetscFunctionBeginUser;
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+                 If the -no_annotations option is not invoked then
+                 annotations are made for ADOL-C automatic
+                 differentiation using an `AField` struct.
+
+   Input Parameters:
+.  ts - the TS context
+.  X - input vector
+.  ptr - optional user-defined context, as set by TSSetRHSFunction()
+
+   Output Parameter:
+.  F - function vector
+ */
+PetscErrorCode RHSFunctionPassive(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
+{
+  AppCtx         *appctx = (AppCtx*)ptr;
+  DM             da;
+  PetscErrorCode ierr;
+  PetscInt       i,j,xs,ys,xm,ym,Mx,My;
+  PetscReal      hx,hy,sx,sy;
+  PetscScalar    uc,uxx,uyy,vc,vxx,vyy;
+  Field          **u,**f;
+  Vec            localU,localF;
+
+  PetscFunctionBegin;
+  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
   hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
   hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
+  ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localF);CHKERRQ(ierr);
 
+  /*
+     Scatter ghost points to local vector,using the 2-step process
+        DMGlobalToLocalBegin(),DMGlobalToLocalEnd().
+     By placing code between these two statements, computations can be
+     done while messages are in transition.
+  */
+  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = VecZeroEntries(F);CHKERRQ(ierr); // NOTE (1): See (2) below
+  ierr = DMGlobalToLocalBegin(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
+
+  /*
+     Get pointers to vector data
+  */
+  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);
+
+  /*
+     Get local grid boundaries
+  */
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+
+  /*
+     Compute function over the locally owned part of the grid
+  */
+  for (j=ys; j<ys+ym; j++) {
+    for (i=xs; i<xs+xm; i++) {
+      uc        = u[j][i].u;
+      uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
+      uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
+      vc        = u[j][i].v;
+      vxx       = (-2.0*vc + u[j][i-1].v + u[j][i+1].v)*sx;
+      vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*sy;
+      f[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
+      f[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
+    }
+  }
+
+  /*
+     Gather global vector, using the 2-step process
+        DMLocalToGlobalBegin(),DMLocalToGlobalEnd().
+
+     NOTE (2): We need to use ADD_VALUES if boundaries are not of type DM_BOUNDARY_NONE or 
+               DM_BOUNDARY_GHOSTED, meaning we should also zero F before addition (see (1) above).
+  */
+  ierr = DMLocalToGlobalBegin(da,localF,ADD_VALUES,F);CHKERRQ(ierr);
+  ierr = DMLocalToGlobalEnd(da,localF,ADD_VALUES,F);CHKERRQ(ierr);
+
+  /*
+     Restore vectors
+  */
+  ierr = DMDAVecRestoreArray(da,localF,&f);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
+  ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode RHSFunctionActive(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
+{
+  AppCtx         *appctx = (AppCtx*)ptr;
+  DM             da;
+  PetscErrorCode ierr;
+  PetscInt       i,j,xs,ys,xm,ym,gxs,gys,gxm,gym,Mx,My;
+  PetscReal      hx,hy,sx,sy;
+  AField         **f_a = appctx->f_a,**u_a = appctx->u_a;
+  adouble        uc,uxx,uyy,vc,vxx,vyy;
+  Field          **u,**f;
+  Vec            localU,localF;
+
+  PetscFunctionBegin;
+  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
+  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
+  ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localF);CHKERRQ(ierr);
+
+  /*
+     Scatter ghost points to local vector,using the 2-step process
+        DMGlobalToLocalBegin(),DMGlobalToLocalEnd().
+     By placing code between these two statements, computations can be
+     done while messages are in transition.
+  */
+  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
+  ierr = VecZeroEntries(F);CHKERRQ(ierr); // NOTE (1): See (2) below
+  ierr = DMGlobalToLocalBegin(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
+
+  /*
+     Get pointers to vector data
+  */
+  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);
+
+  /*
+     Get local and ghosted grid boundaries
+  */
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+
+  /*
+     Compute function over the locally owned part of the grid
+  */
   trace_on(tag);  // ----------------------------------------------- Start of active section
 
   /*
@@ -220,102 +344,9 @@ PetscErrorCode RHSLocalActive(DM da,Field **f,Field **u,void *ptr)
   }
   trace_off();  // ----------------------------------------------- End of active section
 
-  PetscFunctionReturn(0);
-}
-
-PetscErrorCode RHSLocalPassive(DM da,Field **f,Field **u,void *ptr)
-{
-  PetscErrorCode ierr;
-  AppCtx         *appctx = (AppCtx*)ptr;
-  PetscInt       i,j,xs,ys,xm,ym,Mx,My;
-  PetscReal      hx,hy,sx,sy;
-  PetscScalar    uc,uxx,uyy,vc,vxx,vyy;
-
-  PetscFunctionBeginUser;
-  ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-  ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
-  hx = 2.50/(PetscReal)(Mx);sx = 1.0/(hx*hx);
-  hy = 2.50/(PetscReal)(My);sy = 1.0/(hy*hy);
-  for (j=ys; j<ys+ym; j++) {
-    for (i=xs; i<xs+xm; i++) {
-      uc        = u[j][i].u;
-      uxx       = (-2.0*uc + u[j][i-1].u + u[j][i+1].u)*sx;
-      uyy       = (-2.0*uc + u[j-1][i].u + u[j+1][i].u)*sy;
-      vc        = u[j][i].v;
-      vxx       = (-2.0*vc + u[j][i-1].v + u[j][i+1].v)*sx;
-      vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*sy;
-      f[j][i].u = appctx->D1*(uxx + uyy) - uc*vc*vc + appctx->gamma*(1.0 - uc);
-      f[j][i].v = appctx->D2*(vxx + vyy) + uc*vc*vc - (appctx->gamma + appctx->kappa)*vc;
-    }
-  }
-  PetscFunctionReturn(0);
-}
-
-/* ------------------------------------------------------------------- */
-/*
-   RHSFunction - Evaluates nonlinear function, F(x).
-
-                 If the -no_annotations option is not invoked then
-                 annotations are made for ADOL-C automatic
-                 differentiation using an `AField` struct.
-
-   Input Parameters:
-.  ts - the TS context
-.  X - input vector
-.  ptr - optional user-defined context, as set by TSSetRHSFunction()
-
-   Output Parameter:
-.  F - function vector
- */
-PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
-{
-  AppCtx         *appctx = (AppCtx*)ptr;
-  DM             da;
-  PetscErrorCode ierr;
-  PetscInt       xm,ym;
-  Field          **u,**f;
-  Vec            localU,localF;
-
-  PetscFunctionBegin;
-  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
-  ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
-  ierr = DMGetLocalVector(da,&localF);CHKERRQ(ierr);
-
-  /*
-     Scatter ghost points to local vector,using the 2-step process
-        DMGlobalToLocalBegin(),DMGlobalToLocalEnd().
-     By placing code between these two statements, computations can be
-     done while messages are in transition.
-  */
-  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
-  ierr = VecZeroEntries(F);CHKERRQ(ierr); // NOTE (1): See (2) below
-  ierr = DMGlobalToLocalBegin(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,F,INSERT_VALUES,localF);CHKERRQ(ierr);
-
-  /*
-     Get pointers to vector data
-  */
-  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da,localF,&f);CHKERRQ(ierr);
-
-  /*
-     Get local grid boundaries
-  */
-  ierr = DMDAGetCorners(da,NULL,NULL,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
-
-  /*
-     Compute function over the locally owned part of the grid
-  */
-  if (!appctx->adctx->no_an) {
-    ierr = RHSLocalActive(da,f,u,appctx);CHKERRQ(ierr);
-
-    /* Test zeroth order scalar evaluation in ADOL-C gives the same result */
-    if (appctx->adctx->zos) {
-      ierr = TestZOS2d(da,f,u,appctx);CHKERRQ(ierr); // FIXME: Why does this give nonzero?
-    }
-  } else {
-    ierr = RHSLocalPassive(da,f,u,appctx);CHKERRQ(ierr);
+  /* Test zeroth order scalar evaluation in ADOL-C gives the same result */
+  if (appctx->adctx->zos) {
+    ierr = TestZOS2d(da,f,u,appctx);CHKERRQ(ierr); // FIXME: Why does this give nonzero?
   }
 
   /*

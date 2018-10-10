@@ -117,6 +117,11 @@ int main(int argc,char **argv)
     appctx.udot_a = udot_a;
 
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+       Trace function just once
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+    ierr = IFunction(ts,0.,x,xdot,r,&appctx);CHKERRQ(ierr);
+
+    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
       In the case where ADOL-C generates the Jacobian in compressed format,
       seed and recovery matrices are required. Since the sparsity structure
       of the Jacobian does not change over the course of the time
@@ -124,9 +129,6 @@ int main(int argc,char **argv)
       these objects once.
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     if (adctx->sparse) {
-
-      // Trace function evaluation, so that ADOL-C has tape to read from
-      ierr = IFunction(ts,1.0,x,xdot,r,&appctx);CHKERRQ(ierr); // FIXME
 
       // Generate sparsity pattern and create an associated colouring
       ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
@@ -181,11 +183,6 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = InitialConditions(da,x);CHKERRQ(ierr);
   ierr = TSSetSolution(ts,x);CHKERRQ(ierr);
-
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Trace function just once
-   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = IFunction(ts,0.,x,xdot,r,&appctx);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set solver options

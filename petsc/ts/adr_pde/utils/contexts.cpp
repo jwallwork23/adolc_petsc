@@ -23,23 +23,9 @@ typedef struct {
 #define APPCTX
 typedef struct {
   PetscReal D1,D2,gamma,kappa;
-  PetscBool no_an;
+  PetscBool no_an,aijpc;
   AField    **u_a,**f_a,**udot_a;
   AdolcCtx  *adctx;
-  Mat       Jac;                // Note: This is only needed in 'by hand' matrix-free version
   PetscInt  m,n;                // Dependent/indpendent variables (#local nodes, inc. ghost points)
 } AppCtx;
-#endif
-
-/* Matrix (free) context */
-#ifndef MATAPPCTX
-#define MATAPPCTX
-typedef struct {
-  PetscReal time;
-  Vec       X;
-  Vec       Xdot;
-  PetscReal shift;
-  AppCtx    *actx;
-  TS        ts;
-} MatAppCtx;
 #endif

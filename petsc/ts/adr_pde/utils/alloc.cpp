@@ -4,6 +4,7 @@ extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]);
 extern PetscErrorCode ConvertTo1Array2d(DM da,Field **u,PetscScalar *u_vec); // TODO:Generalise
 extern PetscErrorCode CombineTo1Array2d(DM da,Field **u,Field **v,PetscScalar *u_vec); // TODO: Generalise
 extern PetscErrorCode InitialConditions(DM,Vec);
+extern PetscErrorCode InitializeLambda(DM,Vec,PetscReal,PetscReal);
 
 
 /*
@@ -111,3 +112,25 @@ PetscErrorCode InitialConditions(DM da,Vec U)
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode InitializeLambda(DM da,Vec lambda,PetscReal x,PetscReal y)
+{
+   PetscInt i,j,Mx,My,xs,ys,xm,ym;
+   PetscErrorCode ierr;
+   Field **l;
+   PetscFunctionBegin;
+
+   ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
+   /* locate the global i index for x and j index for y */
+   i = (PetscInt)(x*(Mx-1));
+   j = (PetscInt)(y*(My-1));
+   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
+
+   if (xs <= i && i < xs+xm && ys <= j && j < ys+ym) {
+     /* the i,j vertex is on this process */
+     ierr = DMDAVecGetArray(da,lambda,&l);CHKERRQ(ierr);
+     l[j][i].u = 1.0;
+     l[j][i].v = 1.0;
+     ierr = DMDAVecRestoreArray(da,lambda,&l);CHKERRQ(ierr);
+   }
+   PetscFunctionReturn(0);
+}
