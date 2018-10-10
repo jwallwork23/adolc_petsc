@@ -56,6 +56,7 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
   fos_forward(tag,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
 
+/*
   // TODO: temp --------------------------------------
   PetscInt xs,ys,xm,ym,gxs,gys,gxm,gym,d,j,k = 0;
   ierr = DMDAGetCorners(da,&xs,&ys,NULL,&xm,&ym,NULL);CHKERRQ(ierr);
@@ -71,11 +72,12 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
     }
   }
   // -------------------------------------------------- 
-/*
+*/
+
   for (i=0; i<m; i++) {
     ierr = VecSetValuesLocal(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
   }
-*/
+
   ierr = PetscFree(action);CHKERRQ(ierr);
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
