@@ -219,16 +219,18 @@ int main(int argc,char **argv)
   ierr = InitialConditions(da,x);CHKERRQ(ierr);
   ierr = TSSetSolution(ts,x);CHKERRQ(ierr);
 
-  /*
-    Have the TS save its trajectory so that TSAdjointSolve() may be used
-  */
-  if (!forwardonly) { ierr = TSSetSaveTrajectory(ts);CHKERRQ(ierr); }
-
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Set solver options
+    Have the TS save its trajectory so that TSAdjointSolve() may be used
+    and set solver options
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = TSSetMaxTime(ts,200.0);CHKERRQ(ierr);
-  ierr = TSSetTimeStep(ts,0.5);CHKERRQ(ierr);
+  if (!forwardonly) {
+    ierr = TSSetSaveTrajectory(ts);CHKERRQ(ierr);
+    ierr = TSSetMaxTime(ts,200.0);CHKERRQ(ierr);
+    ierr = TSSetTimeStep(ts,0.5);CHKERRQ(ierr);
+  } else {
+    ierr = TSSetMaxTime(ts,2000.0);CHKERRQ(ierr);
+    ierr = TSSetTimeStep(ts,10);CHKERRQ(ierr);
+  }
   ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
   ierr = TSSetFromOptions(ts);CHKERRQ(ierr);
 

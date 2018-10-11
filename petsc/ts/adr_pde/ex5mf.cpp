@@ -68,6 +68,7 @@ int main(int argc,char **argv)
   ierr = DMCreateMatrix(da,&A);CHKERRQ(ierr);
   ierr = MatShellSetContext(A,&matctx);CHKERRQ(ierr);
   ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))JacobianVectorProduct);CHKERRQ(ierr);
+  ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void (*)(void))JacobianTransposeVectorProduct);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.X);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.Xdot);CHKERRQ(ierr);
 
@@ -78,7 +79,6 @@ int main(int argc,char **argv)
   ierr = TSSetType(ts,TSCN);CHKERRQ(ierr);
   ierr = TSSetDM(ts,da);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
-  ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
   ierr = DMDATSSetIFunctionLocal(da,INSERT_VALUES,(DMDATSIFunctionLocal)IFunctionLocalPassive,&appctx);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -117,6 +117,15 @@ int main(int argc,char **argv)
   appctx.udot_a = udot_a;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Trace function just once
+   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
+  adctx->no_an = PETSC_FALSE;appctx.adctx = adctx;
+  ierr = IFunction(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
+  ierr = IFunction2(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
+  ierr = PetscFree(adctx);CHKERRQ(ierr);
+
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set Jacobian. In this case, IJacobian simply acts to pass context
      information to the matrix-free Jacobian vector product.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -129,24 +138,17 @@ int main(int argc,char **argv)
   ierr = TSSetSolution(ts,x);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Trace function just once
-   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
-  adctx->no_an = PETSC_FALSE;appctx.adctx = adctx;
-  ierr = IFunction(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
-  ierr = IFunction2(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
-  ierr = PetscFree(adctx);CHKERRQ(ierr);
-
-  /*
     Have the TS save its trajectory so that TSAdjointSolve() may be used
-  */
-  if (!forwardonly) { ierr = TSSetSaveTrajectory(ts);CHKERRQ(ierr); }
-
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Set solver options
+    and set solver options
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = TSSetMaxTime(ts,2000.0);CHKERRQ(ierr);
-  ierr = TSSetTimeStep(ts,10);CHKERRQ(ierr);
+  if (!forwardonly) {
+    ierr = TSSetSaveTrajectory(ts);CHKERRQ(ierr);
+    ierr = TSSetMaxTime(ts,200.0);CHKERRQ(ierr);
+    ierr = TSSetTimeStep(ts,0.5);CHKERRQ(ierr);
+  } else {
+    ierr = TSSetMaxTime(ts,2000.0);CHKERRQ(ierr);
+    ierr = TSSetTimeStep(ts,10);CHKERRQ(ierr);
+  }
   ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
   ierr = TSSetFromOptions(ts);CHKERRQ(ierr);
 
@@ -188,5 +190,5 @@ int main(int argc,char **argv)
   ierr = DMDestroy(&da);CHKERRQ(ierr);
 
   ierr = PetscFinalize();
-  PetscFunctionReturn(0);
+  return ierr;
 }

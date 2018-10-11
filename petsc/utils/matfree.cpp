@@ -145,7 +145,7 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
       for (d=0; d<2; d++) {
         if ((i >= info.xs) && (i < info.xs+info.xm) && (j >= info.ys) && (j < info.ys+info.ym)) {
-          ierr = VecSetValuesLocal(Y,1,&k,&action[k],INSERT_VALUES);CHKERRQ(ierr);
+          ierr = VecSetValuesLocal(X,1,&k,&action[k],INSERT_VALUES);CHKERRQ(ierr);
         }
         k++;
       }
@@ -163,7 +163,7 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
       for (d=0; d<2; d++) {
         if ((i >= info.xs) && (i < info.xs+info.xm) && (j >= info.ys) && (j < info.ys+info.ym)) {
           action[k] *= mctx->shift;
-          ierr = VecSetValuesLocal(Y,1,&k,&action[k],ADD_VALUES);CHKERRQ(ierr);
+          ierr = VecSetValuesLocal(X,1,&k,&action[k],ADD_VALUES);CHKERRQ(ierr);
         }
         k++;
       }
