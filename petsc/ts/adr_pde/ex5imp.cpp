@@ -172,7 +172,7 @@ int main(int argc,char **argv)
      Set Jacobian
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if (!byhand) {
-    ierr = DMDATSSetIJacobianLocal(da,(DMDATSIJacobianLocal)IJacobianLocalAdolc,&appctx);CHKERRQ(ierr);
+    ierr = TSSetIJacobian(ts,NULL,NULL,IJacobianAdolc,&appctx);CHKERRQ(ierr);
   } else {
     ierr = DMDATSSetIJacobianLocal(da,(DMDATSIJacobianLocal)IJacobianLocalByHand,&appctx);CHKERRQ(ierr);
   }

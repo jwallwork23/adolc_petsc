@@ -498,7 +498,7 @@ PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx)
   /* Get extent of region owned by processor */
   ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
 
-  /* Convert to a 1-array */
+  /* Convert to a 1-array TODO: move this test into Jacobian call so this isn't necessary */
   ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++)

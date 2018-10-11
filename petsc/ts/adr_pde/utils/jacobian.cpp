@@ -2,7 +2,6 @@
 
 /* Implicit timestepping */
 extern PetscErrorCode IJacobianLocalByHand(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
-extern PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode IJacobianAdolc(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
 extern PetscErrorCode IJacobianMatFree(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A_shell,Mat B,void *ctx);
 extern PetscErrorCode IJacobianByHand(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat B,void *ctx);
@@ -90,24 +89,6 @@ PetscErrorCode IJacobianLocalByHand(DMDALocalInfo *info,PetscReal t,Field**u,Fie
     ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
     ierr = MatSetOption(B,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
   }
-  PetscFunctionReturn(0);
-}
-
-PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,PetscReal a,Mat A,Mat B,void *ptr)
-{
-  AppCtx         *appctx = (AppCtx*)ptr;
-  PetscErrorCode ierr;
-  PetscScalar    *u_vec;
-
-  PetscFunctionBegin;
-
-  /*
-    Convert array of structs to a 2-array and compute Jacobian
-  */
-  ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
-  ierr = ConvertTo1Array2d(info->da,u,u_vec);CHKERRQ(ierr);
-  ierr = AdolcComputeIJacobian(A,u_vec,a,appctx->adctx);CHKERRQ(ierr);
-  ierr = PetscFree(u_vec);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
