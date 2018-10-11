@@ -168,15 +168,17 @@ PetscErrorCode GetRecoveryMatrix(PetscScalar **S,unsigned int **sparsity,PetscIn
   Recover the values of a sparse matrix from a compressed foramt and insert these into a matrix
 
   Input parameters:
-  m - number of rows of matrix.
-  p - number of colors used in the compression of J (also the number of columns of R)
-  R - recovery matrix to use in the decompression procedure
-  C - compressed matrix to recover values from
+  mode - use INSERT_VALUES or ADD_VALUES, as required
+  m    - number of rows of matrix.
+  p    - number of colors used in the compression of J (also the number of columns of R)
+  R    - recovery matrix to use in the decompression procedure
+  C    - compressed matrix to recover values from
+  a    - shift value for implicit problems (select NULL or unity for explicit problems)
 
   Output parameter:
-  A - Mat to be populated with values from compressed matrix
+  A    - Mat to be populated with values from compressed matrix
 */
-PetscErrorCode RecoverJacobian(Mat A,PetscInt m,PetscInt p,PetscScalar **R,PetscScalar **C)
+PetscErrorCode RecoverJacobian(Mat A,InsertMode mode,PetscInt m,PetscInt p,PetscScalar **R,PetscScalar **C,PetscReal *a)
 {
   PetscErrorCode ierr;
   PetscInt       i,j,colour;
@@ -185,8 +187,11 @@ PetscErrorCode RecoverJacobian(Mat A,PetscInt m,PetscInt p,PetscScalar **R,Petsc
   for (i=0; i<m; i++) {
     for (colour=0; colour<p; colour++) {
       j = (PetscInt) R[i][colour];
-      if (j != -1)
-        ierr = MatSetValuesLocal(A,1,&i,1,&j,&C[i][colour],INSERT_VALUES);CHKERRQ(ierr);
+      if (j != -1) {
+        if (a)
+          C[i][colour] *= *a;
+        ierr = MatSetValuesLocal(A,1,&i,1,&j,&C[i][colour],mode);CHKERRQ(ierr);
+      }
     }
   }
   PetscFunctionReturn(0);

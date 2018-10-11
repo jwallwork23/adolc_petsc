@@ -102,34 +102,13 @@ PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field**u,Fiel
   PetscFunctionBegin;
 
   /*
-    Convert array of structs to a 2-array, so this can be read by ADOL-C
-
-    TODO: Generalise and then put these allocations into Jacobian computation function
+    Convert array of structs to a 2-array and compute Jacobian
   */
   ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
   ierr = ConvertTo1Array2d(info->da,u,u_vec);CHKERRQ(ierr);
-
-  //ierr = PetscMalloc1(2*appctx->adctx->n,&u_vec);CHKERRQ(ierr);
-  //ierr = CombineTo1Array2d(info->da,u,udot,u_vec);CHKERRQ(ierr);
-
-  /*
-    For an implicit Jacobian we may use the rule that
-       G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
-    where a = d(xdot)/dx is a constant.
-
-    TODO: Combine in AdolcComputeIJacobian
-
-    First, calculate the -df/dx part using ADOL-C...
-  */
-  ierr = AdolcComputeRHSJacobian(A,u_vec,appctx->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeIJacobian(A,u_vec,a,appctx->adctx);CHKERRQ(ierr);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
-
-  /*
-    Assemble local matrix
-  */
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatShift(A,a);     /* Add a*M TODO: see above */
+  //ierr = MatShift(A,a);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -163,16 +142,12 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   /* Get pointers to vector data */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
 
-  /* Convert array of structs to a 2-array, so this can be read by ADOL-C */
+  /*
+    Convert array of structs to a 2-array and compute Jacobian
+  */
   ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
   ierr = ConvertTo1Array2d(da,u,u_vec);CHKERRQ(ierr);
-
-  /*
-    First, calculate the -df/dx part using ADOL-C
-
-    TODO: AdolcComputeIJacobian
-  */
-  ierr = AdolcComputeRHSJacobian(A,u_vec,appctx->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeIJacobian(A,u_vec,a,appctx->adctx);CHKERRQ(ierr);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*
@@ -180,13 +155,6 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   */
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
-
-  /*
-    Assemble local matrix
-  */
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatShift(A,a);CHKERRQ(ierr);     /* Add a*M */
   PetscFunctionReturn(0);
 }
 
@@ -456,13 +424,11 @@ PetscErrorCode RHSJacobianAdolc(TS ts,PetscReal t,Vec U,Mat A,Mat B,void *ctx)
   /* Get pointers to vector data */
   ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
 
-  /* Convert array of structs to a 1-array, so this can be read by ADOL-C */
+  /*
+    Convert array of structs to a 1-array and compute Jacobian
+  */
   ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
   ierr = ConvertTo1Array2d(da,u,u_vec);CHKERRQ(ierr);
-
-  /*
-    Compute Jacobian using ADOL-C
-  */
   ierr = AdolcComputeRHSJacobian(A,u_vec,appctx->adctx);CHKERRQ(ierr);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
@@ -471,12 +437,5 @@ PetscErrorCode RHSJacobianAdolc(TS ts,PetscReal t,Vec U,Mat A,Mat B,void *ctx)
   */
   ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
-
-  /*
-    Assemble local matrix
-  */
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
-
