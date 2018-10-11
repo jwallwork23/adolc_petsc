@@ -31,7 +31,6 @@ int main(int argc,char **argv)
   AppCtx         appctx;
   AdolcCtx       *adctx;
   Vec            lambda[1];
-  PetscScalar    *x_ptr;
   PetscBool      forwardonly=PETSC_FALSE,implicitform=PETSC_FALSE,byhand=PETSC_FALSE;
   PetscInt       gxs,gys,gxm,gym,i,dofs = 2,ctrl[3] = {0,0,0};
   AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL,**udot_a = NULL,*udot_c = NULL;
@@ -39,7 +38,6 @@ int main(int argc,char **argv)
   unsigned int   **JP = NULL;
   ISColoring     iscoloring;
   MPI_Comm       comm = MPI_COMM_WORLD;
-  //PetscReal      norm;  // FIXME: Cost gradient norm below
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
@@ -221,16 +219,18 @@ int main(int argc,char **argv)
   ierr = InitialConditions(da,x);CHKERRQ(ierr);
   ierr = TSSetSolution(ts,x);CHKERRQ(ierr);
 
-  /*
-    Have the TS save its trajectory so that TSAdjointSolve() may be used
-  */
-  if (!forwardonly) { ierr = TSSetSaveTrajectory(ts);CHKERRQ(ierr); }
-
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Set solver options
+    Have the TS save its trajectory so that TSAdjointSolve() may be used
+    and set solver options
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = TSSetMaxTime(ts,200.0);CHKERRQ(ierr);
-  ierr = TSSetTimeStep(ts,0.5);CHKERRQ(ierr);
+  if (!forwardonly) {
+    ierr = TSSetSaveTrajectory(ts);CHKERRQ(ierr);
+    ierr = TSSetMaxTime(ts,200.0);CHKERRQ(ierr);
+    ierr = TSSetTimeStep(ts,0.5);CHKERRQ(ierr);
+  } else {
+    ierr = TSSetMaxTime(ts,2000.0);CHKERRQ(ierr);
+    ierr = TSSetTimeStep(ts,10);CHKERRQ(ierr);
+  }
   ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
   ierr = TSSetFromOptions(ts);CHKERRQ(ierr);
 
@@ -244,13 +244,10 @@ int main(int argc,char **argv)
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = VecDuplicate(x,&lambda[0]);CHKERRQ(ierr);
     /*   Reset initial conditions for the adjoint integration */
-    ierr = VecGetArray(lambda[0],&x_ptr);CHKERRQ(ierr);
     ierr = InitializeLambda(da,lambda[0],0.5,0.5);CHKERRQ(ierr);
     ierr = TSSetCostGradients(ts,1,lambda,NULL);CHKERRQ(ierr);
     ierr = TSAdjointSolve(ts);CHKERRQ(ierr);
-    //ierr = TSGetCostGradients(ts,NULL,&lambda,NULL);CHKERRQ(ierr);  // FIXME
-    //ierr = VecNorm(lambda,NORM_2,&norm);CHKERRQ(ierr);
-    //ierr = PetscPrintf(comm,"Norm of adjoint solution: %.4e\n",norm);CHKERRQ(ierr);
+    //ierr = VecView(lambda[0],PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
     ierr = VecDestroy(&lambda[0]);CHKERRQ(ierr);
   }
 
@@ -261,10 +258,10 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&r);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
-  if (adctx->sparse)
-    myfree2(Rec);
-  myfree2(Seed);
   if (!adctx->no_an) {
+    if (adctx->sparse)
+      myfree2(Rec);
+    myfree2(Seed);
     udot_a += gys;
     f_a += gys;
     u_a += gys;

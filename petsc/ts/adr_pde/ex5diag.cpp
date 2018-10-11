@@ -1,49 +1,39 @@
-static char help[] = "Demonstrates automatic, matrix-free Jacobian generation using ADOL-C for a time-dependent PDE in 2d, solved using implicit timestepping.\n";
+static char help[] = "Demonstrates automatic Jacobian diagonal generation using ADOL-C for a time-dependent PDE in 2d, solved using implicit timestepping.\n";
 
-/*
-  See ex5.c for details on the equation.
-
-  Here implicit Crank-Nicolson timestepping is used to solve the same problem as in ex5.c. Another
-  key difference is that functions are calculated in a local sense, using the local implementations
-  IFunctionLocalPassive and IFunctionLocalActive, as in ex5imp. These are passed to the TS solver
-  using DMTSSetIFunctionLocal. The Jacobian is generated matrix-free using MyMult, which overloads the
-  MatMult operation. The function IJacobian acts to pass TS context information to the matrix-free
-  context.
-*/
-
-#include <petscsys.h>
 #include <petscdm.h>
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>            // Includes ADOL-C
-#include "../../utils/matfree.cpp"  // Includes context structures and matrix free drivers
+#include <adolc/adolc_sparse.h>     // Includes ADOL-C sparse drivers
 #include "utils/jacobian.cpp"
 
 int main(int argc,char **argv)
 {
   TS             ts;                  /* ODE integrator */
-  Vec            x,r;                 /* solution, residual */
+  Vec            x,r,xdot;            /* solution, residual, derivative */
   PetscErrorCode ierr;
   DM             da;
   AppCtx         appctx;              /* Application context */
-  MatCtx         matctx;              /* Matrix (free) context */
   AdolcCtx       *adctx;
-  Vec            lambda[1];
-  PetscBool      forwardonly=PETSC_FALSE;
-  Mat            A;                   /* (Matrix free) Jacobian matrix */
-  PetscInt       gys,gxm,gym;
+  PetscInt       gys,gxm,gym,i,dofs = 2,ctrl[3] = {0,0,0};
   AField         **u_a = NULL,**f_a = NULL,**udot_a = NULL,*u_c = NULL,*f_c = NULL,*udot_c = NULL;
+  PetscScalar    **Seed = NULL,**Rec = NULL,*rec = NULL,*u_vec;
+  unsigned int   **JP = NULL;
+  ISColoring     iscoloring;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   PetscInitialize(&argc,&argv,(char*)0,help);
-  ierr = PetscOptionsGetBool(NULL,NULL,"-forwardonly",&forwardonly,NULL);CHKERRQ(ierr);
+  ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
+  adctx->no_an = PETSC_FALSE;
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse",&adctx->sparse,NULL);CHKERRQ(ierr);
   PetscFunctionBeginUser;
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
   appctx.gamma = .024;
   appctx.kappa = .06;
+  appctx.adctx = adctx;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
@@ -60,17 +50,7 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMCreateGlobalVector(da,&x);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&r);CHKERRQ(ierr);
-
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    Create matrix free context
-    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = DMSetMatType(da,MATSHELL);CHKERRQ(ierr);
-  ierr = DMCreateMatrix(da,&A);CHKERRQ(ierr);
-  ierr = MatShellSetContext(A,&matctx);CHKERRQ(ierr);
-  ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))JacobianVectorProduct);CHKERRQ(ierr);
-  ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void (*)(void))JacobianTransposeVectorProduct);CHKERRQ(ierr);
-  ierr = VecDuplicate(x,&matctx.X);CHKERRQ(ierr);
-  ierr = VecDuplicate(x,&matctx.Xdot);CHKERRQ(ierr);
+  ierr = VecDuplicate(x,&xdot);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
@@ -93,8 +73,8 @@ int main(int argc,char **argv)
           It is also important to deconstruct and free memory appropriately.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMDAGetGhostCorners(da,NULL,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  matctx.m = 2*gxm*gym;
-  matctx.n = 2*gxm*gym;
+  adctx->m = dofs*gxm*gym;
+  adctx->n = dofs*gxm*gym;
 
   // Create contiguous 1-arrays of AFields
   u_c = new AField[gxm*gym];
@@ -119,17 +99,62 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Trace function just once
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
-  adctx->no_an = PETSC_FALSE;appctx.adctx = adctx;
-  ierr = IFunction(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
-  ierr = IFunction2(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
-  ierr = PetscFree(adctx);CHKERRQ(ierr);
+  ierr = IFunction(ts,1.,x,xdot,r,&appctx);CHKERRQ(ierr);
+  ierr = IFunction2(ts,1.,x,xdot,r,&appctx);CHKERRQ(ierr);
+
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    In the case where ADOL-C generates the Jacobian in compressed format,
+    seed and recovery matrices are required. Since the sparsity structure
+    of the Jacobian does not change over the course of the time
+    integration, we can save computational effort by only generating
+    these objects once.
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  if (adctx->sparse) {
+
+    // Generate sparsity pattern and create an associated colouring
+    ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
+    JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
+    jac_pat(1,adctx->m,adctx->n,u_vec,JP,ctrl);
+    if (adctx->sparse_view) {
+      ierr = PrintSparsity(MPI_COMM_WORLD,adctx->m,JP);CHKERRQ(ierr);
+    }
+
+    // Extract colouring
+    ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
+    ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
+
+    // Generate seed matrix and recovery vector
+    Seed = myalloc2(adctx->n,adctx->p);
+    ierr = PetscMalloc1(adctx->m,&rec);CHKERRQ(ierr);
+    ierr = GenerateSeedMatrixPlusRecovery(iscoloring,Seed,rec);CHKERRQ(ierr);
+    ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+    if (adctx->sparse_view) {
+      ierr = PrintMat(MPI_COMM_WORLD,"Seed matrix:",adctx->n,adctx->p,Seed);CHKERRQ(ierr);
+    }
+
+    // Generate recovery matrix
+    Rec = myalloc2(adctx->m,adctx->p);
+    ierr = GetRecoveryMatrix(Seed,JP,adctx->m,adctx->p,Rec);CHKERRQ(ierr);
+
+    // Store results and free workspace
+    adctx->Rec = Rec;
+    adctx->rec = rec;
+    for (i=0;i<adctx->m;i++)
+      free(JP[i]);
+    free(JP);
+    ierr = PetscFree(u_vec);CHKERRQ(ierr);
+  } else {
+      adctx->p = adctx->n;
+      Seed = myalloc2(adctx->n,adctx->p);
+      ierr = Subidentity(adctx->n,0,Seed);CHKERRQ(ierr);
+  }
+  adctx->Seed = Seed;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set Jacobian. In this case, IJacobian simply acts to pass context
      information to the matrix-free Jacobian vector product.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = TSSetIJacobian(ts,A,A,IJacobianMatFree,&appctx);CHKERRQ(ierr);
+  ierr = TSSetIJacobian(ts,NULL,NULL,IJacobianAdolcDiagonal,&appctx);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set initial conditions
@@ -138,17 +163,10 @@ int main(int argc,char **argv)
   ierr = TSSetSolution(ts,x);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    Have the TS save its trajectory so that TSAdjointSolve() may be used
-    and set solver options
+    Set solver options
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  if (!forwardonly) {
-    ierr = TSSetSaveTrajectory(ts);CHKERRQ(ierr);
-    ierr = TSSetMaxTime(ts,200.0);CHKERRQ(ierr);
-    ierr = TSSetTimeStep(ts,0.5);CHKERRQ(ierr);
-  } else {
-    ierr = TSSetMaxTime(ts,2000.0);CHKERRQ(ierr);
-    ierr = TSSetTimeStep(ts,10);CHKERRQ(ierr);
-  }
+  ierr = TSSetMaxTime(ts,2000.0);CHKERRQ(ierr);
+  ierr = TSSetTimeStep(ts,10);CHKERRQ(ierr);
   ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
   ierr = TSSetFromOptions(ts);CHKERRQ(ierr);
 
@@ -156,29 +174,20 @@ int main(int argc,char **argv)
      Solve ODE system
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSSolve(ts,x);CHKERRQ(ierr);
-  if (!forwardonly) {
-    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-       Start the Adjoint model
-       - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-    ierr = VecDuplicate(x,&lambda[0]);CHKERRQ(ierr);
-    /*   Reset initial conditions for the adjoint integration */
-    ierr = InitializeLambda(da,lambda[0],0.5,0.5);CHKERRQ(ierr);
-    ierr = TSSetCostGradients(ts,1,lambda,NULL);CHKERRQ(ierr);
-    ierr = TSAdjointSolve(ts);CHKERRQ(ierr);
-    //ierr = VecView(lambda[0],PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-    ierr = VecDestroy(&lambda[0]);CHKERRQ(ierr);
-  }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Free work space.  All PETSc objects should be destroyed when they
      are no longer needed.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = VecDestroy(&xdot);CHKERRQ(ierr);
   ierr = VecDestroy(&r);CHKERRQ(ierr);
-  ierr = VecDestroy(&matctx.X);CHKERRQ(ierr);
-  ierr = VecDestroy(&matctx.Xdot);CHKERRQ(ierr);
-  ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
+  if (adctx->sparse) {
+    ierr = PetscFree(rec);CHKERRQ(ierr);
+    myfree2(Rec);
+    myfree2(Seed);
+  }
   udot_a += gys;
   f_a += gys;
   u_a += gys;
@@ -189,6 +198,7 @@ int main(int argc,char **argv)
   delete[] f_c;
   delete[] u_c;
   ierr = DMDestroy(&da);CHKERRQ(ierr);
+  ierr = PetscFree(adctx);CHKERRQ(ierr);
 
   ierr = PetscFinalize();
   return ierr;
