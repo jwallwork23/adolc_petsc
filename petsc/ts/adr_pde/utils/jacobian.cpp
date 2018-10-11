@@ -108,7 +108,6 @@ PetscErrorCode IJacobianLocalAdolc(DMDALocalInfo *info,PetscReal t,Field**u,Fiel
   ierr = ConvertTo1Array2d(info->da,u,u_vec);CHKERRQ(ierr);
   ierr = AdolcComputeIJacobian(A,u_vec,a,appctx->adctx);CHKERRQ(ierr);
   ierr = PetscFree(u_vec);CHKERRQ(ierr);
-  //ierr = MatShift(A,a);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -123,7 +122,6 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   DM             da;
   PetscErrorCode ierr;
   PetscScalar    *u_vec;
-  Field          **u;
   Vec            localU;
 
   PetscFunctionBegin;
@@ -140,20 +138,17 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
 
   /* Get pointers to vector data */
-  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = VecGetArray(localU,&u_vec);CHKERRQ(ierr);
 
   /*
-    Convert array of structs to a 2-array and compute Jacobian
+    Compute Jacobian
   */
-  ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
-  ierr = ConvertTo1Array2d(da,u,u_vec);CHKERRQ(ierr);
   ierr = AdolcComputeIJacobian(A,u_vec,a,appctx->adctx);CHKERRQ(ierr);
-  ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*
      Restore vectors
   */
-  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = VecRestoreArray(localU,&u_vec);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
@@ -405,7 +400,6 @@ PetscErrorCode RHSJacobianAdolc(TS ts,PetscReal t,Vec U,Mat A,Mat B,void *ctx)
   DM             da;
   PetscErrorCode ierr;
   PetscScalar    *u_vec;
-  Field          **u;
   Vec            localU;
 
   PetscFunctionBegin;
@@ -422,20 +416,17 @@ PetscErrorCode RHSJacobianAdolc(TS ts,PetscReal t,Vec U,Mat A,Mat B,void *ctx)
   ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
 
   /* Get pointers to vector data */
-  ierr = DMDAVecGetArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = VecGetArray(localU,&u_vec);CHKERRQ(ierr);
 
   /*
-    Convert array of structs to a 1-array and compute Jacobian
+    Compute Jacobian
   */
-  ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
-  ierr = ConvertTo1Array2d(da,u,u_vec);CHKERRQ(ierr);
   ierr = AdolcComputeRHSJacobian(A,u_vec,appctx->adctx);CHKERRQ(ierr);
-  ierr = PetscFree(u_vec);CHKERRQ(ierr);
 
   /*
      Restore vectors
   */
-  ierr = DMDAVecRestoreArrayRead(da,localU,&u);CHKERRQ(ierr);
+  ierr = VecRestoreArray(localU,&u_vec);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }

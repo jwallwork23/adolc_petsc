@@ -29,7 +29,7 @@ int main(int argc,char **argv)
   AdolcCtx       *adctx;
   Mat            A;                   /* (Matrix free) Jacobian matrix */
   PetscInt       gys,gxm,gym;
-  AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
+  AField         **u_a = NULL,**f_a = NULL,**udot_a = NULL,*u_c = NULL,*f_c = NULL,*udot_c = NULL;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
@@ -95,18 +95,22 @@ int main(int argc,char **argv)
   // Create contiguous 1-arrays of AFields
   u_c = new AField[gxm*gym];
   f_c = new AField[gxm*gym];
+  udot_c = new AField[gxm*gym];
 
   // Corresponding 2-arrays of AFields
   u_a = new AField*[gym];
   f_a = new AField*[gym];
+  udot_a = new AField*[gym];
 
   // Align indices between array types and endow ghost points
   ierr = AFieldGiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
   ierr = AFieldGiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
+  ierr = AFieldGiveGhostPoints2d(da,udot_c,&udot_a);CHKERRQ(ierr);
 
   // Store active variables in context
   appctx.u_a = u_a;
   appctx.f_a = f_a;
+  appctx.udot_a = udot_a;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set Jacobian. In this case, IJacobian simply acts to pass context
@@ -125,7 +129,8 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
   adctx->no_an = PETSC_FALSE;appctx.adctx = adctx;
-  ierr = IFunction(ts,0.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
+  ierr = IFunction(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
+  ierr = IFunction2(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
   ierr = PetscFree(adctx);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -151,10 +156,13 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
+  udot_a += gys;
   f_a += gys;
   u_a += gys;
+  delete[] udot_a;
   delete[] f_a;
   delete[] u_a;
+  delete[] udot_c;
   delete[] f_c;
   delete[] u_c;
   ierr = DMDestroy(&da);CHKERRQ(ierr);

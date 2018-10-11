@@ -43,7 +43,7 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
 
   /* Get local input vectors and extract data, x0 and x1*/
   ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
-
+  ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localX0);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localX1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
@@ -53,10 +53,9 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = VecGetArrayRead(localX0,&x0);CHKERRQ(ierr);
   ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
 
-  /* First, calculate action of the -df/dx part using ADOL-C */
+  /* dF/dx part */
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
   fos_forward(1,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
-  ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
       for (d=0; d<2; d++) {
@@ -67,17 +66,26 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
       }
     }
   }
-/*
-  for (i=0; i<m; i++) {
-    ierr = VecSetValuesLocal(Y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
-  }
-*/
-  ierr = PetscFree(action);CHKERRQ(ierr);
+  k = 0;
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
 
-  /* Second, shift by action of a*M TODO: Combine this above, using tag 2 */
-  ierr = VecAXPY(Y,mctx->shift,X);CHKERRQ(ierr);
+  /* a * dF/d(xdot) part */
+  fos_forward(2,m,n,0,x0,x1,NULL,action);
+  for (j=info.gys; j<info.gys+info.gym; j++) {
+    for (i=info.gxs; i<info.gxs+info.gxm; i++) {
+      for (d=0; d<2; d++) {
+        if ((i >= info.xs) && (i < info.xs+info.xm) && (j >= info.ys) && (j < info.ys+info.ym)) {
+          action[k] *= mctx->shift;
+          ierr = VecSetValuesLocal(Y,1,&k,&action[k],ADD_VALUES);CHKERRQ(ierr);
+        }
+        k++;
+      }
+    }
+  }
+  ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
+  ierr = PetscFree(action);CHKERRQ(ierr);
 
   /* Restore local vector */
   ierr = VecRestoreArray(localX1,&x1);CHKERRQ(ierr);
