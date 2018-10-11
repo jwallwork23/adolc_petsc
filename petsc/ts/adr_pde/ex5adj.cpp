@@ -34,7 +34,7 @@ int main(int argc,char **argv)
   PetscScalar    *x_ptr;
   PetscBool      forwardonly=PETSC_FALSE,implicitform=PETSC_FALSE,byhand=PETSC_FALSE;
   PetscInt       gxs,gys,gxm,gym,i,dofs = 2,ctrl[3] = {0,0,0};
-  AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL;
+  AField         **u_a = NULL,**f_a = NULL,*u_c = NULL,*f_c = NULL,**udot_a = NULL,*udot_c = NULL;
   PetscScalar    **Seed = NULL,**Rec = NULL,*u_vec;
   unsigned int   **JP = NULL;
   ISColoring     iscoloring;
@@ -107,27 +107,32 @@ int main(int argc,char **argv)
     // Create contiguous 1-arrays of AFields
     u_c = new AField[gxm*gym];
     f_c = new AField[gxm*gym];
+    udot_c = new AField[gxm*gym];
 
     // Corresponding 2-arrays of AFields
     u_a = new AField*[gym];
     f_a = new AField*[gym];
+    udot_a = new AField*[gym];
 
     // Align indices between array types and endow ghost points
     ierr = AFieldGiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
     ierr = AFieldGiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
+    ierr = AFieldGiveGhostPoints2d(da,udot_c,&udot_a);CHKERRQ(ierr);
 
     // Store active variables in context
     appctx.u_a = u_a;
     appctx.f_a = f_a;
+    appctx.udot_a = udot_a;
 
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-       Trace function just once
+       Trace function(s) just once
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
     if (!implicitform) {
       ierr = RHSFunctionActive(ts,1.0,x,r,&appctx);CHKERRQ(ierr);
     } else {
       ierr = IFunction(ts,1.0,x,xdot,r,&appctx);CHKERRQ(ierr);
+      ierr = IFunction2(ts,1.0,x,xdot,r,&appctx);CHKERRQ(ierr);
     }
 
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -260,8 +265,11 @@ int main(int argc,char **argv)
     myfree2(Rec);
   myfree2(Seed);
   if (!adctx->no_an) {
+    udot_a += gys;
     f_a += gys;
     u_a += gys;
+    delete[] udot_c;
+    delete[] udot_a;
     delete[] f_a;
     delete[] u_a;
     delete[] f_c;

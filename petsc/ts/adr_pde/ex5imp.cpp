@@ -127,7 +127,7 @@ int main(int argc,char **argv)
       integration, we can save computational effort by only generating
       these objects once.
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-    if (adctx->sparse) {
+    if (adctx->sparse) { // TODO: Different sparsity patterns for x and xdot
 
       // Generate sparsity pattern and create an associated colouring
       ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
@@ -172,7 +172,7 @@ int main(int argc,char **argv)
      Set Jacobian
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   if (!byhand) {
-    ierr = DMDATSSetIJacobianLocal(da,(DMDATSIJacobianLocal)IJacobianLocalAdolc,&appctx);CHKERRQ(ierr);
+    ierr = TSSetIJacobian(ts,NULL,NULL,IJacobianAdolc,&appctx);CHKERRQ(ierr);
   } else {
     ierr = DMDATSSetIJacobianLocal(da,(DMDATSIJacobianLocal)IJacobianLocalByHand,&appctx);CHKERRQ(ierr);
   }

@@ -1,8 +1,6 @@
 #include "contexts.cpp"
 
 extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]); // TODO: Generalise
-extern PetscErrorCode ConvertTo1Array2d(DM da,Field **u,PetscScalar *u_vec); // TODO:Generalise
-extern PetscErrorCode CombineTo1Array2d(DM da,Field **u,Field **v,PetscScalar *u_vec); // TODO: Generalise
 extern PetscErrorCode InitialConditions(DM,Vec);
 extern PetscErrorCode InitializeLambda(DM,Vec,PetscReal,PetscReal);
 
@@ -21,50 +19,6 @@ PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
     (*a2d)[j] = cgs + j*gxm - gxs;
   }
   *a2d -= gys;
-  PetscFunctionReturn(0);
-}
-
-/* 
-  Convert a 2-array Field defined on a DMDA to a 1-array TODO: Generalise
-*/
-PetscErrorCode ConvertTo1Array2d(DM da,Field **u,PetscScalar *u_vec)
-{
-  PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,gxs,gys,gxm,gym;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
-      u_vec[k++] = u[j][i].u;
-      u_vec[k++] = u[j][i].v;
-    }
-  }
-  PetscFunctionReturn(0);
-}
-
-/*
-  Convert two 2-array Fields defined on a DMDA to a 1-array TODO: Generalise
-*/
-PetscErrorCode CombineTo1Array2d(DM da,Field **u,Field **v,PetscScalar *u_vec)
-{
-  PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,gxs,gys,gxm,gym;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
-      u_vec[k++] = u[j][i].u;
-      u_vec[k++] = u[j][i].v;
-    }
-  }
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
-      u_vec[k++] = v[j][i].u;
-      u_vec[k++] = v[j][i].v;
-    }
-  }
   PetscFunctionReturn(0);
 }
 
