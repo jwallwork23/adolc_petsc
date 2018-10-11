@@ -11,6 +11,7 @@ static char help[] = "Demonstrates automatic, matrix-free Jacobian generation us
   context.
 */
 
+#include <petscsys.h>
 #include <petscdm.h>
 #include <petscdmda.h>
 #include <petscts.h>
@@ -27,6 +28,8 @@ int main(int argc,char **argv)
   AppCtx         appctx;              /* Application context */
   MatCtx         matctx;              /* Matrix (free) context */
   AdolcCtx       *adctx;
+  Vec            lambda[1];
+  PetscBool      forwardonly=PETSC_FALSE;
   Mat            A;                   /* (Matrix free) Jacobian matrix */
   PetscInt       gys,gxm,gym;
   AField         **u_a = NULL,**f_a = NULL,**udot_a = NULL,*u_c = NULL,*f_c = NULL,*udot_c = NULL;
@@ -35,6 +38,7 @@ int main(int argc,char **argv)
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   PetscInitialize(&argc,&argv,(char*)0,help);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-forwardonly",&forwardonly,NULL);CHKERRQ(ierr);
   PetscFunctionBeginUser;
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
@@ -133,6 +137,11 @@ int main(int argc,char **argv)
   ierr = IFunction2(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
   ierr = PetscFree(adctx);CHKERRQ(ierr);
 
+  /*
+    Have the TS save its trajectory so that TSAdjointSolve() may be used
+  */
+  if (!forwardonly) { ierr = TSSetSaveTrajectory(ts);CHKERRQ(ierr); }
+
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set solver options
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -145,6 +154,17 @@ int main(int argc,char **argv)
      Solve ODE system
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSSolve(ts,x);CHKERRQ(ierr);
+  if (!forwardonly) {
+    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+       Start the Adjoint model
+       - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+    ierr = VecDuplicate(x,&lambda[0]);CHKERRQ(ierr);
+    /*   Reset initial conditions for the adjoint integration */
+    ierr = InitializeLambda(da,lambda[0],0.5,0.5);CHKERRQ(ierr);
+    ierr = TSSetCostGradients(ts,1,lambda,NULL);CHKERRQ(ierr);
+    ierr = TSAdjointSolve(ts);CHKERRQ(ierr);
+    ierr = VecDestroy(&lambda[0]);CHKERRQ(ierr);
+  }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Free work space.  All PETSc objects should be destroyed when they

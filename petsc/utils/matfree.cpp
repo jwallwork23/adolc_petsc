@@ -134,8 +134,8 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(da,localX,&x);CHKERRQ(ierr);
-  ierr = VecGetArray(da,localY,&y);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(localX,&x);CHKERRQ(ierr);
+  ierr = VecGetArray(localY,&y);CHKERRQ(ierr);
 
   /* dF/dx part */
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
@@ -174,8 +174,8 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = PetscFree(action);CHKERRQ(ierr);
 
   /* Restore local vector */
-  ierr = VecRestoreArray(da,localY,&y);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(da,localX,&x);CHKERRQ(ierr);
+  ierr = VecRestoreArray(localY,&y);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(localX,&x);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localY);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localX);CHKERRQ(ierr);
   PetscFunctionReturn(0);
