@@ -67,8 +67,8 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
     }
   }
   k = 0;
-  ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
-  ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(Y);CHKERRQ(ierr); /* Note: Need to assemble between separate calls */
+  ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);   /*       to INSERT_VALUES and ADD_VALUES         */
 
   /* a * dF/d(xdot) part */
   fos_forward(2,m,n,0,x0,x1,NULL,action);
@@ -116,7 +116,7 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
 
   /* Get local input vectors and extract data, x0 and x1*/
   ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
-
+  ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localY0);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localY1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localY0);CHKERRQ(ierr);
@@ -126,19 +126,13 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   //ierr = DMGlobalToLocalEnd(da,mctx->Y,INSERT_VALUES,localY0);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,Y,INSERT_VALUES,localY1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,Y,INSERT_VALUES,localY1);CHKERRQ(ierr);
-  ierr = DMDAVecGetArrayRead(da,localY0,&y0);CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da,localY1,&y1);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(da,localY0,&y0);CHKERRQ(ierr);
+  ierr = VecGetArray(da,localY1,&y1);CHKERRQ(ierr);
 
-  /* Trace forward using independent variable values    TODO: This should be optional */
-  zos_forward(3,m,n,1,y0,NULL);
-
-  /* Compute action */
+  /* dF/dx part */
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
-  fos_reverse(3,m,n,y1,action);
-  ierr = VecRestoreArrayRead(Y,&y0);CHKERRQ(ierr);
-
-  /* Set values in vector */
-  ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
+  zos_forward(1,m,n,1,y0,NULL); // TODO: This should be optional
+  fos_reverse(1,m,n,y1,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
       for (d=0; d<2; d++) {
@@ -149,22 +143,31 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
       }
     }
   }
-/*
-  for (i=0; i<n; i++) {
-    ierr = VecSetValuesLocal(X,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
-  }
-*/
-  /* Free memory */
-  ierr = PetscFree(action);CHKERRQ(ierr);
-  ierr = VecAssemblyBegin(X);
-  ierr = VecAssemblyEnd(X);
+  k = 0;
+  ierr = VecAssemblyBegin(X);CHKERRQ(ierr); /* Note: Need to assemble between separate calls */
+  ierr = VecAssemblyEnd(X);CHKERRQ(ierr);   /*       to INSERT_VALUES and ADD_VALUES         */
 
-  /* Second, shift by action of a*M TODO: Combine this above*/
-  ierr = VecAXPY(X,mctx->shift,Y);CHKERRQ(ierr);
+  /* a * dF/d(xdot) part */
+  zos_forward(2,m,n,1,y0,NULL); // TODO: This should be optional
+  fos_reverse(2,m,n,y1,action);
+  for (j=info.gys; j<info.gys+info.gym; j++) {
+    for (i=info.gxs; i<info.gxs+info.gxm; i++) {
+      for (d=0; d<2; d++) {
+        if ((i >= info.xs) && (i < info.xs+info.xm) && (j >= info.ys) && (j < info.ys+info.ym)) {
+          action[k] *= mctx->shift;
+          ierr = VecSetValuesLocal(Y,1,&k,&action[k],ADD_VALUES);CHKERRQ(ierr);
+        }
+        k++;
+      }
+    }
+  }
+  ierr = VecAssemblyBegin(X);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(X);CHKERRQ(ierr);
+  ierr = PetscFree(action);CHKERRQ(ierr);
 
   /* Restore local vector */
-  ierr = DMDAVecRestoreArray(da,localY1,&y1);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArrayRead(da,localY0,&y0);CHKERRQ(ierr);
+  ierr = VecRestoreArray(da,localY1,&y1);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(da,localY0,&y0);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localY1);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localY0);CHKERRQ(ierr);
 
