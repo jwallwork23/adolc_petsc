@@ -16,6 +16,7 @@ static char help[] = "Demonstrates automatic, matrix-free Jacobian generation us
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>            // Includes ADOL-C
+#include <adolc/adolc_sparse.h>     // Includes ADOL-C sparse drivers
 #include "../../utils/matfree.cpp"  // Includes context structures and matrix free drivers
 #include "utils/jacobian.cpp"
 
@@ -31,14 +32,20 @@ int main(int argc,char **argv)
   Vec            lambda[1];
   PetscBool      forwardonly=PETSC_FALSE;
   Mat            A;                   /* (Matrix free) Jacobian matrix */
-  PetscInt       gys,gxm,gym;
+  PetscInt       gys,gxm,gym,i,dofs = 2,ctrl[3] = {0,0,0};
   AField         **u_a = NULL,**f_a = NULL,**udot_a = NULL,*u_c = NULL,*f_c = NULL,*udot_c = NULL;
+  PetscScalar    **Seed = NULL,*rec = NULL,*u_vec;
+  unsigned int   **JP = NULL;
+  ISColoring     iscoloring;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   PetscInitialize(&argc,&argv,(char*)0,help);
+  ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
+  adctx->no_an = PETSC_FALSE;appctx.adctx = adctx;
   ierr = PetscOptionsGetBool(NULL,NULL,"-forwardonly",&forwardonly,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse",&adctx->sparse,NULL);CHKERRQ(ierr);
   PetscFunctionBeginUser;
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
@@ -93,8 +100,8 @@ int main(int argc,char **argv)
           It is also important to deconstruct and free memory appropriately.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = DMDAGetGhostCorners(da,NULL,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  matctx.m = 2*gxm*gym;
-  matctx.n = 2*gxm*gym;
+  matctx.m = dofs*gxm*gym;adctx->m = matctx.m;
+  matctx.n = dofs*gxm*gym;adctx->n = matctx.n;
 
   // Create contiguous 1-arrays of AFields
   u_c = new AField[gxm*gym];
@@ -119,11 +126,47 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Trace function just once
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
-  adctx->no_an = PETSC_FALSE;appctx.adctx = adctx;
   ierr = IFunction(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
   ierr = IFunction2(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
-  ierr = PetscFree(adctx);CHKERRQ(ierr);
+
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    In the case where ADOL-C generates the Jacobian in compressed format,
+    seed and recovery matrices are required. Since the sparsity structure
+    of the Jacobian does not change over the course of the time
+    integration, we can save computational effort by only generating
+    these objects once.
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  if (adctx->sparse) {
+
+    // Generate sparsity pattern and create an associated colouring
+    ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
+    JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
+    jac_pat(1,adctx->m,adctx->n,u_vec,JP,ctrl);
+    if (adctx->sparse_view) {
+      ierr = PrintSparsity(MPI_COMM_WORLD,adctx->m,JP);CHKERRQ(ierr);
+    }
+
+    // Extract colouring
+    ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
+    ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
+
+    // Generate seed matrix and recovery vector
+    Seed = myalloc2(adctx->n,adctx->p);
+    ierr = PetscMalloc1(adctx->m,&rec);CHKERRQ(ierr);
+    ierr = GenerateSeedMatrixPlusRecovery(iscoloring,Seed,rec);CHKERRQ(ierr);
+    ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
+    if (adctx->sparse_view) {
+      ierr = PrintMat(MPI_COMM_WORLD,"Seed matrix:",adctx->n,adctx->p,Seed);CHKERRQ(ierr);
+    }
+
+    // Store results and free workspace
+    adctx->rec = rec;
+    for (i=0;i<adctx->m;i++)
+      free(JP[i]);
+    free(JP);
+    ierr = PetscFree(u_vec);CHKERRQ(ierr);
+    adctx->Seed = Seed;
+  }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set Jacobian. In this case, IJacobian simply acts to pass context
@@ -179,6 +222,10 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
+  if (adctx->sparse) {
+    ierr = PetscFree(rec);CHKERRQ(ierr);
+    myfree2(Seed);
+  }
   udot_a += gys;
   f_a += gys;
   u_a += gys;
@@ -189,6 +236,7 @@ int main(int argc,char **argv)
   delete[] f_c;
   delete[] u_c;
   ierr = DMDestroy(&da);CHKERRQ(ierr);
+  ierr = PetscFree(adctx);CHKERRQ(ierr);
 
   ierr = PetscFinalize();
   return ierr;

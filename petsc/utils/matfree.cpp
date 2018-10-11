@@ -55,6 +55,7 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
 
   /* dF/dx part */
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
+  //printf("%d,%d\n",m,n);
   fos_forward(1,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
@@ -136,6 +137,10 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = DMGlobalToLocalEnd(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
   ierr = VecGetArrayRead(localX,&x);CHKERRQ(ierr);
   ierr = VecGetArray(localY,&y);CHKERRQ(ierr);
+
+  ierr = VecView(localX,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+
+  // TODO: Debug. Form full Jacobian. Transpose it. Multiply on y. Check it matches.
 
   /* dF/dx part */
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);

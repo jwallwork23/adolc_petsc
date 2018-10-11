@@ -4,7 +4,7 @@ FFLAGS			=
 CXXFLAGS		= -std=c++11
 CPPFLAGS		=
 FPPFLAGS		=
-CLEANFILES		= ex5 ex5adj ex5imp ex5mf binaryoutput *.tap *.info *.txt *.o
+CLEANFILES		= ex5 ex5adj ex5diag ex5imp ex5mf binaryoutput *.tap *.info *.txt *.o
 
 INCLUDES		= -I./
 INCLUDES		+= -I${ADOLC_HOME}/ADOL-C/include
@@ -22,6 +22,10 @@ include ${PETSC_DIR}/lib/petsc/conf/rules
 #	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
 
 ex5: ex5.o
+	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
+	${RM} $^
+
+ex5diag: ex5diag.o
 	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
 	${RM} $^
 

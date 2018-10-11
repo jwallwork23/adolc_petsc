@@ -6,7 +6,7 @@
 #define ADOLCCTX
 typedef struct {
   PetscBool   zos,zos_view,no_an,sparse,sparse_view,sparse_view_done;
-  PetscScalar **Seed,**Rec;
+  PetscScalar **Seed,**Rec,*rec;
   PetscInt    m,n,p;
 } AdolcCtx;
 #endif

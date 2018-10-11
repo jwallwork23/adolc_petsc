@@ -1,6 +1,8 @@
 #include <petscdm.h>
 
-/*@C
+// TODO: Most of the arguments here can be stored in AdolcCtx
+
+/*
   Simple matrix printing
 
   Input parameters:
@@ -8,7 +10,7 @@
   name - name of matrix to print
   m,n  - number of rows and columns, respectively
   M    - matrix to print
-@*/
+*/
 PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,PetscScalar **M)
 {
   PetscErrorCode ierr;
@@ -25,7 +27,7 @@ PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,Pet
   PetscFunctionReturn(0);
 }
 
-/*@C
+/*
   Print sparsity pattern
 
   Input parameters:
@@ -35,7 +37,7 @@ PetscErrorCode PrintMat(MPI_Comm comm,const char* name,PetscInt m,PetscInt n,Pet
   Output parameter:
   sparsity - matrix sparsity pattern, typically computed using an ADOL-C function such as jac_pat or
   hess_pat
-@*/
+*/
 PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **sparsity)
 {
   PetscErrorCode ierr;
@@ -52,7 +54,7 @@ PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **sparsity)
   PetscFunctionReturn(0);
 }
 
-/*@C
+/*
   Extract an index set coloring from a sparsity pattern
 
   Input parameters:
@@ -65,7 +67,7 @@ PetscErrorCode PrintSparsity(MPI_Comm comm,PetscInt m,unsigned int **sparsity)
   Implementation works fine for DM_BOUNDARY_NONE or DM_BOUNDARY_GHOSTED. If DM_BOUNDARY_PERIODIC is
   used then implementation only currently works in parallel, where processors should not own two
   opposite boundaries which have been identified by the periodicity.
-@*/
+*/
 PetscErrorCode GetColoring(DM da,ISColoring *iscoloring)
 {
   PetscErrorCode         ierr;
@@ -75,7 +77,7 @@ PetscErrorCode GetColoring(DM da,ISColoring *iscoloring)
   PetscFunctionReturn(0);
 }
 
-/*@C
+/*
   Simple function to count the number of colors used in an index set coloring
 
   Input parameter:
@@ -83,7 +85,7 @@ PetscErrorCode GetColoring(DM da,ISColoring *iscoloring)
 
   Output parameter:
   p          - number of colors used in iscoloring
-@*/
+*/
 PetscErrorCode CountColors(ISColoring iscoloring,PetscInt *p)
 {
   PetscErrorCode ierr;
@@ -95,7 +97,7 @@ PetscErrorCode CountColors(ISColoring iscoloring,PetscInt *p)
   PetscFunctionReturn(0);
 }
 
-/*@C
+/*
   Generate a seed matrix defining the partition of columns of a matrix by a particular coloring,
   used for matrix compression
 
@@ -109,28 +111,28 @@ PetscErrorCode CountColors(ISColoring iscoloring,PetscInt *p)
   Before calling GenerateSeedMatrix, Seed should be allocated as a logically 2d array with number of
   rows equal to the matrix to be compressed and number of columns equal to the number of colors used
   in iscoloring.
-@*/
+*/
 PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscScalar **S)
 {
   PetscErrorCode ierr;
   IS             *is;
-  PetscInt       p,size,i,j;
+  PetscInt       p,size,colour,j;
   const PetscInt *indices;
 
   PetscFunctionBegin;
   ierr = ISColoringGetIS(iscoloring,&p,&is);CHKERRQ(ierr);
-  for (i=0; i<p; i++) {
-    ierr = ISGetLocalSize(is[i],&size);CHKERRQ(ierr);
-    ierr = ISGetIndices(is[i],&indices);CHKERRQ(ierr);
+  for (colour=0; colour<p; colour++) {
+    ierr = ISGetLocalSize(is[colour],&size);CHKERRQ(ierr);
+    ierr = ISGetIndices(is[colour],&indices);CHKERRQ(ierr);
     for (j=0; j<size; j++)
-      S[indices[j]][i] = 1.;
-    ierr = ISRestoreIndices(is[i],&indices);CHKERRQ(ierr);
+      S[indices[j]][colour] = 1.;
+    ierr = ISRestoreIndices(is[colour],&indices);CHKERRQ(ierr);
   }
   ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
-/*@C
+/*
   Establish a look-up matrix whose entries contain the column coordinates of the corresponding entry
   in a matrix which has been compressed using the coloring defined by some seed matrix
 
@@ -143,7 +145,7 @@ PetscErrorCode GenerateSeedMatrix(ISColoring iscoloring,PetscScalar **S)
 
   Output parameter:
   R        - the recovery matrix to be used for de-compression
-@*/
+*/
 PetscErrorCode GetRecoveryMatrix(PetscScalar **S,unsigned int **sparsity,PetscInt m,PetscInt p,PetscScalar **R)
 {
   PetscInt i,j,k,colour;
@@ -164,8 +166,45 @@ PetscErrorCode GetRecoveryMatrix(PetscScalar **S,unsigned int **sparsity,PetscIn
   PetscFunctionReturn(0);
 }
 
-/*@C
-  Recover the values of a sparse matrix from a compressed foramt and insert these into a matrix
+/*
+  Establish a look-up vector whose entries contain the colour used for that diagonal entry
+
+  TODO: Better description. Clearly we require m == n
+
+  Input parameters:
+  S        - the seed matrix defining the coloring
+  sparsity - the sparsity pattern of the matrix to be recovered, typically computed using an ADOL-C
+             function, such as jac_pat or hess_pat
+  m        - the number of rows of Seed (and the matrix to be recovered)
+  p        - the number of colors used (also the number of columns in Seed)
+
+  Output parameter:
+  R        - the recovery vector to be used for de-compression
+*/
+PetscErrorCode GenerateSeedMatrixPlusRecovery(ISColoring iscoloring,PetscScalar **S,PetscScalar *R)
+{
+  PetscErrorCode ierr;
+  IS             *is;
+  PetscInt       p,size,colour,j;
+  const PetscInt *indices;
+
+  PetscFunctionBegin;
+  ierr = ISColoringGetIS(iscoloring,&p,&is);CHKERRQ(ierr);
+  for (colour=0; colour<p; colour++) {
+    ierr = ISGetLocalSize(is[colour],&size);CHKERRQ(ierr);
+    ierr = ISGetIndices(is[colour],&indices);CHKERRQ(ierr);
+    for (j=0; j<size; j++) {
+      S[indices[j]][colour] = 1.;
+      R[indices[j]] = colour;
+    }
+    ierr = ISRestoreIndices(is[colour],&indices);CHKERRQ(ierr);
+  }
+  ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Recover the values of a sparse matrix from a compressed format and insert these into a matrix
 
   Input parameters:
   mode - use INSERT_VALUES or ADD_VALUES, as required
@@ -193,6 +232,34 @@ PetscErrorCode RecoverJacobian(Mat A,InsertMode mode,PetscInt m,PetscInt p,Petsc
         ierr = MatSetValuesLocal(A,1,&i,1,&j,&C[i][colour],mode);CHKERRQ(ierr);
       }
     }
+  }
+  PetscFunctionReturn(0);
+}
+
+/*
+  Recover the diagonal of the Jacobian from its compressed matrix format
+
+  Input parameters:
+  mode - use INSERT_VALUES or ADD_VALUES, as required
+  m    - number of rows of matrix.
+  R    - recovery vector to use in the decompression procedure
+  C    - compressed matrix to recover values from
+  a    - shift value for implicit problems (select NULL or unity for explicit problems)
+
+  Output parameter:
+  A    - Mat to be populated with values from compressed matrix
+*/
+PetscErrorCode RecoverDiagonal(Mat A,InsertMode mode,PetscInt m,PetscScalar *R,PetscScalar **C,PetscReal *a)
+{
+  PetscErrorCode ierr;
+  PetscInt       i,colour;
+
+  PetscFunctionBegin;
+  for (i=0; i<m; i++) {
+    colour = (PetscInt)R[i];
+    if (a)
+      C[i][colour] *= *a;
+    ierr = MatSetValuesLocal(A,1,&i,1,&i,&C[i][colour],mode);CHKERRQ(ierr);
   }
   PetscFunctionReturn(0);
 }
