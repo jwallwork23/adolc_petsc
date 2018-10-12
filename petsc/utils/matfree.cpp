@@ -138,10 +138,6 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = VecGetArrayRead(localX,&x);CHKERRQ(ierr);
   ierr = VecGetArray(localY,&y);CHKERRQ(ierr);
 
-  ierr = VecView(localX,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-
-  // TODO: Debug. Form full Jacobian. Transpose it. Multiply on y. Check it matches.
-
   /* dF/dx part */
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
   zos_forward(1,m,n,1,x,NULL); // TODO: This should be optional
