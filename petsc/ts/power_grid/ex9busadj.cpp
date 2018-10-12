@@ -197,6 +197,7 @@ PetscErrorCode SetInitialGuess(Vec X,Userctx *user)
   PetscFunctionReturn(0);
 }
 
+/*------------------------------------- TODO: Tracing here???-------------------------------------*/
 /* Computes F = [f(x,y);g(x,y)] */
 PetscErrorCode ResidualFunction(SNES snes,Vec X, Vec F, Userctx *user)
 {
@@ -318,6 +319,7 @@ PetscErrorCode ResidualFunction(SNES snes,Vec X, Vec F, Userctx *user)
   PetscFunctionReturn(0);
 }
 
+/*------------------------------------- TODO: Tracing here???-------------------------------------*/
 /* \dot{x} - f(x,y)
      g(x,y) = 0
  */
@@ -350,6 +352,7 @@ PetscErrorCode IFunction(TS ts,PetscReal t, Vec X, Vec Xdot, Vec F, Userctx *use
   PetscFunctionReturn(0);
 }
 
+/*------------------------------------- TODO: Tracing here???-------------------------------------*/
 /* This function is used for solving the algebraic system only during fault on and
    off times. It computes the entire F and then zeros out the part corresponding to
    differential equations
@@ -378,6 +381,7 @@ PetscErrorCode AlgFunction(SNES snes, Vec X, Vec F, void *ctx)
   PetscFunctionReturn(0);
 }
 
+/*------------------------------------- TODO: Still required???-------------------------------------*/
 PetscErrorCode PreallocateJacobian(Mat J, Userctx *user)
 {
   PetscErrorCode ierr;

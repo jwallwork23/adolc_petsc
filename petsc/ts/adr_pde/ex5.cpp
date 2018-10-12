@@ -70,7 +70,7 @@ int main(int argc,char **argv)
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   PetscFunctionBeginUser;
-  ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
+  ierr = PetscNew(&adctx);CHKERRQ(ierr);
   adctx->zos = PETSC_FALSE;adctx->zos_view = PETSC_FALSE;adctx->no_an = PETSC_FALSE;adctx->sparse = PETSC_FALSE;adctx->sparse_view = PETSC_FALSE;adctx->sparse_view_done = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&adctx->zos,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos_view",&adctx->zos_view,NULL);CHKERRQ(ierr);
@@ -136,8 +136,8 @@ int main(int argc,char **argv)
     f_a = new AField*[gym];
 
     // Align indices between array types and endow ghost points
-    ierr = AFieldGiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
-    ierr = AFieldGiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
+    ierr = GiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
+    ierr = GiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
 
     // Store active variables in context
     appctx.u_a = u_a;
@@ -170,7 +170,7 @@ int main(int argc,char **argv)
       ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
 
       // Generate seed matrix
-      Seed = myalloc2(adctx->n,adctx->p);
+      ierr = AdolcMalloc2(adctx->n,adctx->p,&Seed);CHKERRQ(ierr);
       ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
       ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
       if (adctx->sparse_view) {
@@ -178,7 +178,7 @@ int main(int argc,char **argv)
       }
 
       // Generate recovery matrix
-      Rec = myalloc2(adctx->m,adctx->p);
+      ierr = AdolcMalloc2(adctx->m,adctx->p,&Rec);
       ierr = GetRecoveryMatrix(Seed,JP,adctx->m,adctx->p,Rec);CHKERRQ(ierr);
 
       // Store results and free workspace
@@ -189,8 +189,8 @@ int main(int argc,char **argv)
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
     } else {
       adctx->p = adctx->n;
-      Seed = myalloc2(adctx->n,adctx->p);
-      ierr = Subidentity(adctx->n,0,Seed);CHKERRQ(ierr);
+      ierr = AdolcMalloc2(adctx->n,adctx->p,&Seed);CHKERRQ(ierr);
+      ierr = Identity(adctx->n,Seed);CHKERRQ(ierr);
     }
     adctx->Seed = Seed;
 
@@ -198,7 +198,7 @@ int main(int argc,char **argv)
       Printing for ZOS test
     */
     if (adctx->zos)
-      PetscPrintf(comm,"    If ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 is O(1.e-8), ADOL-C function evaluation\n      is probably correct.\n");
+      ierr = PetscPrintf(comm,"    If ||F_zos(x) - F_rhs(x)||_2/||F_rhs(x)||_2 is O(1.e-8), ADOL-C function evaluation\n      is probably correct.\n");CHKERRQ(ierr);
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -237,8 +237,8 @@ int main(int argc,char **argv)
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
   if (!adctx->no_an) {
     if (adctx->sparse)
-      myfree2(Rec);
-    myfree2(Seed);
+      ierr = AdolcFree2(Rec);CHKERRQ(ierr);
+    ierr = AdolcFree2(Seed);CHKERRQ(ierr);
     f_a += gys;
     u_a += gys;
     delete[] f_a;

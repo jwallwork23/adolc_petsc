@@ -1,26 +1,5 @@
 #include "contexts.cpp"
 
-extern PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[]); // TODO: Generalise
-extern PetscErrorCode InitialConditions(DM,Vec);
-extern PetscErrorCode InitializeLambda(DM,Vec,PetscReal,PetscReal);
-
-
-/*
-  Shift indices in AField to endow it with ghost points.  // TODO: Generalise
-*/
-PetscErrorCode AFieldGiveGhostPoints2d(DM da,AField *cgs,AField **a2d[])
-{
-  PetscErrorCode ierr;
-  PetscInt       gxs,gys,gxm,gym,j;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  for (j=0; j<gym; j++) {
-    (*a2d)[j] = cgs + j*gxm - gxs;
-  }
-  *a2d -= gys;
-  PetscFunctionReturn(0);
-}
 
 PetscErrorCode InitialConditions(DM da,Vec U)
 {

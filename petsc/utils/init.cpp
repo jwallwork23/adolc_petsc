@@ -2,13 +2,8 @@
 #include <petscdmda.h>
 #include <adolc/adolc.h>
 
-extern PetscErrorCode GiveGhostPoints2d(DM da,void *cgs,void *a2d);
-extern PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[]);
-extern PetscErrorCode ConvertTo1Array(DM da,PetscScalar **u,PetscScalar *u_vec);
-extern PetscErrorCode ConvertTo1Array2d(DM da,PetscScalar **u,PetscScalar *u_vec);
-extern PetscErrorCode Subidentity(PetscInt p,PetscInt s,PetscScalar **S);
 
-/*@C
+/*
   Wrapper function for allocating contiguous memory in a 2d array
 
   Input parameters:
@@ -16,42 +11,36 @@ extern PetscErrorCode Subidentity(PetscInt p,PetscInt s,PetscScalar **S);
 
   Outpu parameter:
   A   - pointer to array for which memory is allocated
-@*/
-PetscErrorCode AdolcMalloc2(PetscInt m,PetscInt n,PetscScalar **A[])
+
+  TODO: Account for integer arrays
+*/
+template <class T>
+PetscErrorCode AdolcMalloc2(PetscInt m,PetscInt n,T **A[])
 {
   PetscFunctionBegin;
   *A = myalloc2(m,n);
   PetscFunctionReturn(0);
 }
 
-/*@C
+/*
   Wrapper function for freeing memory allocated with AdolcMalloc2
 
   Input parameter:
   A - array to free memory of
-@*/
-PetscErrorCode AdolcFree2(PetscScalar **A)
+
+  TODO: Account for integer arrays
+*/
+template <class T>
+PetscErrorCode AdolcFree2(T **A)
 {
   PetscFunctionBegin;
   myfree2(A);
   PetscFunctionReturn(0);
 }
 
-/*@C
-  TODO: Documentation
-@*/
-PetscErrorCode GiveGhostPoints2d(DM da,void *cgs,void *a2d)
-{
-
-  PetscFunctionBegin;
-
-  // TODO general format accounting for dimensions and dofs
-
-  PetscFunctionReturn(0);
-}
-
-/*@C
-  Shift indices in adouble array to endow it with ghost points.
+/*
+  Shift indices in an array of type T to endow it with ghost points.
+  (e.g. This works for arrays of adoubles or AFields.)
 
   Input parameters:
   da  - distributed array upon which variables are defined
@@ -61,8 +50,9 @@ PetscErrorCode GiveGhostPoints2d(DM da,void *cgs,void *a2d)
   Output parameter:
   a2d - contiguously allocated 2-array with ghost points, pointing to the
         1-array
-@*/
-PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[])
+*/
+template <class T>
+PetscErrorCode GiveGhostPoints2d(DM da,T *cgs,T **a2d[])
 {
   PetscErrorCode ierr;
   PetscInt       gxs,gys,gxm,gym,j;
@@ -75,20 +65,7 @@ PetscErrorCode AdoubleGiveGhostPoints2d(DM da,adouble *cgs,adouble **a2d[])
   PetscFunctionReturn(0);
 }
 
-/*@C
-  TODO: Documentation
-  FIXME and generalise for dimensions and dofs
-@*/
-PetscErrorCode ConvertTo1Array(DM da,void **u,PetscScalar *u_vec)
-{
-  PetscErrorCode ierr;
-
-  PetscFunctionBegin;
-  ierr = ConvertTo1Array2d(da,(PetscScalar**)u,u_vec);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-/*@C
+/*
   Convert a 2-array defined on a DMDA to a 1-array
 
   Input parameters:
@@ -98,8 +75,8 @@ PetscErrorCode ConvertTo1Array(DM da,void **u,PetscScalar *u_vec)
   Output parameters:
   u_vec - corresponding 1-array
 
-  TODO: Generalise along with ConvertTo1Array above
-@*/
+  TODO: Generalise
+*/
 PetscErrorCode ConvertTo1Array2d(DM da,PetscScalar **u,PetscScalar *u_vec)
 {
   PetscErrorCode ierr;
@@ -114,14 +91,55 @@ PetscErrorCode ConvertTo1Array2d(DM da,PetscScalar **u,PetscScalar *u_vec)
   PetscFunctionReturn(0);
 }
 
-/* TODO: docs */
-PetscErrorCode Subidentity(PetscInt p,PetscInt s,PetscScalar **S)
+/*
+  TODO: Documentation
+  FIXME and generalise for dimensions and dofs
+*/
+PetscErrorCode ConvertTo1Array(DM da,void **u,PetscScalar *u_vec)
+{
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  ierr = ConvertTo1Array2d(da,(PetscScalar**)u,u_vec);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Create a rectangular sub-identity of the m x m identity matrix.
+  than rows n.
+
+  Input parameters:
+  n - number of (adjacent) rows to take in slice
+  s - starting row index
+
+  Output parameter:
+  S - resulting n x m submatrix
+*/
+template <class T>
+PetscErrorCode Subidentity(PetscInt n,PetscInt s,T **S)
 {
   PetscInt       i;
 
   PetscFunctionBegin;
-  for (i=0; i<p; i++) {
+  for (i=0; i<n; i++) {
     S[i][i+s] = 1.;
   }
+  PetscFunctionReturn(0);
+}
+
+/*
+  Enter unit diagonal to give an identity matrix.
+
+  Input parameter:
+  n - number of rows/columns
+  I - n x n array with memory pre-allocated
+*/
+template <class T>
+PetscErrorCode Identity(PetscInt n,T **I)
+{
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  ierr = Subidentity(n,0,I);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }

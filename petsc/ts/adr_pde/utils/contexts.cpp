@@ -1,6 +1,7 @@
 #include <petscts.h>
-#include "../../../utils/allocation.cpp"
+#include "../../../utils/init.cpp"
 #include "../../../utils/drivers.cpp"
+
 
 /* (Passive) field for two PDEs */
 #ifndef FIELD

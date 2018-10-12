@@ -107,9 +107,9 @@ int main(int argc,char **argv)
   udot_a = new AField*[gym];
 
   // Align indices between array types and endow ghost points
-  ierr = AFieldGiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
-  ierr = AFieldGiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
-  ierr = AFieldGiveGhostPoints2d(da,udot_c,&udot_a);CHKERRQ(ierr);
+  ierr = GiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
+  ierr = GiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
+  ierr = GiveGhostPoints2d(da,udot_c,&udot_a);CHKERRQ(ierr);
 
   // Store active variables in context
   appctx.u_a = u_a;
@@ -119,7 +119,7 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Trace function just once
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
+  ierr = PetscNew(&adctx);CHKERRQ(ierr);
   adctx->no_an = PETSC_FALSE;appctx.adctx = adctx;
   ierr = IFunction(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
   ierr = IFunction2(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
