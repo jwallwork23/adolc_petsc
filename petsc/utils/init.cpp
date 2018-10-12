@@ -43,6 +43,35 @@ PetscErrorCode AdolcFree2(T **A)
   (e.g. This works for arrays of adoubles or AFields.)
 
   Input parameters:
+  da   - distributed array upon which variables are defined
+  cgs  - contiguously allocated 1-array with as many entries as there are
+         interior and ghost points, in total
+
+  Output parameter:
+  array - contiguously allocated array of the appropriate dimension with
+          ghost points, pointing to the 1-array
+
+  TODO: 3d version
+*/
+template <class T>
+PetscErrorCode GiveGhostPoints(DM da,T *cgs,void *array)
+{
+  PetscErrorCode ierr;
+  PetscInt       dim;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetInfo(da,&dim,0,0,0,0,0,0,0,0,0,0,0,0);CHKERRQ(ierr);
+  if (dim == 2) {
+    ierr = GiveGhostPoints2d(da,cgs,(T***)array);CHKERRQ(ierr);
+  }
+  PetscFunctionReturn(0);
+}
+
+/*
+  Shift indices in an array of type T to endow it with ghost points.
+  (e.g. This works for arrays of adoubles or AFields.)
+
+  Input parameters:
   da  - distributed array upon which variables are defined
   cgs - contiguously allocated 1-array with as many entries as there are
         interior and ghost points, in total
@@ -75,7 +104,7 @@ PetscErrorCode GiveGhostPoints2d(DM da,T *cgs,T **a2d[])
   Output parameters:
   u_vec - corresponding 1-array
 
-  TODO: Generalise
+  TODO: Generalise... or just remove
 */
 PetscErrorCode ConvertTo1Array2d(DM da,PetscScalar **u,PetscScalar *u_vec)
 {

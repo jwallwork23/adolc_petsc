@@ -136,8 +136,8 @@ int main(int argc,char **argv)
     f_a = new AField*[gym];
 
     // Align indices between array types and endow ghost points
-    ierr = GiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
-    ierr = GiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
+    ierr = GiveGhostPoints(da,u_c,&u_a);CHKERRQ(ierr);
+    ierr = GiveGhostPoints(da,f_c,&f_a);CHKERRQ(ierr);
 
     // Store active variables in context
     appctx.u_a = u_a;
