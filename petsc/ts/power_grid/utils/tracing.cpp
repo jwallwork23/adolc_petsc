@@ -169,7 +169,7 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
   /* Mark independent variables */
   for (i=0; i<9*ngen; i++)
     xgen[i] <<= xgen_p[i];
-  for (i=0; i<2*nload; i++)
+  for (i=0; i<9*ngen; i++)
     xnet[i] <<= xnet_p[i];
 
   /* Generator subsystem */

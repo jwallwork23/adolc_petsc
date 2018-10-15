@@ -170,10 +170,10 @@ int main(int argc,char **argv)
        Allocate memory for active variables
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     xgen_a = new adouble[ngen*9];
-    xnet_a = new adouble[nload*2];
+    xnet_a = new adouble[ngen*9];
     fgen_a = new adouble[ngen*9];
-    fnet_a = new adouble[nload*2];
-    //xdot_a = new adouble[ngen*9+nload*2]; // TODO: Should this be separated?
+    fnet_a = new adouble[ngen*9];
+    //xdot_a = new adouble[ngen*18]; // TODO: Should this be separated?
     user.xgen_a = xgen_a;user.xnet_a = xnet_a,user.fgen_a = fgen_a;user.fnet_a = fnet_a;//user.xdot_a = xdot_a;
 
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
