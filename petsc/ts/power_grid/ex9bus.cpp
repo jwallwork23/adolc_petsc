@@ -56,7 +56,7 @@ int main(int argc,char **argv)
   PetscMPIInt    size;
   Userctx        user;
   PetscViewer    Xview,Ybusview,viewer;
-  Vec            X,F_alg;
+  Vec            X,F_alg,R;
   Mat            J,A;
   PetscInt       i,idx,*idx2;
   Vec            Xdot;
@@ -67,6 +67,7 @@ int main(int argc,char **argv)
   const PetscInt *idx3;
   PetscScalar    *vatoli;
   PetscInt       k;
+  adouble        *xgen_a = NULL,*xnet_a = NULL,*fgen_a = NULL,*fnet_a = NULL;//*xdot_a = NULL;
 
 
   ierr = PetscInitialize(&argc,&argv,"petscoptions",help);CHKERRQ(ierr);
@@ -120,6 +121,10 @@ int main(int argc,char **argv)
     ierr           = PetscOptionsReal("-tmax","","",user.tmax,&user.tmax,NULL);CHKERRQ(ierr);
     ierr           = PetscOptionsBool("-setisdiff","","",user.setisdiff,&user.setisdiff,NULL);CHKERRQ(ierr);
     ierr           = PetscOptionsBool("-dae_semiexplicit","","",user.semiexplicit,&user.semiexplicit,NULL);CHKERRQ(ierr);
+
+    /* ADOL-C options */
+    user.no_an     = PETSC_FALSE;
+    ierr           = PetscOptionsBool("-no_annotation","","",user.no_an,&user.no_an,NULL);CHKERRQ(ierr);
   }
   ierr = PetscOptionsEnd();CHKERRQ(ierr);
 
@@ -146,37 +151,62 @@ int main(int argc,char **argv)
   ierr = MatCreate(PETSC_COMM_WORLD,&J);CHKERRQ(ierr);
   ierr = MatSetSizes(J,PETSC_DECIDE,PETSC_DECIDE,user.neqs_pgrid,user.neqs_pgrid);CHKERRQ(ierr);
   ierr = MatSetFromOptions(J);CHKERRQ(ierr);
-  ierr = PreallocateJacobian(J,&user);CHKERRQ(ierr);
+  ierr = PreallocateJacobian(J,&user);CHKERRQ(ierr); // TODO: What about ADOL-C case?
 
   /* Create matrix to save solutions at each time step */
   user.stepnum = 0;
 
   ierr = MatCreateSeqDense(PETSC_COMM_SELF,user.neqs_pgrid+1,1002,NULL,&user.Sol);CHKERRQ(ierr);
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Create timestepping solver context
-     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
-  ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
-  if(user.semiexplicit) {
-    ierr = TSSetType(ts,TSRK);CHKERRQ(ierr);
-    ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&user);CHKERRQ(ierr);
-    ierr = TSSetRHSJacobian(ts,J,J,RHSJacobian,&user);CHKERRQ(ierr);
-  } else {
-    ierr = TSSetType(ts,TSCN);CHKERRQ(ierr);
-    ierr = TSSetEquationType(ts,TS_EQ_DAE_IMPLICIT_INDEX1);CHKERRQ(ierr);
-    ierr = TSARKIMEXSetFullyImplicit(ts,PETSC_TRUE);CHKERRQ(ierr);
-    ierr = TSSetIFunction(ts,NULL,(TSIFunction) IFunction,&user);CHKERRQ(ierr);
-    ierr = TSSetIJacobian(ts,J,J,(TSIJacobian)IJacobian,&user);CHKERRQ(ierr);
-  }
-  ierr = TSSetApplicationContext(ts,&user);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set initial conditions
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = SetInitialGuess(X,&user);CHKERRQ(ierr);
-  /* Just to set up the Jacobian structure */
 
   ierr = VecDuplicate(X,&Xdot);CHKERRQ(ierr);
+  if (!user.no_an) {
+
+    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+       Allocate memory for active variables
+       - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+    xgen_a = new adouble[ngen*9];
+    xnet_a = new adouble[nload*2];
+    fgen_a = new adouble[ngen*9];
+    fnet_a = new adouble[nload*2];
+    //xdot_a = new adouble[ngen*9+nload*2]; // TODO: Should this be separated?
+    user.xgen_a = xgen_a;user.xnet_a = xnet_a,user.fgen_a = fgen_a;user.fnet_a = fnet_a;//user.xdot_a = xdot_a;
+
+    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+       Trace just once
+       - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+    ierr = VecDuplicate(X,&R);CHKERRQ(ierr);
+    if (user.semiexplicit) {
+      ierr = RHSFunctionActive(ts,0.,X,R,&user);CHKERRQ(ierr);
+    } else {
+      ierr = IFunctionActive(ts,0.,X,Xdot,R,&user);CHKERRQ(ierr);
+    }
+    ierr = VecDestroy(&R);CHKERRQ(ierr);
+  }
+
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Create timestepping solver context
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
+  ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
+  if (user.semiexplicit) {
+    ierr = TSSetType(ts,TSRK);CHKERRQ(ierr);
+    ierr = TSSetRHSFunction(ts,NULL,RHSFunctionPassive,&user);CHKERRQ(ierr);
+    ierr = TSSetRHSJacobian(ts,J,J,RHSJacobian,&user);CHKERRQ(ierr);
+  } else {
+    ierr = TSSetType(ts,TSCN);CHKERRQ(ierr);
+    ierr = TSSetEquationType(ts,TS_EQ_DAE_IMPLICIT_INDEX1);CHKERRQ(ierr);
+    ierr = TSARKIMEXSetFullyImplicit(ts,PETSC_TRUE);CHKERRQ(ierr);
+    ierr = TSSetIFunction(ts,NULL,(TSIFunction) IFunctionPassive,&user);CHKERRQ(ierr);
+    ierr = TSSetIJacobian(ts,J,J,(TSIJacobian)IJacobian,&user);CHKERRQ(ierr);
+  }
+  ierr = TSSetApplicationContext(ts,&user);CHKERRQ(ierr);
+
+  /* Just to set up the Jacobian structure */
   ierr = IJacobian(ts,0.0,X,Xdot,0.0,J,J,&user);CHKERRQ(ierr);
   ierr = VecDestroy(&Xdot);CHKERRQ(ierr);
 
@@ -261,11 +291,21 @@ int main(int argc,char **argv)
   ierr = MatDenseRestoreArray(user.Sol,&mat);CHKERRQ(ierr);
   ierr = PetscViewerBinaryOpen(PETSC_COMM_SELF,"out.bin",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
   ierr = MatView(A,viewer);CHKERRQ(ierr);
+
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Free work space and call destructors for AFields.
+   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
   ierr = MatDestroy(&A);CHKERRQ(ierr);
-
   ierr = PetscFree(direction);CHKERRQ(ierr);
   ierr = PetscFree(terminate);CHKERRQ(ierr);
+  if (!user.no_an) {
+    //delete[] xdot_a;
+    delete[] fnet_a;
+    delete[] fgen_a;
+    delete[] xnet_a;
+    delete[] xgen_a;
+  }
   ierr = SNESDestroy(&snes_alg);CHKERRQ(ierr);
   ierr = VecDestroy(&F_alg);CHKERRQ(ierr);
   ierr = MatDestroy(&J);CHKERRQ(ierr);

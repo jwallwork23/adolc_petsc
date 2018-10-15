@@ -61,14 +61,40 @@ PetscErrorCode GiveGhostPoints(DM da,T *cgs,void *array)
 
   PetscFunctionBegin;
   ierr = DMDAGetInfo(da,&dim,0,0,0,0,0,0,0,0,0,0,0,0);CHKERRQ(ierr);
-  if (dim == 2) {
+  if (dim == 1) {
+    ierr = GiveGhostPoints1d(da,(T**)array);CHKERRQ(ierr);
+  } else if (dim == 2) {
     ierr = GiveGhostPoints2d(da,cgs,(T***)array);CHKERRQ(ierr);
+  } else if (dim == 3) {
+    SETERRQ(PETSC_COMM_SELF,1,"GiveGhostPoints3d not yet implemented\n");
   }
   PetscFunctionReturn(0);
 }
 
 /*
-  Shift indices in an array of type T to endow it with ghost points.
+  Shift indices in a 1-array of type T to endow it with ghost points.
+  (e.g. This works for arrays of adoubles or AFields.)
+
+  Input parameters:
+  da  - distributed array upon which variables are defined
+
+  Output parameter:
+  a1d - contiguously allocated 1-array
+*/
+template <class T>
+PetscErrorCode GiveGhostPoints1d(DM da,T *a1d[])
+{
+  PetscErrorCode ierr;
+  PetscInt       gxs;
+
+  PetscFunctionBegin;
+  ierr = DMDAGetGhostCorners(da,&gxs,NULL,NULL,NULL,NULL,NULL);CHKERRQ(ierr);
+  *a1d -= gxs;
+  PetscFunctionReturn(0);
+}
+
+/*
+  Shift indices in a 2-array of type T to endow it with ghost points.
   (e.g. This works for arrays of adoubles or AFields.)
 
   Input parameters:
@@ -91,6 +117,27 @@ PetscErrorCode GiveGhostPoints2d(DM da,T *cgs,T **a2d[])
   for (j=0; j<gym; j++)
     (*a2d)[j] = cgs + j*gxm - gxs;
   *a2d -= gys;
+  PetscFunctionReturn(0);
+}
+
+/*
+  Shift indices in a 3-array of type T to endow it with ghost points.
+  (e.g. This works for arrays of adoubles or AFields.)
+
+  Input parameters:
+  da  - distributed array upon which variables are defined
+  cgs - contiguously allocated 1-array with as many entries as there are
+        interior and ghost points, in total
+
+  Output parameter:
+  a3d - contiguously allocated 3-array with ghost points, pointing to the
+        1-array
+*/
+template <class T>
+PetscErrorCode GiveGhostPoints3d(DM da,T *cgs,T ***a3d[])
+{
+  PetscFunctionBegin;
+  // TODO
   PetscFunctionReturn(0);
 }
 
