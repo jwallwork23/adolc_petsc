@@ -1,16 +1,5 @@
 #include "tracing.cpp"
 
-/* Implicit timestepping */
-extern PetscErrorCode IJacobianLocalByHand(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
-extern PetscErrorCode IJacobianAdolc(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
-extern PetscErrorCode IJacobianMatFree(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A_shell,Mat B,void *ctx);
-extern PetscErrorCode IJacobianByHand(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat B,void *ctx);
-extern PetscErrorCode IJacobianDiagonalAdolc(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat B,void *ctx);
-
-/* Explicit timestepping */
-extern PetscErrorCode RHSJacobianByHand(TS,PetscReal,Vec,Mat,Mat,void*);
-extern PetscErrorCode RHSJacobianAdolc(TS,PetscReal,Vec,Mat,Mat,void*);
-
 
 PetscErrorCode IJacobianLocalByHand(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,PetscReal a,Mat A,Mat B,void *ptr)
 {
@@ -135,6 +124,7 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   PetscFunctionReturn(0);
 }
 
+// TODO: Consider matrix-free B for preconditioner?
 PetscErrorCode IJacobianMatFree(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A_shell,Mat B,void *ctx)
 {
   MatCtx            *mctx;
@@ -412,53 +402,3 @@ PetscErrorCode RHSJacobianAdolc(TS ts,PetscReal t,Vec U,Mat A,Mat B,void *ctx)
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
-
-PetscErrorCode IJacobianAdolcDiagonal(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat B,void *ctx)
-{
-  AppCtx         *appctx = (AppCtx*)ctx;
-  DM             da;
-  PetscErrorCode ierr;
-  PetscScalar    *u_vec;
-  Vec            localU,d1,d2;
-  Mat            D;
-
-  PetscFunctionBegin;
-  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
-  ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
-
-  /*
-     Scatter ghost points to local vector,using the 2-step process
-        DMGlobalToLocalBegin(),DMGlobalToLocalEnd().
-     By placing code between these two statements, computations can be
-     done while messages are in transition.
-  */
-  ierr = DMGlobalToLocalBegin(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,U,INSERT_VALUES,localU);CHKERRQ(ierr);
-
-  /* Get pointers to vector data */
-  ierr = VecGetArray(localU,&u_vec);CHKERRQ(ierr);
-
-  /*
-    Compute Jacobian and test diagonals match TODO: use Vec, rather than Mat
-  */
-  ierr = MatDuplicate(A,MAT_DO_NOT_COPY_VALUES,&D);CHKERRQ(ierr);
-  ierr = AdolcComputeIJacobian(A,u_vec,a,appctx->adctx);CHKERRQ(ierr);
-  ierr = AdolcComputeIJacobianDiagonal(D,u_vec,a,appctx->adctx);CHKERRQ(ierr);
-  ierr = MatCreateVecs(A,NULL,&d1);CHKERRQ(ierr);
-  ierr = MatCreateVecs(A,NULL,&d2);CHKERRQ(ierr);
-  ierr = MatGetDiagonal(A,d1);CHKERRQ(ierr);
-  ierr = MatGetDiagonal(D,d2);CHKERRQ(ierr);
-  ierr = VecAXPY(d1,-1,d2);CHKERRQ(ierr);
-  ierr = VecView(d1,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  ierr = VecDestroy(&d2);CHKERRQ(ierr);
-  ierr = VecDestroy(&d1);CHKERRQ(ierr);
-  ierr = MatDestroy(&D);CHKERRQ(ierr);
-
-  /*
-     Restore vectors
-  */
-  ierr = VecRestoreArray(localU,&u_vec);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-

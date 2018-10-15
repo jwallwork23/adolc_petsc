@@ -1,6 +1,7 @@
 #include "contexts.cpp"
 #include "sparse.cpp"
 
+
 /*
   Compute Jacobian for explicit TS in compressed format and recover from this, using
   precomputed seed and recovery matrices. If sparse mode is used, full Jacobian is
@@ -22,7 +23,7 @@ PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscScalar *u_vec,void *ctx)
 
   PetscFunctionBegin;
 
-  J = myalloc2(m,p);
+  ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
   fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
   //jacobian(1,m,n,u_vec,J);
   if (adctx->sparse) {
@@ -40,7 +41,7 @@ PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscScalar *u_vec,void *ctx)
       }
     }
   }
-  myfree2(J);
+  ierr = AdolcFree2(J);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   PetscFunctionReturn(0);
@@ -66,7 +67,7 @@ PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *
   PetscScalar    **J;
 
   PetscFunctionBegin;
-  J = myalloc2(m,p);
+  ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
 
   /* dF/dx part */
   fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
@@ -107,7 +108,7 @@ PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *
   }
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  myfree2(J);
+  ierr = AdolcFree2(J);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -120,7 +121,9 @@ PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *
   ctx   - ADOL-C context, as defined above
 
   Output parameter:
-  A     - Mat object corresponding to Jacobian // TODO: Use Vec. Do matfree
+  A     - Mat object corresponding to Jacobian
+
+  TODO: Use Vec. Do matfree
 */
 PetscErrorCode AdolcComputeIJacobianDiagonal(Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
 {
@@ -130,7 +133,7 @@ PetscErrorCode AdolcComputeIJacobianDiagonal(Mat A,PetscScalar *u_vec,PetscReal 
   PetscScalar    **J;
 
   PetscFunctionBegin;
-  J = myalloc2(m,p);
+  ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
 
   /* dF/dx part */
   fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
@@ -167,6 +170,6 @@ PetscErrorCode AdolcComputeIJacobianDiagonal(Mat A,PetscScalar *u_vec,PetscReal 
   }
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  myfree2(J);
+  ierr = AdolcFree2(J);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }

@@ -1,18 +1,52 @@
-#include "alloc.cpp"
+#include "init.cpp"
 
-/* Implicit timestepping */
-extern PetscErrorCode IFunctionLocalPassive(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
-extern PetscErrorCode IFunctionLocalActive(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
-extern PetscErrorCode IFunctionLocalActive2(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
-extern PetscErrorCode IFunction(TS,PetscReal,Vec,Vec,Vec,void*);
-extern PetscErrorCode IFunction2(TS,PetscReal,Vec,Vec,Vec,void*);
 
-/* Explicit timestepping */
-extern PetscErrorCode RHSFunctionActive(TS,PetscReal,Vec,Vec,void*);
-extern PetscErrorCode RHSFunctionPassive(TS,PetscReal,Vec,Vec,void*);
+// TODO: move this test into Jacobian call so this isn't problem-specific or conversion necessary
+PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx)
+{
+  AppCtx         *appctx = (AppCtx*)ctx;
+  PetscErrorCode ierr;
+  PetscInt       gxs,gys,gxm,gym,i,j,k = 0;
+  PetscScalar    diff = 0,norm = 0,*u_vec,*fz;
+  MPI_Comm       comm = MPI_COMM_WORLD;
 
-/* Testing */
-extern PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx);
+  PetscFunctionBegin;
+
+  /* Get extent of region owned by processor */
+  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
+
+  /* Convert to a 1-array */
+  ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++)
+      u_vec[k] = u[j][i].u;k++;
+      u_vec[k] = u[j][i].v;k++;
+  }
+  k = 0;
+
+  /* Zero order scalar evaluation vs. calling RHS function */
+  ierr = PetscMalloc1(appctx->adctx->m,&fz);CHKERRQ(ierr);
+  zos_forward(1,appctx->adctx->m,appctx->adctx->n,0,u_vec,fz);
+  for (j=gys; j<gys+gym; j++) {
+    for (i=gxs; i<gxs+gxm; i++) {
+      if ((appctx->adctx->zos_view) && ((fabs(f[j][i].u) > 1.e-16) || (fabs(fz[k]) > 1.e-16)))
+        PetscPrintf(comm,"(%2d,%2d, u): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,f[j][i].u,fz[k]);
+      diff += (f[j][i].u-fz[k])*(f[j][i].u-fz[k]);k++;
+      norm += f[j][i].u*f[j][i].u;
+      if ((appctx->adctx->zos_view) && ((fabs(f[j][i].v) > 1.e-16) || (fabs(fz[k]) > 1.e-16)))
+        PetscPrintf(comm,"(%2d,%2d, v): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,f[j][i].v,fz[k]);
+      diff += (f[j][i].v-fz[k])*(f[j][i].v-fz[k]);k++;
+      norm += f[j][i].v*f[j][i].v;
+    }
+  }
+  diff = sqrt(diff);
+  norm = diff/sqrt(norm);
+  PetscPrintf(comm,"    ----- Testing Zero Order evaluation -----\n");
+  PetscPrintf(comm,"    ||Fzos - Frhs||_2/||Frhs||_2 = %.4e, ||Fzos - Frhs||_2 = %.4e\n",norm,diff);
+  ierr = PetscFree(fz);CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
+}
 
 PetscErrorCode IFunctionLocalPassive(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,Field**f,void *ptr)
 {
@@ -482,52 +516,6 @@ PetscErrorCode RHSFunctionActive(TS ts,PetscReal ftime,Vec U,Vec F,void *ptr)
   ierr = DMRestoreLocalVector(da,&localF);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-PetscErrorCode TestZOS2d(DM da,Field **f,Field **u,void *ctx)
-{
-  AppCtx         *appctx = (AppCtx*)ctx;
-  PetscErrorCode ierr;
-  PetscInt       gxs,gys,gxm,gym,i,j,k = 0;
-  PetscScalar    diff = 0,norm = 0,*u_vec,*fz;
-  MPI_Comm       comm = MPI_COMM_WORLD;
-
-  PetscFunctionBegin;
-
-  /* Get extent of region owned by processor */
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-
-  /* Convert to a 1-array TODO: move this test into Jacobian call so this isn't necessary */
-  ierr = PetscMalloc1(appctx->adctx->n,&u_vec);CHKERRQ(ierr);
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++)
-      u_vec[k] = u[j][i].u;k++;
-      u_vec[k] = u[j][i].v;k++;
-  }
-  k = 0;
-
-  /* Zero order scalar evaluation vs. calling RHS function */
-  ierr = PetscMalloc1(appctx->adctx->m,&fz);CHKERRQ(ierr);
-  zos_forward(1,appctx->adctx->m,appctx->adctx->n,0,u_vec,fz);
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++) {
-      if ((appctx->adctx->zos_view) && ((fabs(f[j][i].u) > 1.e-16) || (fabs(fz[k]) > 1.e-16)))
-        PetscPrintf(comm,"(%2d,%2d, u): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,f[j][i].u,fz[k]);
-      diff += (f[j][i].u-fz[k])*(f[j][i].u-fz[k]);k++;
-      norm += f[j][i].u*f[j][i].u;
-      if ((appctx->adctx->zos_view) && ((fabs(f[j][i].v) > 1.e-16) || (fabs(fz[k]) > 1.e-16)))
-        PetscPrintf(comm,"(%2d,%2d, v): F_rhs = %+.4e, F_zos = %+.4e\n",j,i,f[j][i].v,fz[k]);
-      diff += (f[j][i].v-fz[k])*(f[j][i].v-fz[k]);k++;
-      norm += f[j][i].v*f[j][i].v;
-    }
-  }
-  diff = sqrt(diff);
-  norm = diff/sqrt(norm);
-  PetscPrintf(comm,"    ----- Testing Zero Order evaluation -----\n");
-  PetscPrintf(comm,"    ||Fzos - Frhs||_2/||Frhs||_2 = %.4e, ||Fzos - Frhs||_2 = %.4e\n",norm,diff);
-  ierr = PetscFree(fz);CHKERRQ(ierr);
-
   PetscFunctionReturn(0);
 }
 

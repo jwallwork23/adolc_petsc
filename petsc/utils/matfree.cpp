@@ -3,9 +3,6 @@
 #include <adolc/adolc.h>
 #include "contexts.cpp"
 
-extern PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y);
-extern PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X);
-
 /*
   ADOL-C implementation for Jacobian vector product, using the forward mode of AD.
   Intended to overload MatMult in matrix-free methods where implicit timestepping
@@ -138,10 +135,6 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = VecGetArrayRead(localX,&x);CHKERRQ(ierr);
   ierr = VecGetArray(localY,&y);CHKERRQ(ierr);
 
-  ierr = VecView(localX,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-
-  // TODO: Debug. Form full Jacobian. Transpose it. Multiply on y. Check it matches.
-
   /* dF/dx part */
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
   zos_forward(1,m,n,1,x,NULL); // TODO: This should be optional
@@ -183,5 +176,61 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = VecRestoreArrayRead(localX,&x);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localY);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localX);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+// TODO: Modify the below to use matrix-free AD
+
+typedef struct {
+  Vec diag;
+} MatFreeJacobiPC;
+
+PetscErrorCode MatFreeJacobiPCCreate(MatFreeJacobiPC **shell)
+{
+  PetscErrorCode  ierr;
+  MatFreeJacobiPC *newctx;
+
+  PetscFunctionBegin;
+  ierr = PetscNew(&newctx);CHKERRQ(ierr);
+  newctx->diag = 0;
+  *shell       = newctx;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode MatFreeJacobiPCSetUp(PC pc,Mat pmat,Vec x)
+{
+  PetscErrorCode  ierr;
+  MatFreeJacobiPC *shell;
+  Vec             diag;
+
+  PetscFunctionBegin;
+  ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
+  ierr = VecDuplicate(x,&diag);CHKERRQ(ierr);
+  ierr = MatGetDiagonal(pmat,diag);CHKERRQ(ierr);
+  ierr = VecReciprocal(diag);CHKERRQ(ierr);
+  shell->diag = diag;
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode MatFreeJacobiPCApply(PC pc,Vec x,Vec y)
+{
+  PetscErrorCode  ierr;
+  MatFreeJacobiPC *shell;
+
+  PetscFunctionBegin;
+  ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
+  ierr = VecPointwiseMult(y,x,shell->diag);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode MatFreeJacobiPCDestroy(PC pc)
+{
+  PetscErrorCode  ierr;
+  MatFreeJacobiPC *shell;
+
+  PetscFunctionBegin;
+  ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
+  ierr = VecDestroy(&shell->diag);CHKERRQ(ierr);
+  ierr = PetscFree(shell);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }

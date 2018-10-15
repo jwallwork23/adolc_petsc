@@ -2,12 +2,23 @@
 #include <petscdmda.h>
 #include <adolc/adolc.h>
 
+
 #ifndef ADOLCCTX
 #define ADOLCCTX
 typedef struct {
-  PetscBool   zos,zos_view,no_an,sparse,sparse_view,sparse_view_done;
+  /* Zero Order Scalar (ZOS) test */
+  PetscBool   zos,zos_view;
+
+  /* No ADOL-C annotation */
+  PetscBool   no_an;
+
+  /* Compressed Jacobian computation */
+  PetscBool   sparse,sparse_view,sparse_view_done;
   PetscScalar **Seed,**Rec,*rec;
-  PetscInt    m,n,p;
+  PetscInt    p;
+
+  /* Matrix dimensions */
+  PetscInt    m,n;
 } AdolcCtx;
 #endif
 

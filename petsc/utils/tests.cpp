@@ -1,9 +1,8 @@
 #include <petscdm.h>
 #include <petscdmda.h>
 
-extern PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,PetscBool view);
 
-/*@C
+/*
   Test to verify that the zero order scalar evaluation of forward mode AD yields the same
   result as evaluating the PDE residual.
 
@@ -14,6 +13,8 @@ extern PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,PetscBool 
   tag  - identifier for active session
   view - sanity check: toggle whether to print comparisons of nonzero values (to check
          there are some)
+
+  TODO: Move this test to Jacobian driver, to avoid unravelling into 1-array
 */
 PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,PetscBool view)
 {
@@ -29,7 +30,7 @@ PetscErrorCode TestZOS2d(DM da,PetscScalar **f,PetscScalar **u,PetscBool view)
   m = gxm*gym;
   n = m;
 
-  /* Convert to a 1-array TODO: use wrapper function in allocation.cpp */
+  /* Convert to a 1-array */
   ierr = PetscMalloc1(n,&u_vec);CHKERRQ(ierr);
   for (j=gys; j<gys+gym; j++) {
     for (i=gxs; i<gxs+gxm; i++)

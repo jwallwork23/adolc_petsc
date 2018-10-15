@@ -40,7 +40,8 @@ int main(int argc,char **argv)
   MPI_Comm       comm = MPI_COMM_WORLD;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
-  ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
+  //ierr = PetscInitialize(&argc,&argv,"petscoptions",help);if (ierr) return ierr;
+  ierr = PetscNew(&adctx);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-forwardonly",&forwardonly,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-implicitform",&implicitform,NULL);CHKERRQ(ierr);
   appctx.aijpc = PETSC_FALSE,adctx->no_an = PETSC_FALSE,adctx->sparse = PETSC_FALSE,adctx->sparse_view = PETSC_FALSE;adctx->sparse_view_done = PETSC_FALSE;
@@ -113,9 +114,9 @@ int main(int argc,char **argv)
     udot_a = new AField*[gym];
 
     // Align indices between array types and endow ghost points
-    ierr = AFieldGiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
-    ierr = AFieldGiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
-    ierr = AFieldGiveGhostPoints2d(da,udot_c,&udot_a);CHKERRQ(ierr);
+    ierr = GiveGhostPoints(da,u_c,&u_a);CHKERRQ(ierr);
+    ierr = GiveGhostPoints(da,f_c,&f_a);CHKERRQ(ierr);
+    ierr = GiveGhostPoints(da,udot_c,&udot_a);CHKERRQ(ierr);
 
     // Store active variables in context
     appctx.u_a = u_a;
@@ -155,7 +156,7 @@ int main(int argc,char **argv)
       ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
 
       // Generate seed matrix
-      Seed = myalloc2(adctx->n,adctx->p);
+      ierr = AdolcMalloc2(adctx->n,adctx->p,&Seed);CHKERRQ(ierr);
       ierr = GenerateSeedMatrix(iscoloring,Seed);CHKERRQ(ierr);
       ierr = ISColoringDestroy(&iscoloring);CHKERRQ(ierr);
       if (adctx->sparse_view) {
@@ -163,7 +164,7 @@ int main(int argc,char **argv)
       }
 
       // Generate recovery matrix
-      Rec = myalloc2(adctx->m,adctx->p);
+      ierr = AdolcMalloc2(adctx->m,adctx->p,&Rec);CHKERRQ(ierr);
       ierr = GetRecoveryMatrix(Seed,JP,adctx->m,adctx->p,Rec);CHKERRQ(ierr);
 
       // Store results and free workspace
@@ -174,8 +175,8 @@ int main(int argc,char **argv)
       ierr = PetscFree(u_vec);CHKERRQ(ierr);
     } else {
       adctx->p = adctx->n;
-      Seed = myalloc2(adctx->n,adctx->p);
-      ierr = Subidentity(adctx->n,0,Seed);
+      ierr = AdolcMalloc2(adctx->n,adctx->p,&Seed);CHKERRQ(ierr);
+      ierr = Identity(adctx->n,Seed);CHKERRQ(ierr);
     }
     adctx->Seed = Seed;
   }
@@ -247,7 +248,6 @@ int main(int argc,char **argv)
     ierr = InitializeLambda(da,lambda[0],0.5,0.5);CHKERRQ(ierr);
     ierr = TSSetCostGradients(ts,1,lambda,NULL);CHKERRQ(ierr);
     ierr = TSAdjointSolve(ts);CHKERRQ(ierr);
-    //ierr = VecView(lambda[0],PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
     ierr = VecDestroy(&lambda[0]);CHKERRQ(ierr);
   }
 
@@ -260,8 +260,8 @@ int main(int argc,char **argv)
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
   if (!adctx->no_an) {
     if (adctx->sparse)
-      myfree2(Rec);
-    myfree2(Seed);
+      ierr = AdolcFree2(Rec);CHKERRQ(ierr);
+    ierr = AdolcFree2(Seed);CHKERRQ(ierr);
     udot_a += gys;
     f_a += gys;
     u_a += gys;
@@ -274,7 +274,6 @@ int main(int argc,char **argv)
   }
   ierr = DMDestroy(&da);CHKERRQ(ierr);
   ierr = PetscFree(adctx);CHKERRQ(ierr);
-
   ierr = PetscFinalize();
   return ierr;
 }

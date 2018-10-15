@@ -1,5 +1,6 @@
 #include <petscdm.h>
 
+
 // TODO: Most of the arguments here can be stored in AdolcCtx
 
 /*
@@ -230,9 +231,8 @@ PetscErrorCode GetRecoveryMatrix(PetscScalar **S,unsigned int **sparsity,PetscIn
 }
 
 /*
-  Establish a look-up vector whose entries contain the colour used for that diagonal entry
-
-  TODO: Better description. Clearly we require m == n
+  Establish a look-up vector whose entries contain the colour used for that diagonal entry. Clearly
+  we require the number of dependent and independent variables to be equal in this case.
 
   Input parameters:
   S        - the seed matrix defining the coloring
