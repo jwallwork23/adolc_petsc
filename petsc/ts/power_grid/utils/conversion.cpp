@@ -1,7 +1,8 @@
 #include <petscdm.h>
 
 /* Converts from machine frame (dq) to network (phase a real,imag) reference frame */
-PetscErrorCode dq2ri(PetscScalar Fd,PetscScalar Fq,PetscScalar delta,PetscScalar *Fr, PetscScalar *Fi)
+template <class T>
+PetscErrorCode dq2ri(T Fd,T Fq,T delta,T *Fr,T *Fi)
 {
   PetscFunctionBegin;
   *Fr =  Fd*PetscSinScalar(delta) + Fq*PetscCosScalar(delta);
@@ -10,7 +11,8 @@ PetscErrorCode dq2ri(PetscScalar Fd,PetscScalar Fq,PetscScalar delta,PetscScalar
 }
 
 /* Converts from network frame ([phase a real,imag) to machine (dq) reference frame */
-PetscErrorCode ri2dq(PetscScalar Fr,PetscScalar Fi,PetscScalar delta,PetscScalar *Fd, PetscScalar *Fq)
+template <class T>
+PetscErrorCode ri2dq(T Fr,T Fi,T delta,T *Fd,T *Fq)
 {
   PetscFunctionBegin;
   *Fd =  Fr*PetscSinScalar(delta) - Fi*PetscCosScalar(delta);

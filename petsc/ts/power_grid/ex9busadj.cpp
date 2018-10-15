@@ -16,6 +16,7 @@ in current balance form using rectangular coordiantes.\n\n";
 #include <petscdm.h>
 #include <petscdmda.h>
 #include <petscdmcomposite.h>
+#include <adolc/adolc.h>
 #include "utils/init.cpp"
 #include "utils/jacobian_adj.cpp"
 

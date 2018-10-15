@@ -1,13 +1,13 @@
+#include <adolc/adolc.h>
 #include "init.cpp"
 #include "conversion.cpp"
 
 
-/* Computes F = [f(x,y);g(x,y)] */
-PetscErrorCode ResidualFunction(Vec X, Vec F, Userctx *user)
+// TODO: Active versions
+
+PetscErrorCode ResidualFunctionLocalPassive(PetscScalar *xgen,PetscScalar *xnet,PetscScalar *fgen,PetscScalar *fnet,Userctx *user)
 {
   PetscErrorCode ierr;
-  Vec            Xgen,Xnet,Fgen,Fnet;
-  PetscScalar    *xgen,*xnet,*fgen,*fnet;
   PetscInt       i,idx=0;
   PetscScalar    Vr,Vi,Vm,Vm2;
   PetscScalar    Eqp,Edp,delta,w; /* Generator variables */
@@ -18,28 +18,8 @@ PetscErrorCode ResidualFunction(Vec X, Vec F, Userctx *user)
   PetscScalar    Zdq_inv[4],det;
   PetscScalar    PD,QD,Vm0,*v0;
   PetscInt       k;
-
+  
   PetscFunctionBegin;
-  ierr = VecZeroEntries(F);CHKERRQ(ierr);
-  ierr = DMCompositeGetLocalVectors(user->dmpgrid,&Xgen,&Xnet);CHKERRQ(ierr);
-  ierr = DMCompositeGetLocalVectors(user->dmpgrid,&Fgen,&Fnet);CHKERRQ(ierr);
-  ierr = DMCompositeScatter(user->dmpgrid,X,Xgen,Xnet);CHKERRQ(ierr);
-  ierr = DMCompositeScatter(user->dmpgrid,F,Fgen,Fnet);CHKERRQ(ierr);
-
-  /* Network current balance residual IG + Y*V + IL = 0. Only YV is added here.
-     The generator current injection, IG, and load current injection, ID are added later
-  */
-  /* Note that the values in Ybus are stored assuming the imaginary current balance
-     equation is ordered first followed by real current balance equation for each bus.
-     Thus imaginary current contribution goes in location 2*i, and
-     real current contribution in 2*i+1
-  */
-  ierr = MatMult(user->Ybus,Xnet,Fnet);CHKERRQ(ierr);
-
-  ierr = VecGetArray(Xgen,&xgen);CHKERRQ(ierr);
-  ierr = VecGetArray(Xnet,&xnet);CHKERRQ(ierr);
-  ierr = VecGetArray(Fgen,&fgen);CHKERRQ(ierr);
-  ierr = VecGetArray(Fnet,&fnet);CHKERRQ(ierr);
 
   /* Generator subsystem */
   for (i=0; i < ngen; i++) {
@@ -113,6 +93,41 @@ PetscErrorCode ResidualFunction(Vec X, Vec F, Userctx *user)
   }
   ierr = VecRestoreArray(user->V0,&v0);CHKERRQ(ierr);
 
+  PetscFunctionReturn(0);
+}
+
+
+/* Computes F = [f(x,y);g(x,y)] */
+PetscErrorCode ResidualFunction(Vec X,Vec F,Userctx *user)
+{
+  PetscErrorCode ierr;
+  Vec            Xgen,Xnet,Fgen,Fnet;
+  PetscScalar    *xgen,*xnet,*fgen,*fnet;
+
+  ierr = VecZeroEntries(F);CHKERRQ(ierr);
+  ierr = DMCompositeGetLocalVectors(user->dmpgrid,&Xgen,&Xnet);CHKERRQ(ierr);
+  ierr = DMCompositeGetLocalVectors(user->dmpgrid,&Fgen,&Fnet);CHKERRQ(ierr);
+  ierr = DMCompositeScatter(user->dmpgrid,X,Xgen,Xnet);CHKERRQ(ierr);
+  ierr = DMCompositeScatter(user->dmpgrid,F,Fgen,Fnet);CHKERRQ(ierr);
+
+  /* Network current balance residual IG + Y*V + IL = 0. Only YV is added here.
+     The generator current injection, IG, and load current injection, ID are added later
+  */
+  /* Note that the values in Ybus are stored assuming the imaginary current balance
+     equation is ordered first followed by real current balance equation for each bus.
+     Thus imaginary current contribution goes in location 2*i, and
+     real current contribution in 2*i+1
+  */
+  ierr = MatMult(user->Ybus,Xnet,Fnet);CHKERRQ(ierr);
+
+  ierr = VecGetArray(Xgen,&xgen);CHKERRQ(ierr);
+  ierr = VecGetArray(Xnet,&xnet);CHKERRQ(ierr);
+  ierr = VecGetArray(Fgen,&fgen);CHKERRQ(ierr);
+  ierr = VecGetArray(Fnet,&fnet);CHKERRQ(ierr);
+
+  // TODO: active version
+  ierr = ResidualFunctionLocalPassive(xgen,xnet,fgen,fnet,user);CHKERRQ(ierr);
+
   ierr = VecRestoreArray(Xgen,&xgen);CHKERRQ(ierr);
   ierr = VecRestoreArray(Xnet,&xnet);CHKERRQ(ierr);
   ierr = VecRestoreArray(Fgen,&fgen);CHKERRQ(ierr);
@@ -127,7 +142,7 @@ PetscErrorCode ResidualFunction(Vec X, Vec F, Userctx *user)
 /*   f(x,y)
      g(x,y)
  */
-PetscErrorCode RHSFunction(TS ts,PetscReal t, Vec X, Vec F, void *ctx)
+PetscErrorCode RHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 {
   PetscErrorCode ierr;
   Userctx        *user=(Userctx*)ctx;
@@ -141,7 +156,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal t, Vec X, Vec F, void *ctx)
 /* f(x,y) - \dot{x}
      g(x,y) = 0
  */
-PetscErrorCode IFunction(TS ts,PetscReal t, Vec X, Vec Xdot, Vec F, void *ctx)
+PetscErrorCode IFunction(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
 {
   PetscErrorCode ierr;
   PetscScalar    *f,*xdot;
@@ -171,7 +186,7 @@ PetscErrorCode IFunction(TS ts,PetscReal t, Vec X, Vec Xdot, Vec F, void *ctx)
    differential equations
  F = [0;g(y)];
 */
-PetscErrorCode AlgFunction(SNES snes, Vec X, Vec F, void *ctx)
+PetscErrorCode AlgFunction(SNES snes,Vec X,Vec F,void *ctx)
 {
   PetscErrorCode ierr;
   Userctx        *user=(Userctx*)ctx;
