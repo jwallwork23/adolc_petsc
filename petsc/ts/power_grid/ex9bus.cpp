@@ -1,5 +1,5 @@
 
-static char help[] = "Sensitivity analysis applied in power grid stability analysis of WECC 9 bus system.\n\
+static char help[] = "Power grid stability analysis of WECC 9 bus system.\n\
 This example is based on the 9-bus (node) example given in the book Power\n\
 Systems Dynamics and Stability (Chapter 7) by P. Sauer and M. A. Pai.\n\
 The power grid in this example consists of 9 buses (nodes), 3 generators,\n\
@@ -7,17 +7,44 @@ The power grid in this example consists of 9 buses (nodes), 3 generators,\n\
 in current balance form using rectangular coordiantes.\n\n";
 
 /*
-   The equations for the stability analysis are described by the DAE. See ex9bus.c for details.
-   The system has 'jumps' due to faults, thus the time interval is split into multiple sections, and TSSolve is called for each of them. But TSAdjointSolve only needs to be called once since the whole trajectory has been saved in the forward run.
-   The code computes the sensitivity of a final state w.r.t. initial conditions.
+   The equations for the stability analysis are described by the DAE
+
+   \dot{x} = f(x,y,t)
+     0     = g(x,y,t)
+
+   where the generators are described by differential equations, while the algebraic
+   constraints define the network equations.
+
+   The generators are modeled with a 4th order differential equation describing the electrical
+   and mechanical dynamics. Each generator also has an exciter system modeled by 3rd order
+   diff. eqns. describing the exciter, voltage regulator, and the feedback stabilizer
+   mechanism.
+
+   The network equations are described by nodal current balance equations.
+    I(x,y) - Y*V = 0
+
+   where:
+    I(x,y) is the current injected from generators and loads.
+      Y    is the admittance matrix, and
+      V    is the voltage vector
+*/
+
+/*
+   Include "petscts.h" so that we can use TS solvers.  Note that this
+   file automatically includes:
+     petscsys.h       - base PETSc routines   petscvec.h - vectors
+     petscmat.h - matrices
+     petscis.h     - index sets            petscksp.h - Krylov subspace methods
+     petscviewer.h - viewers               petscpc.h  - preconditioners
+     petscksp.h   - linear solvers
 */
 
 #include <petscts.h>
 #include <petscdm.h>
 #include <petscdmda.h>
 #include <petscdmcomposite.h>
-#include "utils/init.cpp"
-#include "utils/jacobian_adj.cpp"
+#include "utils/monitor.cpp"
+#include "utils/jacobian.cpp"
 
 
 int main(int argc,char **argv)
@@ -27,18 +54,19 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   PetscMPIInt    size;
   Userctx        user;
-  PetscViewer    Xview,Ybusview;
-  Vec            X;
-  Mat            J;
-  PetscInt       i;
-  /* sensitivity context */
-  PetscScalar    *y_ptr;
-  Vec            lambda[1];
-  PetscInt       *idx2;
+  PetscViewer    Xview,Ybusview,viewer;
+  Vec            X,F_alg;
+  Mat            J,A;
+  PetscInt       i,idx,*idx2;
   Vec            Xdot;
-  Vec            F_alg;
-  PetscInt       row_loc,col_loc;
-  PetscScalar    val;
+  PetscScalar    *x,*mat,*amat;
+  Vec            vatol;
+  PetscInt       *direction;
+  PetscBool      *terminate;
+  const PetscInt *idx3;
+  PetscScalar    *vatoli;
+  PetscInt       k;
+
 
   ierr = PetscInitialize(&argc,&argv,"petscoptions",help);CHKERRQ(ierr);
   ierr = MPI_Comm_size(PETSC_COMM_WORLD,&size);CHKERRQ(ierr);
@@ -49,6 +77,7 @@ int main(int argc,char **argv)
   user.neqs_pgrid = user.neqs_gen + user.neqs_net;
 
   /* Create indices for differential and algebraic equations */
+
   ierr = PetscMalloc1(7*ngen,&idx2);CHKERRQ(ierr);
   for (i=0; i<ngen; i++) {
     idx2[7*i]   = 9*i;   idx2[7*i+1] = 9*i+1; idx2[7*i+2] = 9*i+2; idx2[7*i+3] = 9*i+3;
@@ -78,6 +107,8 @@ int main(int argc,char **argv)
     user.tfaulton  = 1.0;
     user.tfaultoff = 1.2;
     user.Rfault    = 0.0001;
+    user.setisdiff = PETSC_FALSE;
+    user.semiexplicit = PETSC_FALSE;
     user.faultbus  = 8;
     ierr           = PetscOptionsReal("-tfaulton","","",user.tfaulton,&user.tfaulton,NULL);CHKERRQ(ierr);
     ierr           = PetscOptionsReal("-tfaultoff","","",user.tfaultoff,&user.tfaultoff,NULL);CHKERRQ(ierr);
@@ -86,6 +117,8 @@ int main(int argc,char **argv)
     user.tmax      = 5.0;
     ierr           = PetscOptionsReal("-t0","","",user.t0,&user.t0,NULL);CHKERRQ(ierr);
     ierr           = PetscOptionsReal("-tmax","","",user.tmax,&user.tmax,NULL);CHKERRQ(ierr);
+    ierr           = PetscOptionsBool("-setisdiff","","",user.setisdiff,&user.setisdiff,NULL);CHKERRQ(ierr);
+    ierr           = PetscOptionsBool("-dae_semiexplicit","","",user.semiexplicit,&user.semiexplicit,NULL);CHKERRQ(ierr);
   }
   ierr = PetscOptionsEnd();CHKERRQ(ierr);
 
@@ -114,15 +147,26 @@ int main(int argc,char **argv)
   ierr = MatSetFromOptions(J);CHKERRQ(ierr);
   ierr = PreallocateJacobian(J,&user);CHKERRQ(ierr);
 
+  /* Create matrix to save solutions at each time step */
+  user.stepnum = 0;
 
+  ierr = MatCreateSeqDense(PETSC_COMM_SELF,user.neqs_pgrid+1,1002,NULL,&user.Sol);CHKERRQ(ierr);
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
-  ierr = TSSetType(ts,TSCN);CHKERRQ(ierr);
-  ierr = TSSetIFunction(ts,NULL,(TSIFunction) IFunction,&user);CHKERRQ(ierr);
-  ierr = TSSetIJacobian(ts,J,J,(TSIJacobian)IJacobian,&user);CHKERRQ(ierr);
+  if(user.semiexplicit) {
+    ierr = TSSetType(ts,TSRK);CHKERRQ(ierr);
+    ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&user);CHKERRQ(ierr);
+    ierr = TSSetRHSJacobian(ts,J,J,RHSJacobian,&user);CHKERRQ(ierr);
+  } else {
+    ierr = TSSetType(ts,TSCN);CHKERRQ(ierr);
+    ierr = TSSetEquationType(ts,TS_EQ_DAE_IMPLICIT_INDEX1);CHKERRQ(ierr);
+    ierr = TSARKIMEXSetFullyImplicit(ts,PETSC_TRUE);CHKERRQ(ierr);
+    ierr = TSSetIFunction(ts,NULL,(TSIFunction) IFunction,&user);CHKERRQ(ierr);
+    ierr = TSSetIJacobian(ts,J,J,(TSIJacobian)IJacobian,&user);CHKERRQ(ierr);
+  }
   ierr = TSSetApplicationContext(ts,&user);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -130,23 +174,61 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = SetInitialGuess(X,&user);CHKERRQ(ierr);
   /* Just to set up the Jacobian structure */
+
   ierr = VecDuplicate(X,&Xdot);CHKERRQ(ierr);
   ierr = IJacobian(ts,0.0,X,Xdot,0.0,J,J,&user);CHKERRQ(ierr);
   ierr = VecDestroy(&Xdot);CHKERRQ(ierr);
 
-  /*
-    Save trajectory of solution so that TSAdjointSolve() may be used
-  */
-  ierr = TSSetSaveTrajectory(ts);CHKERRQ(ierr);
+  /* Save initial solution */
+
+  idx=user.stepnum*(user.neqs_pgrid+1);
+  ierr = MatDenseGetArray(user.Sol,&mat);CHKERRQ(ierr);
+  ierr = VecGetArray(X,&x);CHKERRQ(ierr);
+
+  mat[idx] = 0.0;
+
+  ierr = PetscMemcpy(mat+idx+1,x,user.neqs_pgrid*sizeof(PetscScalar));CHKERRQ(ierr);
+  ierr = MatDenseRestoreArray(user.Sol,&mat);CHKERRQ(ierr);
+  ierr = VecRestoreArray(X,&x);CHKERRQ(ierr);
+  user.stepnum++;
 
   ierr = TSSetMaxTime(ts,user.tmax);CHKERRQ(ierr);
-  ierr = TSSetTimeStep(ts,0.01);CHKERRQ(ierr);
   ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_MATCHSTEP);CHKERRQ(ierr);
+  ierr = TSSetTimeStep(ts,0.01);CHKERRQ(ierr);
   ierr = TSSetFromOptions(ts);CHKERRQ(ierr);
+  ierr = TSSetPostStep(ts,SaveSolution);CHKERRQ(ierr);
+  ierr = TSSetSolution(ts,X);CHKERRQ(ierr);
 
-  user.alg_flg = PETSC_FALSE;
-  /* Prefault period */
-  ierr = TSSolve(ts,X);CHKERRQ(ierr);
+  ierr = PetscMalloc1((2*ngen+2),&direction);CHKERRQ(ierr);
+  ierr = PetscMalloc1((2*ngen+2),&terminate);CHKERRQ(ierr);
+  direction[0] = direction[1] = 1;
+  terminate[0] = terminate[1] = PETSC_FALSE;
+  for (i=0; i < ngen;i++) {
+    direction[2+2*i] = -1; direction[2+2*i+1] = 1;
+    terminate[2+2*i] = terminate[2+2*i+1] = PETSC_FALSE;
+  }
+
+  ierr = TSSetEventHandler(ts,2*ngen+2,direction,terminate,EventFunction,PostEventFunction,(void*)&user);CHKERRQ(ierr);
+
+  if(user.semiexplicit) {
+    /* Use a semi-explicit approach with the time-stepping done by an explicit method and the
+       algrebraic part solved via PostStage and PostEvaluate callbacks 
+    */
+    ierr = TSSetType(ts,TSRK);CHKERRQ(ierr);
+    ierr = TSSetPostStage(ts,PostStage);CHKERRQ(ierr);
+    ierr = TSSetPostEvaluate(ts,PostEvaluate);CHKERRQ(ierr);
+  }
+
+
+  if(user.setisdiff) {
+    /* Create vector of absolute tolerances and set the algebraic part to infinity */
+    ierr = VecDuplicate(X,&vatol);CHKERRQ(ierr);
+    ierr = VecSet(vatol,100000.0);CHKERRQ(ierr);
+    ierr = VecGetArray(vatol,&vatoli);CHKERRQ(ierr);
+    ierr = ISGetIndices(user.is_diff,&idx3);CHKERRQ(ierr);
+    for(k=0; k < 7*ngen; k++) vatoli[idx3[k]] = 1e-2;
+    ierr = VecRestoreArray(vatol,&vatoli);CHKERRQ(ierr);
+  }
 
   /* Create the nonlinear solver for solving the algebraic system */
   /* Note that although the algebraic system needs to be solved only for
@@ -154,84 +236,40 @@ int main(int argc,char **argv)
      variables are held constant by setting their residuals to 0 and
      putting a 1 on the Jacobian diagonal for xgen rows
   */
+
   ierr = VecDuplicate(X,&F_alg);CHKERRQ(ierr);
   ierr = SNESCreate(PETSC_COMM_WORLD,&snes_alg);CHKERRQ(ierr);
   ierr = SNESSetFunction(snes_alg,F_alg,AlgFunction,&user);CHKERRQ(ierr);
-  ierr = MatZeroEntries(J);CHKERRQ(ierr);
-  ierr = SNESSetJacobian(snes_alg,J,J,AlgJacobian,&user);CHKERRQ(ierr);
-  ierr = SNESSetOptionsPrefix(snes_alg,"alg_");CHKERRQ(ierr);
+  ierr = SNESSetJacobian(snes_alg,J,J,AlgJacobian,&user);CHKERRQ(ierr); 
+
   ierr = SNESSetFromOptions(snes_alg);CHKERRQ(ierr);
 
-  /* Apply disturbance - resistive fault at user.faultbus */
-  /* This is done by adding shunt conductance to the diagonal location
-     in the Ybus matrix */
-  row_loc = 2*user.faultbus; col_loc = 2*user.faultbus+1; /* Location for G */
-  val     = 1/user.Rfault;
-  ierr    = MatSetValues(user.Ybus,1,&row_loc,1,&col_loc,&val,ADD_VALUES);CHKERRQ(ierr);
-  row_loc = 2*user.faultbus+1; col_loc = 2*user.faultbus; /* Location for G */
-  val     = 1/user.Rfault;
-  ierr    = MatSetValues(user.Ybus,1,&row_loc,1,&col_loc,&val,ADD_VALUES);CHKERRQ(ierr);
-
-  ierr = MatAssemblyBegin(user.Ybus,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(user.Ybus,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-
-  user.alg_flg = PETSC_TRUE;
-  /* Solve the algebraic equations */
-  ierr = SNESSolve(snes_alg,NULL,X);CHKERRQ(ierr);
-
-
-  /* Disturbance period */
-  user.alg_flg = PETSC_FALSE;
-  ierr = TSSetTime(ts,user.tfaulton);CHKERRQ(ierr);
-  ierr = TSSetMaxTime(ts,user.tfaultoff);CHKERRQ(ierr);
+  user.snes_alg=snes_alg;
+  
+  /* Solve */
   ierr = TSSolve(ts,X);CHKERRQ(ierr);
 
-  /* Remove the fault */
-  row_loc = 2*user.faultbus; col_loc = 2*user.faultbus+1;
-  val     = -1/user.Rfault;
-  ierr    = MatSetValues(user.Ybus,1,&row_loc,1,&col_loc,&val,ADD_VALUES);CHKERRQ(ierr);
-  row_loc = 2*user.faultbus+1; col_loc = 2*user.faultbus;
-  val     = -1/user.Rfault;
-  ierr    = MatSetValues(user.Ybus,1,&row_loc,1,&col_loc,&val,ADD_VALUES);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(user.Sol,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(user.Sol,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
-  ierr = MatAssemblyBegin(user.Ybus,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(user.Ybus,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatCreateSeqDense(PETSC_COMM_SELF,user.neqs_pgrid+1,user.stepnum,NULL,&A);CHKERRQ(ierr);
+  ierr = MatDenseGetArray(user.Sol,&mat);CHKERRQ(ierr);
+  ierr = MatDenseGetArray(A,&amat);CHKERRQ(ierr);
+  ierr = PetscMemcpy(amat,mat,(user.stepnum*(user.neqs_pgrid+1))*sizeof(PetscScalar));CHKERRQ(ierr);
+  ierr = MatDenseRestoreArray(A,&amat);CHKERRQ(ierr);
+  ierr = MatDenseRestoreArray(user.Sol,&mat);CHKERRQ(ierr);
+  ierr = PetscViewerBinaryOpen(PETSC_COMM_SELF,"out.bin",FILE_MODE_WRITE,&viewer);CHKERRQ(ierr);
+  ierr = MatView(A,viewer);CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  ierr = MatDestroy(&A);CHKERRQ(ierr);
 
-  ierr = MatZeroEntries(J);CHKERRQ(ierr);
-
-  user.alg_flg = PETSC_TRUE;
-
-  /* Solve the algebraic equations */
-  ierr = SNESSolve(snes_alg,NULL,X);CHKERRQ(ierr);
-
-  /* Post-disturbance period */
-  user.alg_flg = PETSC_TRUE;
-  ierr = TSSetTime(ts,user.tfaultoff);CHKERRQ(ierr);
-  ierr = TSSetMaxTime(ts,user.tmax);CHKERRQ(ierr);
-  ierr = TSSolve(ts,X);CHKERRQ(ierr);
-
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Adjoint model starts here
-     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = TSSetPostStep(ts,NULL);CHKERRQ(ierr);
-  ierr = MatCreateVecs(J,&lambda[0],NULL);CHKERRQ(ierr);
-  /*   Set initial conditions for the adjoint integration */
-  ierr = VecZeroEntries(lambda[0]);CHKERRQ(ierr);
-  ierr = VecGetArray(lambda[0],&y_ptr);CHKERRQ(ierr);
-  y_ptr[0] = 1.0;
-  ierr = VecRestoreArray(lambda[0],&y_ptr);CHKERRQ(ierr);
-  ierr = TSSetCostGradients(ts,1,lambda,NULL);CHKERRQ(ierr);
-
-  ierr = TSAdjointSolve(ts);CHKERRQ(ierr);
-
-  ierr = PetscPrintf(PETSC_COMM_WORLD,"\n sensitivity wrt initial conditions: \n");CHKERRQ(ierr);
-  ierr = VecView(lambda[0],PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  ierr = VecDestroy(&lambda[0]);CHKERRQ(ierr);
-
+  ierr = PetscFree(direction);CHKERRQ(ierr);
+  ierr = PetscFree(terminate);CHKERRQ(ierr);
   ierr = SNESDestroy(&snes_alg);CHKERRQ(ierr);
   ierr = VecDestroy(&F_alg);CHKERRQ(ierr);
   ierr = MatDestroy(&J);CHKERRQ(ierr);
   ierr = MatDestroy(&user.Ybus);CHKERRQ(ierr);
+  ierr = MatDestroy(&user.Sol);CHKERRQ(ierr);
   ierr = VecDestroy(&X);CHKERRQ(ierr);
   ierr = VecDestroy(&user.V0);CHKERRQ(ierr);
   ierr = DMDestroy(&user.dmgen);CHKERRQ(ierr);
@@ -240,6 +278,9 @@ int main(int argc,char **argv)
   ierr = ISDestroy(&user.is_diff);CHKERRQ(ierr);
   ierr = ISDestroy(&user.is_alg);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
+  if(user.setisdiff) {
+    ierr = VecDestroy(&vatol);CHKERRQ(ierr);
+  }
   ierr = PetscFinalize();
   return ierr;
 }
@@ -250,7 +291,18 @@ int main(int argc,char **argv)
       requires: double !complex !define(PETSC_USE_64BIT_INDICES)
 
    test:
-      args: -viewer_binary_skip_info
+      suffix: implicit
+      args: -ts_monitor -snes_monitor_short
+      localrunfiles: petscoptions X.bin Ybus.bin
+
+   test:
+      suffix: semiexplicit
+      args: -ts_monitor -snes_monitor_short -dae_semiexplicit -ts_rk_type 2a
+      localrunfiles: petscoptions X.bin Ybus.bin
+
+   test:
+      suffix: steprestart
+      args: -ts_monitor -snes_monitor_short -ts_type arkimex
       localrunfiles: petscoptions X.bin Ybus.bin
 
 TEST*/
