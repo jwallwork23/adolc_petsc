@@ -1,4 +1,5 @@
 #include "tracing.cpp"
+#include "../../../utils/drivers.cpp"
 
 
 PetscErrorCode PreallocateJacobian(Mat J, Userctx *user)
@@ -50,7 +51,7 @@ PetscErrorCode PreallocateJacobian(Mat J, Userctx *user)
    J = [df_dx, df_dy
         dg_dx, dg_dy]
 */
-PetscErrorCode ResidualJacobian(Vec X,Mat J,Mat B,void *ctx)
+PetscErrorCode ResidualJacobianByHand(Vec X,Mat J,Mat B,void *ctx)
 {
   PetscErrorCode ierr;
   Userctx        *user=(Userctx*)ctx;
@@ -294,13 +295,13 @@ PetscErrorCode ResidualJacobian(Vec X,Mat J,Mat B,void *ctx)
    J = [I, 0
         dg_dx, dg_dy]
 */
-PetscErrorCode AlgJacobian(SNES snes,Vec X,Mat A,Mat B,void *ctx)
+PetscErrorCode AlgJacobianByHand(SNES snes,Vec X,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode ierr;
   Userctx        *user=(Userctx*)ctx;
 
   PetscFunctionBegin;
-  ierr = ResidualJacobian(X,A,B,ctx);CHKERRQ(ierr);
+  ierr = ResidualJacobianByHand(X,A,B,ctx);CHKERRQ(ierr);
   ierr = MatSetOption(A,MAT_KEEP_NONZERO_PATTERN,PETSC_TRUE);CHKERRQ(ierr);
   ierr = MatZeroRowsIS(A,user->is_diff,1.0,NULL,NULL);CHKERRQ(ierr);
   PetscFunctionReturn(0);
@@ -311,16 +312,14 @@ PetscErrorCode AlgJacobian(SNES snes,Vec X,Mat A,Mat B,void *ctx)
         dg_dx, dg_dy]
 */
 
-PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
+PetscErrorCode RHSJacobianByHand(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode ierr;
   Userctx        *user=(Userctx*)ctx;
 
   PetscFunctionBegin;
   user->t = t;
-
-  ierr = ResidualJacobian(X,A,B,user);CHKERRQ(ierr);
-
+  ierr = ResidualJacobianByHand(X,A,B,user);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -329,7 +328,7 @@ PetscErrorCode RHSJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
         dg_dx, dg_dy]
 */
 
-PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat B,Userctx *user)
+PetscErrorCode IJacobianByHand(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat B,Userctx *user)
 {
   PetscErrorCode ierr;
   PetscScalar    atmp = (PetscScalar) a;
@@ -339,7 +338,7 @@ PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat 
   user->t = t;
   atmp *= -1;
 
-  ierr = RHSJacobian(ts,t,X,A,B,user);CHKERRQ(ierr);
+  ierr = RHSJacobianByHand(ts,t,X,A,B,user);CHKERRQ(ierr);
   for (i=0;i < ngen;i++) {
     row = 9*i;
     ierr = MatSetValues(A,1,&row,1,&row,&atmp,ADD_VALUES);CHKERRQ(ierr);
@@ -358,5 +357,50 @@ PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat 
   }
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*--------------------------  ADOL-C versions -------------------------------- */
+
+PetscErrorCode ResidualJacobianAdolc(Vec X,Mat J,Mat B,void *ctx)
+{
+  PetscErrorCode ierr;
+  Userctx        *user = (Userctx*)ctx;
+  PetscScalar    *x_vec;
+
+  PetscFunctionBegin;
+  //ierr = MatZeroEntries(B);CHKERRQ(ierr);
+  ierr = VecGetArray(X,&x_vec);CHKERRQ(ierr);
+  ierr = AdolcComputeRHSJacobian(J,x_vec,user->adctx);CHKERRQ(ierr);
+  ierr = VecRestoreArray(X,&x_vec);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode RHSJacobianAdolc(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
+{
+  PetscErrorCode ierr;
+  Userctx        *user=(Userctx*)ctx;
+
+  PetscFunctionBegin;
+  user->t = t;
+  ierr = ResidualJacobianAdolc(X,A,B,user);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat B,Userctx *user)
+{
+  PetscErrorCode ierr;
+  PetscScalar    *x_vec;
+  Vec            Xcopy;
+
+  PetscFunctionBegin;
+  user->t = t;
+  //ierr = MatZeroEntries(B);CHKERRQ(ierr);
+  ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);  // X is read-only  TODO: remove this
+  ierr = VecGetArray(Xcopy,&x_vec);CHKERRQ(ierr);
+  ierr = MatSetOption(A,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr); // FIXME
+  ierr = AdolcComputeIJacobianGlobal(A,x_vec,a,user->adctx);CHKERRQ(ierr);
+  ierr = VecRestoreArray(Xcopy,&x_vec);CHKERRQ(ierr);
+  ierr = VecDestroy(&Xcopy);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }

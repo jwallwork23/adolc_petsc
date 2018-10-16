@@ -55,6 +55,7 @@ int main(int argc,char **argv)
   PetscErrorCode ierr;
   PetscMPIInt    size;
   Userctx        user;
+  AdolcCtx       *adctx;
   PetscViewer    Xview,Ybusview,viewer;
   Vec            X,F_alg,R;
   Mat            J,A;
@@ -63,7 +64,7 @@ int main(int argc,char **argv)
   PetscScalar    *x,*mat,*amat;
   Vec            vatol;
   PetscInt       *direction;
-  PetscBool      *terminate;
+  PetscBool      *terminate,byhand = PETSC_FALSE;
   const PetscInt *idx3;
   PetscScalar    *vatoli;
   PetscInt       k;
@@ -73,10 +74,15 @@ int main(int argc,char **argv)
   ierr = PetscInitialize(&argc,&argv,"petscoptions",help);CHKERRQ(ierr);
   ierr = MPI_Comm_size(PETSC_COMM_WORLD,&size);CHKERRQ(ierr);
   if (size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Only for sequential runs");
+  ierr = PetscNew(&adctx);CHKERRQ(ierr);
 
   user.neqs_gen   = 9*ngen; /* # eqs. for generator subsystem */
   user.neqs_net   = 2*nbus; /* # eqs. for network subsystem   */
   user.neqs_pgrid = user.neqs_gen + user.neqs_net;
+  user.adctx = adctx;
+  adctx->m = user.neqs_pgrid;
+  adctx->n = user.neqs_pgrid;
+  adctx->p = user.neqs_pgrid;
 
   /* Create indices for differential and algebraic equations */
 
@@ -125,6 +131,7 @@ int main(int argc,char **argv)
     /* ADOL-C options */
     user.no_an     = PETSC_FALSE;
     ierr           = PetscOptionsBool("-no_annotation","","",user.no_an,&user.no_an,NULL);CHKERRQ(ierr);
+    ierr           = PetscOptionsBool("-jacobian_by_hand","","",byhand,&byhand,NULL);CHKERRQ(ierr);
   }
   ierr = PetscOptionsEnd();CHKERRQ(ierr);
 
@@ -169,22 +176,20 @@ int main(int argc,char **argv)
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
        Allocate memory for active variables
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-    xgen_a = new adouble[ngen*9];
-    xnet_a = new adouble[ngen*6];
-    fgen_a = new adouble[ngen*9];
-    fnet_a = new adouble[ngen*6];
-    xdot_a = new adouble[ngen*15];
-    user.xgen_a = xgen_a;user.xnet_a = xnet_a,user.fgen_a = fgen_a;user.fnet_a = fnet_a;user.xdot_a = xdot_a;
+    xgen_a = new adouble[user.neqs_gen];
+    xnet_a = new adouble[user.neqs_net];
+    fgen_a = new adouble[user.neqs_gen];
+    fnet_a = new adouble[user.neqs_net];
+    xdot_a = new adouble[user.neqs_pgrid];
+    user.xgen_a = xgen_a;user.xnet_a = xnet_a;
+    user.fgen_a = fgen_a;user.fnet_a = fnet_a;
+    user.xdot_a = xdot_a;
 
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
        Trace just once
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = VecDuplicate(X,&R);CHKERRQ(ierr);
-    if (user.semiexplicit) {
-      ierr = RHSFunctionActive(ts,0.,X,R,&user);CHKERRQ(ierr);
-    } else {
-      ierr = IFunctionActive(ts,0.,X,Xdot,R,&user);CHKERRQ(ierr);
-    }
+    ierr = IFunctionActive(ts,0.,X,Xdot,R,&user);CHKERRQ(ierr);
     ierr = VecDestroy(&R);CHKERRQ(ierr);
   }
 
@@ -196,19 +201,33 @@ int main(int argc,char **argv)
   if (user.semiexplicit) {
     ierr = TSSetType(ts,TSRK);CHKERRQ(ierr);
     ierr = TSSetRHSFunction(ts,NULL,RHSFunctionPassive,&user);CHKERRQ(ierr);
-    ierr = TSSetRHSJacobian(ts,J,J,RHSJacobian,&user);CHKERRQ(ierr);
+    if (byhand) {
+      ierr = TSSetRHSJacobian(ts,J,J,RHSJacobianByHand,&user);CHKERRQ(ierr);
+    } else {
+      ierr = TSSetRHSJacobian(ts,J,J,RHSJacobianAdolc,&user);CHKERRQ(ierr);
+    }
   } else {
     ierr = TSSetType(ts,TSCN);CHKERRQ(ierr);
     ierr = TSSetEquationType(ts,TS_EQ_DAE_IMPLICIT_INDEX1);CHKERRQ(ierr);
     ierr = TSARKIMEXSetFullyImplicit(ts,PETSC_TRUE);CHKERRQ(ierr);
     ierr = TSSetIFunction(ts,NULL,(TSIFunction) IFunctionPassive,&user);CHKERRQ(ierr);
-    ierr = TSSetIJacobian(ts,J,J,(TSIJacobian)IJacobian,&user);CHKERRQ(ierr);
+    if (byhand) {
+      ierr = TSSetIJacobian(ts,J,J,(TSIJacobian)IJacobianByHand,&user);CHKERRQ(ierr);
+    } else {
+      ierr = TSSetIJacobian(ts,J,J,(TSIJacobian)IJacobianAdolc,&user);CHKERRQ(ierr);
+    }
   }
   ierr = TSSetApplicationContext(ts,&user);CHKERRQ(ierr);
 
   /* Just to set up the Jacobian structure */
-  ierr = IJacobian(ts,0.0,X,Xdot,0.0,J,J,&user);CHKERRQ(ierr);
+  if (byhand) {
+    ierr = IJacobianByHand(ts,0.0,X,Xdot,0.0,J,J,&user);CHKERRQ(ierr);
+  } else {
+   ierr = IJacobianAdolc(ts,0.0,X,Xdot,0.0,J,J,&user);CHKERRQ(ierr);
+  }
   ierr = VecDestroy(&Xdot);CHKERRQ(ierr);
+
+  ierr = MatView(J,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
   /* Save initial solution */
 
@@ -270,8 +289,8 @@ int main(int argc,char **argv)
 
   ierr = VecDuplicate(X,&F_alg);CHKERRQ(ierr);
   ierr = SNESCreate(PETSC_COMM_WORLD,&snes_alg);CHKERRQ(ierr);
-  ierr = SNESSetFunction(snes_alg,F_alg,AlgFunction,&user);CHKERRQ(ierr);
-  ierr = SNESSetJacobian(snes_alg,J,J,AlgJacobian,&user);CHKERRQ(ierr); 
+  ierr = SNESSetFunction(snes_alg,F_alg,AlgFunction,&user);CHKERRQ(ierr);     // TODO
+  ierr = SNESSetJacobian(snes_alg,J,J,AlgJacobianByHand,&user);CHKERRQ(ierr); // TODO
 
   ierr = SNESSetFromOptions(snes_alg);CHKERRQ(ierr);
 
@@ -322,6 +341,7 @@ int main(int argc,char **argv)
   if(user.setisdiff) {
     ierr = VecDestroy(&vatol);CHKERRQ(ierr);
   }
+  ierr = PetscFree(adctx);CHKERRQ(ierr);
   ierr = PetscFinalize();
   return ierr;
 }

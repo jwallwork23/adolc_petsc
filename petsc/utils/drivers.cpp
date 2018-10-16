@@ -1,5 +1,6 @@
 #include "contexts.cpp"
 #include "sparse.cpp"
+#include "init.cpp"
 
 
 /*
@@ -22,10 +23,11 @@ PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscScalar *u_vec,void *ctx)
   PetscScalar    **J;
 
   PetscFunctionBegin;
-
   ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
-  fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
-  //jacobian(1,m,n,u_vec,J);
+  if (adctx->Seed)
+    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+  else
+    jacobian(1,m,n,u_vec,J);
   if (adctx->sparse) {
     if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
       ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian:",m,p,J);CHKERRQ(ierr);
@@ -70,7 +72,10 @@ PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *
   ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
 
   /* dF/dx part */
-  fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+  if (adctx->Seed)
+    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+  else
+    jacobian(1,m,n,u_vec,J);
   if (adctx->sparse) {
     if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
       ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/dx:",m,p,J);CHKERRQ(ierr);
@@ -89,7 +94,10 @@ PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
   /* a * dF/d(xdot) part */
-  fov_forward(2,m,n,p,u_vec,adctx->Seed,NULL,J);
+  if (adctx->Seed)
+    fov_forward(2,m,n,p,u_vec,adctx->Seed,NULL,J);
+  else
+    jacobian(2,m,n,u_vec,J);
   if (adctx->sparse) {
     if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
       ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/d(xdot):",m,p,J);CHKERRQ(ierr);
@@ -102,6 +110,66 @@ PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *
         if (fabs(J[i][j]) > 1.e-16) {
           J[i][j] *= a;
           ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],ADD_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+  }
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = AdolcFree2(J);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+
+PetscErrorCode AdolcComputeIJacobianGlobal(Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
+{
+  AdolcCtx       *adctx = (AdolcCtx*)ctx;
+  PetscErrorCode ierr;
+  PetscInt       i,j,m = adctx->m,n = adctx->n,p = adctx->p;
+  PetscScalar    **J;
+
+  PetscFunctionBegin;
+  ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
+
+  /* dF/dx part */
+  if (adctx->Seed)
+    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+  else
+    jacobian(1,m,n,u_vec,J);
+  if (adctx->sparse) {
+    if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
+      ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/dx:",m,p,J);CHKERRQ(ierr);
+    }
+    ierr = RecoverJacobian(A,INSERT_VALUES,m,p,adctx->Rec,J,NULL);CHKERRQ(ierr); // TODO: global
+  } else {
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          ierr = MatSetValues(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+  }
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  /* a * dF/d(xdot) part */
+  if (adctx->Seed)
+    fov_forward(2,m,n,p,u_vec,adctx->Seed,NULL,J);
+  else
+    jacobian(2,m,n,u_vec,J);
+  if (adctx->sparse) {
+    if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
+      ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/d(xdot):",m,p,J);CHKERRQ(ierr);
+      adctx->sparse_view_done = PETSC_TRUE;
+    }
+    ierr = RecoverJacobian(A,ADD_VALUES,m,p,adctx->Rec,J,&a);CHKERRQ(ierr); // TODO: global
+  } else {
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          J[i][j] *= a;
+          ierr = MatSetValues(A,1,&i,1,&j,&J[i][j],ADD_VALUES);CHKERRQ(ierr);
         }
       }
     }

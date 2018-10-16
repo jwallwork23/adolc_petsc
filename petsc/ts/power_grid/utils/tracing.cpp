@@ -167,9 +167,9 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
   trace_on(1);
 
   /* Mark independent variables */
-  for (i=0; i<9*ngen; i++)
+  for (i=0; i<user->neqs_gen; i++)
     xgen[i] <<= xgen_p[i];
-  for (i=0; i<6*ngen; i++)
+  for (i=0; i<user->neqs_net; i++)
     xnet[i] <<= xnet_p[i];
 
   /* Generator subsystem */
@@ -252,9 +252,9 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
   ierr = VecRestoreArray(user->V0,&v0);CHKERRQ(ierr);
 
   /* Mark dependent variables */
-  for (i=0; i<9*ngen; i++)
+  for (i=0; i<user->neqs_gen; i++)
     fgen[i] >>= fgen_p[i];
-  for (i=0; i<6*nload; i++)
+  for (i=0; i<user->neqs_net; i++)
     fnet[i] >>= fnet_p[i];
 
   trace_off();
@@ -340,7 +340,7 @@ PetscErrorCode IFunctionActive(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
   trace_on(2);
 
   /* Mark independence */
-  for (i=0; i<15*ngen; i++)
+  for (i=0; i<user->neqs_pgrid; i++)
     xdot[i] <<= xdot_p[i];
 
   for (i=0;i < ngen;i++) {
@@ -354,11 +354,11 @@ PetscErrorCode IFunctionActive(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
   }
 
   /* Mark independence */
-  for (i=0; i<9*ngen; i++) {
+  for (i=0; i<user->neqs_gen; i++) {
     f[i] >>= f_p[idx];
     idx++;
   }
-  for (i=0; i<6*ngen; i++) {
+  for (i=0; i<user->neqs_net; i++) {
     fnet[i] >>= f_p[idx];
     idx++;
   }
@@ -375,7 +375,7 @@ PetscErrorCode IFunctionActive(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
    differential equations
  F = [0;g(y)];
 
-   TODO: trace?
+   TODO: trace
 */
 PetscErrorCode AlgFunction(SNES snes,Vec X,Vec F,void *ctx)
 {
