@@ -369,7 +369,7 @@ PetscErrorCode ResidualJacobianAdolc(Vec X,Mat J,Mat B,void *ctx)
   PetscScalar    *x_vec;
 
   PetscFunctionBegin;
-  //ierr = MatZeroEntries(B);CHKERRQ(ierr);
+  ierr = MatZeroEntries(B);CHKERRQ(ierr); // TODO ?
   ierr = VecGetArray(X,&x_vec);CHKERRQ(ierr);
   ierr = AdolcComputeRHSJacobian(J,x_vec,user->adctx);CHKERRQ(ierr);
   ierr = VecRestoreArray(X,&x_vec);CHKERRQ(ierr);
@@ -395,7 +395,7 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A
 
   PetscFunctionBegin;
   user->t = t;
-  //ierr = MatZeroEntries(B);CHKERRQ(ierr);
+  ierr = MatZeroEntries(B);CHKERRQ(ierr); // TODO?
   ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);  // X is read-only  TODO: remove this
   ierr = VecGetArray(Xcopy,&x_vec);CHKERRQ(ierr);
   ierr = MatSetOption(A,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr); // FIXME

@@ -190,6 +190,7 @@ int main(int argc,char **argv)
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = VecDuplicate(X,&R);CHKERRQ(ierr);
     ierr = IFunctionActive(ts,0.,X,Xdot,R,&user);CHKERRQ(ierr);
+    ierr = VecView(R,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);  // FIXME
     ierr = VecDestroy(&R);CHKERRQ(ierr);
   }
 
