@@ -169,7 +169,7 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
   /* Mark independent variables */
   for (i=0; i<9*ngen; i++)
     xgen[i] <<= xgen_p[i];
-  for (i=0; i<9*ngen; i++)
+  for (i=0; i<6*ngen; i++)
     xnet[i] <<= xnet_p[i];
 
   /* Generator subsystem */
@@ -254,7 +254,7 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
   /* Mark dependent variables */
   for (i=0; i<9*ngen; i++)
     fgen[i] >>= fgen_p[i];
-  for (i=0; i<2*nload; i++)
+  for (i=0; i<6*nload; i++)
     fnet[i] >>= fnet_p[i];
 
   trace_off();
@@ -328,20 +328,19 @@ PetscErrorCode IFunctionActive(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
   PetscErrorCode ierr;
   Userctx        *user = (Userctx*) ctx;
   PetscScalar    *f_p,*xdot_p;
-  PetscInt       i,l;
-  adouble        *xdot = user->xdot_a,*f = user->f_a;
+  PetscInt       i,idx = 0;
+  adouble        *xdot = user->xdot_a,*f = user->fgen_a,*fnet = user->fnet_a;
 
   PetscFunctionBegin;
 
   ierr = RHSFunctionActive(ts,t,X,F,ctx);CHKERRQ(ierr);
-  ierr = VecGetSize(F,&l);CHKERRQ(ierr);
   ierr = VecGetArray(F,&f_p);CHKERRQ(ierr);
   ierr = VecGetArray(Xdot,&xdot_p);CHKERRQ(ierr);
 
   trace_on(2);
 
   /* Mark independence */
-  for (i=0; i<l; i++)
+  for (i=0; i<15*ngen; i++)
     xdot[i] <<= xdot_p[i];
 
   for (i=0;i < ngen;i++) {
@@ -355,8 +354,14 @@ PetscErrorCode IFunctionActive(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
   }
 
   /* Mark independence */
-  for (i=0; i<l; i++)
-    f[i] >>= f_p[i];
+  for (i=0; i<9*ngen; i++) {
+    f[i] >>= f_p[idx];
+    idx++;
+  }
+  for (i=0; i<6*ngen; i++) {
+    fnet[i] >>= f_p[idx];
+    idx++;
+  }
 
   trace_off();
 

@@ -98,7 +98,7 @@ typedef struct {
 
   /* Additional members for ADOL-C implementation */
   PetscBool   no_an;
-  adouble     *xgen_a,*xnet_a,*fgen_a,*fnet_a,*xdot_a,*f_a;
+  adouble     *xgen_a,*xnet_a,*fgen_a,*fnet_a,*xdot_a;
   AdolcCtx    *adctx;
   PetscInt    m,n;
 } Userctx;

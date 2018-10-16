@@ -67,7 +67,7 @@ int main(int argc,char **argv)
   const PetscInt *idx3;
   PetscScalar    *vatoli;
   PetscInt       k;
-  adouble        *xgen_a = NULL,*xnet_a = NULL,*fgen_a = NULL,*fnet_a = NULL;//*xdot_a = NULL;
+  adouble        *xgen_a = NULL,*xnet_a = NULL,*fgen_a = NULL,*fnet_a = NULL,*xdot_a = NULL;
 
 
   ierr = PetscInitialize(&argc,&argv,"petscoptions",help);CHKERRQ(ierr);
@@ -170,11 +170,11 @@ int main(int argc,char **argv)
        Allocate memory for active variables
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     xgen_a = new adouble[ngen*9];
-    xnet_a = new adouble[ngen*9];
+    xnet_a = new adouble[ngen*6];
     fgen_a = new adouble[ngen*9];
-    fnet_a = new adouble[ngen*9];
-    //xdot_a = new adouble[ngen*18]; // TODO: Should this be separated?
-    user.xgen_a = xgen_a;user.xnet_a = xnet_a,user.fgen_a = fgen_a;user.fnet_a = fnet_a;//user.xdot_a = xdot_a;
+    fnet_a = new adouble[ngen*6];
+    xdot_a = new adouble[ngen*15];
+    user.xgen_a = xgen_a;user.xnet_a = xnet_a,user.fgen_a = fgen_a;user.fnet_a = fnet_a;user.xdot_a = xdot_a;
 
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
        Trace just once
@@ -300,7 +300,7 @@ int main(int argc,char **argv)
   ierr = PetscFree(direction);CHKERRQ(ierr);
   ierr = PetscFree(terminate);CHKERRQ(ierr);
   if (!user.no_an) {
-    //delete[] xdot_a;
+    delete[] xdot_a;
     delete[] fnet_a;
     delete[] fgen_a;
     delete[] xnet_a;
