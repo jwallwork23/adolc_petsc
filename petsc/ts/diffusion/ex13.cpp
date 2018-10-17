@@ -75,7 +75,7 @@ int main(int argc,char **argv)
   PetscBool      byhand = PETSC_FALSE;
   MPI_Comm       comm = MPI_COMM_WORLD;
 
-  ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
+  ierr = PetscInitialize(&argc,&argv,"petscoptions",help);if (ierr) return ierr;
   ierr = PetscMalloc1(1,&adctx);CHKERRQ(ierr);
   adctx->no_an = PETSC_FALSE;adctx->zos = PETSC_FALSE;adctx->zos_view = PETSC_FALSE;adctx->sparse = PETSC_FALSE;adctx->sparse_view = PETSC_FALSE;
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_test_zos",&adctx->zos,NULL);CHKERRQ(ierr);

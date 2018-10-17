@@ -1,0 +1,27 @@
+# DMPlex options
+-dm_refine 1
+
+# KSP and PC options
+-ksp_monitor_short
+-ksp_converged_reason
+-pc_type fieldsplit
+-pc_fieldsplit_type schur
+-pc_fieldsplit_schur_fact_type full
+-fieldsplit_velocity_pc_type lu
+-fieldsplit_pressure_ksp_rtol 1.0e-10
+-fieldsplit_pressure_pc_type jacobi
+
+# SNES options
+-snes_monitor_short
+-snes_converged_reason
+
+# TS options
+-ts_type beuler
+-ts_max_steps 10
+-ts_dt 0.1
+-ts_monitor
+
+# Problem-specific FEM options
+-vel_petscspace_degree 2
+-pres_petscspace_degree 1
+

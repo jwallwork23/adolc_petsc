@@ -37,8 +37,7 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
-  //ierr = PetscInitialize(&argc,&argv,"petscoptions",help);if (ierr) return ierr;
+  ierr = PetscInitialize(&argc,&argv,"petscoptions",help);if (ierr) return ierr;
   PetscFunctionBeginUser;
   ierr = PetscNew(&adctx);CHKERRQ(ierr);
   adctx->no_an = PETSC_FALSE;adctx->sparse = PETSC_FALSE;adctx->sparse_view = PETSC_FALSE;adctx->sparse_view_done = PETSC_FALSE;

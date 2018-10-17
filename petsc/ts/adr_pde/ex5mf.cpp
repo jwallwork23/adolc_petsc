@@ -37,8 +37,7 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
-  //ierr = PetscInitialize(&argc,&argv,"petscoptions",help);if (ierr) return ierr;
+  ierr = PetscInitialize(&argc,&argv,"petscoptions",help);if (ierr) return ierr;
   ierr = PetscOptionsGetBool(NULL,NULL,"-forwardonly",&forwardonly,NULL);CHKERRQ(ierr);
   PetscFunctionBeginUser;
   appctx.D1    = 8.0e-5;

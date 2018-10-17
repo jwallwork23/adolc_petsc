@@ -1,4 +1,4 @@
-## Automatic differentiation applied to some PETSc examples
+## Automatic differentiation applied to some time-dependent PETSc examples
 
 Based on various tutorials taken from the following projects:
 * PETSc: https://www.mcs.anl.gov/petsc/

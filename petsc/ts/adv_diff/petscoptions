@@ -1,0 +1,20 @@
+# DMPlex options
+-dm_refine 2
+-dm_view
+
+# Problem-specific FEM options
+-phi_petscspace_degree 1
+-vel_petscspace_degree 1
+
+# TS options
+-ts_type beuler
+-ts_max_steps 10
+-ts_dt 0.1
+-ts_monitor
+
+# PC options
+-pc_type lu
+
+# SNES options
+-snes_monitor_short
+-snes_converged_reason

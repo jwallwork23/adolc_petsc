@@ -1,10 +1,10 @@
-ALL: clean ex11
+ALL: clean ex47
 CFLAGS			=
 FFLAGS			=
 CXXFLAGS		= -std=c++11
 CPPFLAGS		=
 FPPFLAGS		=
-CLEANFILES		= ex11 binaryoutput *.tap *.info *.txt *.o *.vtu
+CLEANFILES		= ex47 binaryoutput *.tap *.info *.txt *.o *.vtu
 
 INCLUDES		= -I./
 INCLUDES		+= -I${ADOLC_HOME}/ADOL-C/include
@@ -18,11 +18,7 @@ CC 			= g++
 include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules
 
-ex11: ex11.o
-	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
-	${RM} $^
-
-ex11_sa: ex11_sa.o
+ex47: ex47.o
 	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
 	${RM} $^
 
