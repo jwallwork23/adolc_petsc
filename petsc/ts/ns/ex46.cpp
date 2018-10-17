@@ -9,6 +9,7 @@ Contributed by: Julian Andrej <juan@tf.uni-kiel.de>\n\n\n";
 #include <petscsnes.h>
 #include <petscts.h>
 #include <petscds.h>
+#include <adolc/adolc.h>
 
 /*
   Navier-Stokes equation:
@@ -24,9 +25,10 @@ typedef struct {
   PetscErrorCode (**exactFuncs)(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nf, PetscScalar *u, void *ctx);
 } AppCtx;
 
+/* Reynolds number */
 #define REYN 400.0
 
-/* MMS1
+/* MMS1: Method of Manufactured Solutions
 
   u = t + x^2 + y^2;
   v = t + 2*x^2 - 2*x*y;
@@ -58,7 +60,7 @@ PetscErrorCode mms1_p_2d(PetscInt dim, PetscReal time, const PetscReal x[], Pets
   return 0;
 }
 
-/* MMS 2*/
+/* MMS 2: Alternative Method of Manufactured Solutions */
 
 static PetscErrorCode mms2_u_2d(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nf, PetscScalar *u, void *ctx)
 {

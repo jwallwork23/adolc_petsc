@@ -30,6 +30,7 @@ For a vector quantity a, we likewise have
 #include <petscdmplex.h>
 #include <petscts.h>
 #include <petscds.h>
+#include <adolc/adolc.h>
 
 typedef enum {PRIMITIVE, INT_BY_PARTS} WeakFormType;
 
