@@ -146,6 +146,7 @@ PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field**u,Fie
   PetscFunctionReturn(0);
 }
 
+// TODO: Really we should just trace udot separately with += on tape 2
 PetscErrorCode IFunctionLocalActive2(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,Field**f,void *ptr)
 {
   AppCtx         *appctx = (AppCtx*)ptr;

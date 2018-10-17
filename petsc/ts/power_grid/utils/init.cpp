@@ -1,6 +1,8 @@
 #include <petscdm.h>
 #include <petscdmda.h>
 #include <petscdmcomposite.h>
+#include <adolc/adolc.h>
+#include "../../../utils/contexts.cpp"
 
 #ifndef freq
 
@@ -93,6 +95,12 @@ typedef struct {
   IS          is_alg; /* indices for algebraic equations */
   PetscBool   setisdiff; /* TS computes truncation error based only on the differential variables */
   PetscBool   semiexplicit; /* If the flag is set then a semi-explicit method is used using TSRK */
+
+  /* Additional members for ADOL-C implementation */
+  PetscBool   no_an;
+  adouble     *xgen_a,*xnet_a,*fgen_a,*fnet_a,*xdot_a;
+  AdolcCtx    *adctx;
+  PetscInt    m,n;
 } Userctx;
 #endif
 
