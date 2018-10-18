@@ -12,6 +12,7 @@ Contributed by: Julian Andrej <juan@tf.uni-kiel.de>\n\n\n";
 #include "mms.c"
 #include "residuals.c"
 #include "derivatives.c"
+// TODO: Create header file ex46.h
 
 /*
   Navier-Stokes equation:
@@ -27,28 +28,6 @@ typedef struct {
   PetscErrorCode (**exactFuncs)(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nf, PetscScalar *u, void *ctx);
 } AppCtx;
 
-/*
-  (psi_i, u_j grad_j u_i) ==> (\psi_i, \u_j grad_j \phi_i)
-*/
-static void g1_uu(PetscInt dim, PetscInt Nf, PetscInt NfAux,
-                  const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar u[], const PetscScalar u_t[], const PetscScalar u_x[],
-                  const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
-                  PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g1[])
-{
-  PetscInt NcI = dim;
-  PetscInt NcJ = dim;
-  PetscInt fc, gc, dg;
-  for (fc = 0; fc < NcI; ++fc) {
-    for (gc = 0; gc < NcJ; ++gc) {
-      for (dg = 0; dg < dim; ++dg) {
-        /* kronecker delta */
-        if (fc == gc) {
-          g1[(fc*NcJ+gc)*dim+dg] += u[dg];
-        }
-      }
-    }
-  }
-}
 
 /* < q, \nabla\cdot u >
    NcompI = 1, NcompJ = dim */
