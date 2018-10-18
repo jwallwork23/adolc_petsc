@@ -72,8 +72,9 @@ static void g0_uu(PetscInt dim, PetscInt Nf, PetscInt NfAux,
   }
 }
 
-/* < q, \nabla\cdot u > 
-   NcompI = 1, NcompJ = dim */
+/*
+  < q, \nabla\cdot u > 
+*/
 static void g1_pu(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                   const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar u[], const PetscScalar u_t[], const PetscScalar u_x[],
                   const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
@@ -127,6 +128,31 @@ static void g1_uu(PetscInt dim, PetscInt Nf, PetscInt NfAux,
       }
 
       u_xd[j*dim+i] = 0.;
+    }
+  }
+}
+
+/*
+  -< \nabla\cdot v, p >
+*/
+static void g2_up(PetscInt dim, PetscInt Nf, PetscInt NfAux,
+                  const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar u[], const PetscScalar u_t[], const PetscScalar u_x[],
+                  const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
+                  PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g1[])
+{
+  PetscScalar ud[dim+1],f0[dim],fd0[dim];
+  PetscInt    i,j;
+
+  for (i=0; i<dim; ++i) {
+    ud[i] = 0.;
+    f0[i] = 0.;
+  }
+  ud[dim] = 1.;
+
+  f1_u_d(dim,Nf,NfAux,uOff,uOff_x,u,ud,u_t,u_x,aOff,aOff_x,a,a_t,a_x,t,x,numConstants,constants,f0,fd0);
+  for (i=0; i<dim; ++i) {
+    for (j=0; j<dim; ++j) {
+      g1[j*dim+i] = fd0[j*dim+i];
     }
   }
 }
