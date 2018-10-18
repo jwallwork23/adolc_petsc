@@ -28,24 +28,6 @@ typedef struct {
   PetscErrorCode (**exactFuncs)(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nf, PetscScalar *u, void *ctx);
 } AppCtx;
 
-/* < \nabla v, \nabla u + {\nabla u}^T >
-   This just gives \nabla u, give the perdiagonal for the transpose */
-static void g3_uu(PetscInt dim, PetscInt Nf, PetscInt NfAux,
-                  const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar u[], const PetscScalar u_t[], const PetscScalar u_x[],
-                  const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
-                  PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g3[])
-{
-  const PetscReal Re    = REYN;
-  const PetscInt  Ncomp = dim;
-  PetscInt        compI, d;
-
-  for (compI = 0; compI < Ncomp; ++compI) {
-    for (d = 0; d < dim; ++d) {
-      g3[((compI*Ncomp+compI)*dim+d)*dim+d] = 1.0/Re;
-    }
-  }
-}
-
 static PetscErrorCode ProcessOptions(MPI_Comm comm, AppCtx *options)
 {
   PetscErrorCode ierr;

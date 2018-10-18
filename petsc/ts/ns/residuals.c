@@ -46,6 +46,9 @@ static void f0_mms2_u(int dim, int Nf, int NfAux,
   f0[1] -= (-Re*((1.0L/2.0L)*sin(2*t + 2*x[1]) + sin(2*t + x[0] + x[1]) + cos(t + x[0] - x[1])) + 2.0*cos(t + x[0])*cos(t + x[1]))/Re;
 }
 
+/*
+  < \phi, -\Delta u-\nabla p > = < \nabla\phi, \nabla u + p > + [bdy terms]
+*/
 static void f1_u(int dim, int Nf, int NfAux,
                  const int uOff[], const int uOff_x[], const double u[], const double u_t[], const double u_x[],
                  const int aOff[], const int aOff_x[], const double a[], const double a_t[], const double a_x[],
@@ -59,7 +62,7 @@ static void f1_u(int dim, int Nf, int NfAux,
     for (d = 0; d < dim; ++d) {
       f1[comp*dim+d] = 1.0/Re * u_x[comp*dim+d];
     }
-    f1[comp*dim+comp] -= u[Ncomp];
+    f1[comp*dim+comp] -= u[Ncomp]; // Why is this not plus?
   }
 }
 
