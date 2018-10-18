@@ -71,14 +71,16 @@ static void g0_uu(PetscInt dim, PetscInt Nf, PetscInt NfAux,
     u_td[i] = 0.;
   }
 }
-/*
+
+/* < q, \nabla\cdot u > 
+   NcompI = 1, NcompJ = dim */
 static void g1_pu(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                   const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar u[], const PetscScalar u_t[], const PetscScalar u_x[],
                   const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
                   PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g1[])
 {
-  PetscScalar u_xd[dim],f0[dim],fd0[dim];
-  PetscInt    i,j;
+  PetscScalar u_xd[dim*dim],f0[dim],fd0[dim];
+  PetscInt    i,j,k;
 
   for (i=0; i<dim; ++i) {
     u_xd[i] = 0.;
@@ -86,17 +88,18 @@ static void g1_pu(PetscInt dim, PetscInt Nf, PetscInt NfAux,
   }
 
   for (i=0; i<dim; ++i) {
-    u_xd[i] = 1.;
-
-    f0_p_d(dim,Nf,NfAux,uOff,uOff_x,u,u_t,u_x,u_xd,aOff,aOff_x,a,a_t,a_x,t,x,numConstants,constants,f0,fd0);
     for (j=0; j<dim; ++j) {
-      g1[j*dim+i] = fd0[j];
-    }
+      u_xd[j*dim+i] = 1.;
+    
+      f0_p_d(dim,Nf,NfAux,uOff,uOff_x,u,u_t,u_x,u_xd,aOff,aOff_x,a,a_t,a_x,t,x,numConstants,constants,f0,fd0);
+      for (k=0; k<dim; ++k) {
+        g1[(k*dim+j)*dim+i] = fd0[k];
+      }
 
-    u_xd[i] = 0.;
+      u_xd[j*dim+i] = 0.;
+    }
   }
 }
-*/
 
 /*
   (psi_i, u_j grad_j u_i) ==> (\psi_i, \u_j grad_j \phi_i)
