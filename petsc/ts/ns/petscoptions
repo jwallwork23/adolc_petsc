@@ -19,7 +19,7 @@
 ### TS options
 -ts_type beuler
 #-ts_view
--ts_max_steps 10
+-ts_max_steps 5
 -ts_dt 0.1
 -ts_monitor
 
