@@ -168,7 +168,7 @@ static void g3_uu(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                   PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g3[])
 {
   PetscScalar u_xd[dim*dim],f1[dim],f1d[dim*dim];
-  PetscInt    i,j,k,l,idx;
+  PetscInt    i,j;
 
   for (i=0; i<dim; ++i) {
     for (j=0; j<dim; ++j) {
