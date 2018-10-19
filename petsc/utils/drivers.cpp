@@ -8,6 +8,8 @@
   precomputed seed and recovery matrices. If sparse mode is used, full Jacobian is
   assembled (not recommended!).
 
+  TODO: Make tape tag selectable
+
   Input parameters:
   u_vec - vector at which to evaluate Jacobian
   ctx   - ADOL-C context, as defined above
@@ -50,9 +52,47 @@ PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscScalar *u_vec,void *ctx)
 }
 
 /*
+  Compute Jacobian w.r.t a parameter for explicit TS.
+
+  TODO: Account for multiple parameters
+  TODO: Allow compressed format
+
+  Input parameters:
+  u_vec - vector at which to evaluate Jacobian
+  param - the parameter
+  tag   - tape identifier
+  ctx   - ADOL-C context, as defined above
+
+  Output parameter:
+  A     - Mat object corresponding to Jacobian
+*/
+PetscErrorCode AdolcComputeRHSJacobianP(Mat A,PetscScalar param,PetscInt tag,void *ctx)
+{
+  AdolcCtx       *adctx = (AdolcCtx*)ctx;
+  PetscErrorCode ierr;
+  PetscInt       i,j = 0,m = adctx->m;
+  PetscScalar    **J;
+
+  PetscFunctionBegin;
+  ierr = AdolcMalloc2(m,1,&J);CHKERRQ(ierr);
+  jacobian(tag,m,1,&param,J);
+  for (i=0; i<m; i++) {
+    if (fabs(J[i][j]) > 1.e-16) {
+      ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+    }
+  }
+  ierr = AdolcFree2(J);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
   Compute Jacobian for implicit TS in compressed format and recover from this, using
   precomputed seed and recovery matrices. If sparse mode is used, full Jacobian is
   assembled (not recommended!).
+
+  TODO: Make tape tags selectable
 
   Input parameters:
   u_vec - vector at which to evaluate Jacobian
