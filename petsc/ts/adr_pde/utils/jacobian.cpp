@@ -114,7 +114,7 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   /*
     Compute Jacobian
   */
-  ierr = AdolcComputeIJacobian(A,u_vec,a,appctx->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeIJacobianLocal(A,u_vec,a,appctx->adctx);CHKERRQ(ierr);
 
   /*
      Restore vectors
@@ -393,7 +393,7 @@ PetscErrorCode RHSJacobianAdolc(TS ts,PetscReal t,Vec U,Mat A,Mat B,void *ctx)
   /*
     Compute Jacobian
   */
-  ierr = AdolcComputeRHSJacobian(A,u_vec,appctx->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeRHSJacobianLocal(A,u_vec,appctx->adctx);CHKERRQ(ierr);
 
   /*
      Restore vectors
