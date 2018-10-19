@@ -3,7 +3,7 @@ CFLAGS			= -Wall
 FFLAGS			=
 CPPFLAGS		=
 FPPFLAGS		=
-CLEANFILES		= ex46 binaryoutput *.tap *.info *.txt *.o *.vtu *.msg *_d.c *~ *_dv.c
+CLEANFILES		= ex46 binaryoutput *.tap *.info *.txt utils/*.msg utils/*_d.c utils/*~ utils/*_dv.c
 
 LIB 			= ${PETSC_TS_LIB}
 
