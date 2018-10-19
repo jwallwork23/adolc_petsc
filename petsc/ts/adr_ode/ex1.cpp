@@ -70,10 +70,12 @@ F*/
 
 #include <petscts.h>
 #include <adolc/adolc.h>
+#include "../../utils/drivers.cpp"
 
 typedef struct {
   PetscScalar k;
   Vec         initialsolution;
+  AdolcCtx    *adctx;
 } AppCtx;
 
 PetscErrorCode IFunctionView(AppCtx *ctx,PetscViewer v)
@@ -98,7 +100,30 @@ PetscErrorCode IFunctionLoad(AppCtx **ctx,PetscViewer v)
 /*
      Defines the ODE passed to the ODE solver
 */
-PetscErrorCode IFunction(TS ts,PetscReal t,Vec U,Vec Udot,Vec F,AppCtx *ctx)
+PetscErrorCode IFunctionPassive(TS ts,PetscReal t,Vec U,Vec Udot,Vec F,AppCtx *ctx)
+{
+  PetscErrorCode    ierr;
+  PetscScalar       *f;
+  const PetscScalar *u,*udot;
+
+  PetscFunctionBegin;
+  /*  The next three lines allow us to access the entries of the vectors directly */
+  ierr = VecGetArrayRead(U,&u);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(Udot,&udot);CHKERRQ(ierr);
+  ierr = VecGetArray(F,&f);CHKERRQ(ierr);
+  f[0] = udot[0] + ctx->k*u[0]*u[1];
+  f[1] = udot[1] + ctx->k*u[0]*u[1];
+  f[2] = udot[2] - ctx->k*u[0]*u[1];
+  ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(Udot,&udot);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(U,&u);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
+  'Active' ADOL-C annotated versions
+*/
+PetscErrorCode IFunctionActive1(TS ts,PetscReal t,Vec U,Vec Udot,Vec F,AppCtx *ctx)
 {
   PetscErrorCode    ierr;
   PetscScalar       *f;
@@ -121,9 +146,38 @@ PetscErrorCode IFunction(TS ts,PetscReal t,Vec U,Vec Udot,Vec F,AppCtx *ctx)
   f_a[0] >>= f[0]; f_a[1] >>= f[1]; f_a[2] >>= f[2];
   trace_off();
 
-  ierr = VecRestoreArrayRead(U,&u);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(Udot,&udot);CHKERRQ(ierr);
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(Udot,&udot);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(U,&u);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode IFunctionActive2(TS ts,PetscReal t,Vec U,Vec Udot,Vec F,AppCtx *ctx)
+{
+  PetscErrorCode    ierr;
+  PetscScalar       *f;
+  const PetscScalar *u,*udot;
+
+  adouble           f_a[3];		// adouble for dependent variables
+  adouble           udot_a[3];		// adouble for independent variables
+
+  PetscFunctionBegin;
+  /*  The next three lines allow us to access the entries of the vectors directly */
+  ierr = VecGetArrayRead(U,&u);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(Udot,&udot);CHKERRQ(ierr);
+  ierr = VecGetArray(F,&f);CHKERRQ(ierr);
+
+  trace_on(2);
+  udot_a[0] <<= udot[0]; udot_a[1] <<= udot[1]; udot_a[2] <<= udot[2];
+  f_a[0] = udot_a[0] + ctx->k*u[0]*u[1];
+  f_a[1] = udot_a[1] + ctx->k*u[0]*u[1];
+  f_a[2] = udot_a[2] - ctx->k*u[0]*u[1];
+  f_a[0] >>= f[0]; f_a[1] >>= f[1]; f_a[2] >>= f[2];
+  trace_off();
+
+  ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(Udot,&udot);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(U,&u);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -132,45 +186,14 @@ PetscErrorCode IFunction(TS ts,PetscReal t,Vec U,Vec Udot,Vec F,AppCtx *ctx)
 */
 PetscErrorCode IJacobian(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat B,AppCtx *ctx)
 {
-  PetscErrorCode    ierr;
-  PetscInt          rowcol[] = {0,1,2};
-  PetscScalar       **J,**C;
-  const PetscScalar *u;
-  Mat               M;
+  PetscErrorCode ierr;
+  AppCtx         *appctx = (AppCtx*)ctx;
+  PetscScalar    *u;
 
   PetscFunctionBegin;
-  ierr    = VecGetArrayRead(U,&u);CHKERRQ(ierr);
-
-  J = myalloc2(3,3);	// Contiguous ADOL-C matrix memory allocation
-  jacobian(1,3,3,u,J);	// Implicit part
-  ierr    = MatSetValues(B,3,rowcol,3,rowcol,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
-  myfree2(J);
-
-  ierr    = VecRestoreArrayRead(U,&u);CHKERRQ(ierr);
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  if (A != B) {
-    ierr = MatAssemblyBegin(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-    ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  }
-/*
-  For this Jacobian we may use the rule that
-     G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
-  where a = d(xdot)/dx is a constant.
-*/
-  ierr = MatCreate(PETSC_COMM_WORLD,&M);CHKERRQ(ierr);
-  ierr = MatSetSizes(M,PETSC_DECIDE,PETSC_DECIDE,3,3);CHKERRQ(ierr);
-  ierr = MatSetFromOptions(M);CHKERRQ(ierr);
-  ierr = MatSetUp(M);CHKERRQ(ierr);
-  C = myalloc2(3,3);	// Contiguous ADOL-C allocation for identity matrix
-  C[0][0] = 1.;C[1][1] = 1.;C[2][2] = 1.;
-  ierr = MatSetValues(M,3,rowcol,3,rowcol,&C[0][0],INSERT_VALUES);CHKERRQ(ierr);
-  myfree2(C);		// Free allocated memory
-  ierr = MatAssemblyBegin(M,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(M,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAXPY(B,a,M,DIFFERENT_NONZERO_PATTERN);
-  ierr = MatDestroy(&M);
-
+  ierr = VecGetArray(U,&u);CHKERRQ(ierr);
+  ierr = AdolcComputeIJacobian(A,u,a,appctx->adctx);CHKERRQ(ierr);
+  ierr = VecRestoreArray(U,&u);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -200,21 +223,25 @@ static PetscErrorCode Solution(TS ts,PetscReal t,Vec U,AppCtx *ctx)
 int main(int argc,char **argv)
 {
   TS             ts;            /* ODE integrator */
-  Vec            U;             /* solution will be stored here */
+  Vec            U,Udot,R;      /* solution, derivative, residual */
   Mat            A;             /* Jacobian matrix */
   PetscErrorCode ierr;
   PetscMPIInt    size;
   PetscInt       n = 3;
   AppCtx         ctx;
+  AdolcCtx       *adctx;
   PetscScalar    *u;
   const char     * const names[] = {"U1","U2","U3",NULL};
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
+  ierr = PetscInitialize(&argc,&argv,"petscoptions",help);if (ierr) return ierr;
   ierr = MPI_Comm_size(PETSC_COMM_WORLD,&size);CHKERRQ(ierr);
   if (size > 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Only for sequential runs");
+  ierr = PetscNew(&adctx);CHKERRQ(ierr);
+  adctx->m = n;adctx->n = n;adctx->p = n;
+  ctx.adctx = adctx;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     Create necessary matrix and vectors
@@ -245,7 +272,27 @@ int main(int argc,char **argv)
   ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
   ierr = TSSetType(ts,TSROSW);CHKERRQ(ierr);
-  ierr = TSSetIFunction(ts,NULL,(TSIFunction) IFunction,&ctx);CHKERRQ(ierr);
+  ierr = TSSetIFunction(ts,NULL,(TSIFunction) IFunctionPassive,&ctx);CHKERRQ(ierr);
+
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Set initial conditions
+   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = Solution(ts,0,U,&ctx);CHKERRQ(ierr);
+  ierr = TSSetSolution(ts,U);CHKERRQ(ierr);
+
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Trace just once for each tape
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = VecDuplicate(U,&Udot);CHKERRQ(ierr);
+  ierr = VecDuplicate(U,&R);CHKERRQ(ierr);
+  ierr = IFunctionActive1(ts,0.,U,Udot,R,&ctx);CHKERRQ(ierr);
+  ierr = IFunctionActive2(ts,0.,U,Udot,R,&ctx);CHKERRQ(ierr);
+  ierr = VecDestroy(&R);CHKERRQ(ierr);
+  ierr = VecDestroy(&Udot);CHKERRQ(ierr);
+
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Set Jacobian
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSSetIJacobian(ts,A,A,(TSIJacobian)IJacobian,&ctx);CHKERRQ(ierr);
   ierr = TSSetSolutionFunction(ts,(TSSolutionFunction)Solution,&ctx);CHKERRQ(ierr);
 
@@ -258,12 +305,6 @@ int main(int argc,char **argv)
     ierr = DMTSSetIFunctionSerialize(dm,(PetscErrorCode (*)(void*,PetscViewer))IFunctionView,(PetscErrorCode (*)(void**,PetscViewer))IFunctionLoad);CHKERRQ(ierr);
     ierr = DMTSSetIJacobianSerialize(dm,(PetscErrorCode (*)(void*,PetscViewer))IFunctionView,(PetscErrorCode (*)(void**,PetscViewer))IFunctionLoad);CHKERRQ(ierr);
   }
-
-  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Set initial conditions
-   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = Solution(ts,0,U,&ctx);CHKERRQ(ierr);
-  ierr = TSSetSolution(ts,U);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set solver options
@@ -289,7 +330,7 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = VecDestroy(&U);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
-
+  ierr = PetscFree(adctx);CHKERRQ(ierr);
   ierr = PetscFinalize();
   return ierr;
 }
