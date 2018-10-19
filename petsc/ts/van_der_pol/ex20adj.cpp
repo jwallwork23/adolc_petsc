@@ -149,31 +149,33 @@ static PetscErrorCode IFunctionActive2(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,vo
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode IFunctionActiveP(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
+/*
+  Trace RHS to additionally mark dependence upon the parameter mu on tape 3. This is used in
+  generating JacobianP.
+*/
+static PetscErrorCode RHSFunctionActiveP(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
   const PetscScalar mu   = user->mu;
-  const PetscScalar *x,*xdot;
   PetscScalar       *f;
+  const PetscScalar *x;
 
-  adouble           f_a[2];				// adouble for dependent variables
-  adouble           x_a[2],xdot_a[2],mu_a;		// adouble for independent variables
+  adouble           f_a[2];                             // adouble for dependent variables
+  adouble           x_a[2],mu_a;                        // adouble for independent variables
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(Xdot,&xdot);CHKERRQ(ierr);
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);
 
-  trace_on(3);						// Start of active section
-  x_a[0] <<= x[0]; x_a[1] <<= x[1]; xdot_a[0] <<= xdot[0]; xdot_a[1] <<= xdot[1]; mu_a <<= mu;
-  f_a[0] = xdot_a[0] - x_a[1];
-  f_a[1] = c21*(xdot_a[0]-x_a[1]) + xdot_a[1] - mu_a*((1.0-x_a[0]*x_a[0])*x_a[1] - x_a[0]);
-  f_a[0] >>= f[0]; f_a[1] >>= f[1];
-  trace_off();						// End of active section
+  trace_on(3);                                          // Start of active section
+  x_a[0] <<= x[0];x_a[1] <<= x[1];mu_a <<= mu;          // Mark independence
+  f_a[0] = x_a[1];
+  f_a[1] = mu_a*(1.-x_a[0]*x_a[0])*x_a[1]-x_a[0];
+  f_a[0] >>= f[0];f_a[1] >>= f[1];                      // Mark dependence
+  trace_off();                                          // End of active section
 
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(Xdot,&xdot);CHKERRQ(ierr);
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
@@ -182,25 +184,28 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
-  const PetscScalar *x;
+  PetscScalar       *x;
+  Vec               Xcopy;
 
   PetscFunctionBeginUser;
-  ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
-  ierr = AdolcComputeIJacobian(A,x,1,user->adctx);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
+  ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);	// FIXME
+  ierr = VecGetArray(Xcopy,&x);CHKERRQ(ierr);
+  ierr = AdolcComputeIJacobian(A,x,a,user->adctx);CHKERRQ(ierr);
+  ierr = VecRestoreArray(Xcopy,&x);CHKERRQ(ierr);
+  ierr = VecDestroy(&Xcopy);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode IJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
+static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
-  const PetscScalar *x;
+  PetscScalar       *x;
 
   PetscFunctionBeginUser;
-  ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
-  ierr = AdolcComputeIJacobianP(A,x,1,&user->mu,3,user->adctx);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
+  ierr = VecGetArray(X,&x);CHKERRQ(ierr);
+  ierr = AdolcComputeRHSJacobianP(A,x,&user->mu,3,user->adctx);CHKERRQ(ierr);
+  ierr = VecRestoreArray(X,&x);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -245,7 +250,7 @@ int main(int argc,char **argv)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = PetscInitialize(&argc,&argv,NULL,help);if (ierr) return ierr;
+  ierr = PetscInitialize(&argc,&argv,"petscoptions",help);if (ierr) return ierr;
   ierr = MPI_Comm_size(PETSC_COMM_WORLD,&size);CHKERRQ(ierr);
   if (size != 1) SETERRQ(PETSC_COMM_SELF,1,"This is a uniprocessor example only!");
 
@@ -296,7 +301,7 @@ int main(int argc,char **argv)
   ierr = VecDuplicate(user.x,&r);CHKERRQ(ierr);
   ierr = IFunctionActive1(ts,0.,user.x,user.x,r,&user);CHKERRQ(ierr);
   ierr = IFunctionActive2(ts,0.,user.x,user.x,r,&user);CHKERRQ(ierr);
-  ierr = IFunctionActiveP(ts,0.,user.x,user.x,r,&user);CHKERRQ(ierr);
+  ierr = RHSFunctionActiveP(ts,0.,user.x,r,&user);CHKERRQ(ierr);
   ierr = VecSet(r,0);CHKERRQ(ierr);
   ierr = MatDiagonalSet(user.A,r,INSERT_VALUES);CHKERRQ(ierr);
   ierr = VecDestroy(&r);CHKERRQ(ierr);
