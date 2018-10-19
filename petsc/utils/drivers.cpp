@@ -102,6 +102,7 @@ PetscErrorCode AdolcComputeRHSJacobianLocal(Mat A,PetscScalar *u_vec,void *ctx)
 /*
   Compute Jacobian w.r.t a parameter for explicit TS.
 
+  TODO: Do not form whole matrix. Just propagate [0,0,1] (for example).
   TODO: Account for multiple parameters
   TODO: Allow compressed format
 
@@ -124,7 +125,7 @@ PetscErrorCode AdolcComputeRHSJacobianP(Mat A,PetscScalar *u_vec,PetscScalar *pa
   PetscFunctionBegin;
   ierr = AdolcMalloc2(m,n+1,&J);CHKERRQ(ierr);
   ierr = PetscMalloc1(n+1,&concat);CHKERRQ(ierr);
-  for (i=0; i<m; i++) {
+  for (i=0; i<n; i++) {
     concat[i] = u_vec[i];
   }
   concat[n] = param[0];
@@ -144,6 +145,7 @@ PetscErrorCode AdolcComputeRHSJacobianP(Mat A,PetscScalar *u_vec,PetscScalar *pa
 /*
   Compute local portion of Jacobian w.r.t a parameter for explicit TS.
 
+  TODO: Do not form whole matrix. Just propagate [0,0,1] (for example).
   TODO: Account for multiple parameters
   TODO: Allow compressed format
 
@@ -166,7 +168,7 @@ PetscErrorCode AdolcComputeRHSJacobianPLocal(Mat A,PetscScalar *u_vec,PetscScala
   PetscFunctionBegin;
   ierr = AdolcMalloc2(m,1,&J);CHKERRQ(ierr);
   ierr = PetscMalloc1(n+1,&concat);CHKERRQ(ierr);
-  for (i=0; i<m; i++) {
+  for (i=0; i<n; i++) {
     concat[i] = u_vec[i];
   }
   concat[n] = param[0];
@@ -241,6 +243,51 @@ PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *
   ierr = AdolcFree2(J);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
+
+/*
+  Compute Jacobian w.r.t a parameter for implicit TS.
+
+  TODO: Do not form whole matrix. Just propagate [0,0,0,0,1] (for example).
+  TODO: Account for multiple parameters
+  TODO: Allow compressed format
+
+  Input parameters:
+  u_vec - vector at which to evaluate Jacobian
+  param - the parameter
+  tag   - tape identifier
+  ctx   - ADOL-C context, as defined above
+
+  Output parameter:
+  A     - Mat object corresponding to Jacobian
+*/
+PetscErrorCode AdolcComputeIJacobianP(Mat A,PetscScalar *u_vec,PetscReal a,PetscScalar *param,PetscInt tag,void *ctx)
+{
+  AdolcCtx       *adctx = (AdolcCtx*)ctx;
+  PetscErrorCode ierr;
+  PetscInt       i,j = 0,m = adctx->m,n = adctx->n;
+  PetscScalar    **J,*concat;
+
+  PetscFunctionBegin;
+  ierr = AdolcMalloc2(m,2*n+1,&J);CHKERRQ(ierr);
+  ierr = PetscMalloc1(2*n+1,&concat);
+  for (i=0; i<n; i++) {
+    concat[i] = u_vec[i];
+    concat[n+i] = 0.;   // FIXME
+  }
+  concat[2*n] = param[0];
+  jacobian(tag,m,2*n+1,concat,J);
+  for (i=0; i<m; i++) {
+    if (fabs(J[i][2*n]) > 1.e-16) {
+      ierr = MatSetValues(A,1,&i,1,&j,&J[i][2*n],INSERT_VALUES);CHKERRQ(ierr);
+    }
+  }
+  ierr = PetscFree(concat);CHKERRQ(ierr);
+  ierr = AdolcFree2(J);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
 /*
   Compute Jacobian for implicit TS in compressed format and recover from this, using
   precomputed seed and recovery matrices. If sparse mode is used, full Jacobian is

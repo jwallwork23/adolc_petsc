@@ -87,7 +87,7 @@ static PetscErrorCode RHSFunctionPassive(TS ts,PetscReal t,Vec X,Vec F,void *ctx
 /*
   Trace RHS to mark dependence upon x on tape 1. This is used in generating the Jacobian transform.
 */
-static PetscErrorCode RHSFunctionActive1(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
+static PetscErrorCode RHSFunctionActive(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
@@ -118,7 +118,7 @@ static PetscErrorCode RHSFunctionActive1(TS ts,PetscReal t,Vec X,Vec F,void *ctx
   Trace RHS to additionally mark dependence upon the parameter mu on tape 2. This is used in
   generating JacobianP.
 */
-static PetscErrorCode RHSFunctionActive2(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
+static PetscErrorCode RHSFunctionActiveP(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
@@ -257,8 +257,8 @@ int main(int argc,char **argv)
      Trace just once on each tape and put zeros on Jacobian diagonal
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = VecDuplicate(x,&r);CHKERRQ(ierr);
-  ierr = RHSFunctionActive1(ts,0.,x,r,&user);CHKERRQ(ierr);
-  ierr = RHSFunctionActive2(ts,0.,x,r,&user);CHKERRQ(ierr);
+  ierr = RHSFunctionActive(ts,0.,x,r,&user);CHKERRQ(ierr);
+  ierr = RHSFunctionActiveP(ts,0.,x,r,&user);CHKERRQ(ierr);
   ierr = VecSet(r,0);CHKERRQ(ierr);
   ierr = MatDiagonalSet(A,r,INSERT_VALUES);CHKERRQ(ierr);
   ierr = VecDestroy(&r);CHKERRQ(ierr);
