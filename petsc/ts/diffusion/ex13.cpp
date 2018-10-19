@@ -1,5 +1,3 @@
-
-
 static char help[] = "Demonstrates automatic Jacobian computation using ADOL-C for a time-dependent PDE in 2d. \n";
 /*
    u_t = uxx + uyy
@@ -32,8 +30,7 @@ static char help[] = "Demonstrates automatic Jacobian computation using ADOL-C f
 #include <petscdmda.h>
 #include <petscts.h>
 #include <adolc/adolc.h>	// Include ADOL-C
-#include <adolc/adolc_sparse.h> // Include ADOL-C sparse drivers
-#include "../../utils/allocation.cpp"
+#include <adolc/adolc_sparse.h>
 #include "../../utils/drivers.cpp"
 #include "../../utils/tests.cpp"
 
@@ -136,8 +133,8 @@ int main(int argc,char **argv)
     f_a = new adouble*[gym];
 
     // Align indices between array types and endow ghost points
-    ierr = AdoubleGiveGhostPoints2d(da,u_c,&u_a);CHKERRQ(ierr);
-    ierr = AdoubleGiveGhostPoints2d(da,f_c,&f_a);CHKERRQ(ierr);
+    ierr = GiveGhostPoints(da,u_c,&u_a);CHKERRQ(ierr);
+    ierr = GiveGhostPoints(da,f_c,&f_a);CHKERRQ(ierr);
 
     // Store active variables in context
     user.u_a = u_a;
@@ -158,7 +155,7 @@ int main(int argc,char **argv)
       // Generate sparsity pattern and create an associated colouring
       ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
       JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
-      jac_pat(tag,adctx->m,adctx->n,u_vec,JP,ctrl);
+      jac_pat(1,adctx->m,adctx->n,u_vec,JP,ctrl);
       if (user.adctx->sparse_view) {
         ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
       }
@@ -270,7 +267,7 @@ PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *p
   hx = 1.0/(PetscReal)(Mx-1); sx = 1.0/(hx*hx);
   hy = 1.0/(PetscReal)(My-1); sy = 1.0/(hy*hy);
 
-  trace_on(tag);  // ----------------------------------------------- Start of active section
+  trace_on(1);  // ----------------------------------------------- Start of active section
 
   /*
     Mark independence
