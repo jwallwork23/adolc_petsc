@@ -1,4 +1,5 @@
 #include "tracing_adj.cpp"
+#include "../../../utils/drivers.cpp"
 
 
 PetscErrorCode PreallocateJacobian(Mat J, Userctx *user)
@@ -50,7 +51,7 @@ PetscErrorCode PreallocateJacobian(Mat J, Userctx *user)
    J = [-df_dx, -df_dy
         dg_dx, dg_dy]
 */
-PetscErrorCode ResidualJacobian(SNES snes,Vec X,Mat J,Mat B,void *ctx)
+PetscErrorCode ResidualJacobianByHand(SNES snes,Vec X,Mat J,Mat B,void *ctx)
 {
   PetscErrorCode    ierr;
   Userctx           *user=(Userctx*)ctx;
@@ -282,13 +283,13 @@ PetscErrorCode ResidualJacobian(SNES snes,Vec X,Mat J,Mat B,void *ctx)
    J = [I, 0
         dg_dx, dg_dy]
 */
-PetscErrorCode AlgJacobian(SNES snes,Vec X,Mat A,Mat B,void *ctx)
+PetscErrorCode AlgJacobianByHand(SNES snes,Vec X,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode ierr;
   Userctx        *user=(Userctx*)ctx;
 
   PetscFunctionBegin;
-  ierr = ResidualJacobian(snes,X,A,B,ctx);CHKERRQ(ierr);
+  ierr = ResidualJacobianByHand(snes,X,A,B,ctx);CHKERRQ(ierr);
   ierr = MatSetOption(A,MAT_KEEP_NONZERO_PATTERN,PETSC_TRUE);CHKERRQ(ierr);
   ierr = MatZeroRowsIS(A,user->is_diff,1.0,NULL,NULL);CHKERRQ(ierr);
   PetscFunctionReturn(0);
@@ -299,7 +300,7 @@ PetscErrorCode AlgJacobian(SNES snes,Vec X,Mat A,Mat B,void *ctx)
         dg_dx, dg_dy]
 */
 
-PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat B,Userctx *user)
+PetscErrorCode IJacobianByHand(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat B,Userctx *user)
 {
   PetscErrorCode ierr;
   SNES           snes;
@@ -310,7 +311,7 @@ PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat 
   user->t = t;
 
   ierr = TSGetSNES(ts,&snes);CHKERRQ(ierr);
-  ierr = ResidualJacobian(snes,X,A,B,user);CHKERRQ(ierr);
+  ierr = ResidualJacobianByHand(snes,X,A,B,user);CHKERRQ(ierr);
   for (i=0;i < ngen;i++) {
     row = 9*i;
     ierr = MatSetValues(A,1,&row,1,&row,&atmp,ADD_VALUES);CHKERRQ(ierr);
@@ -329,5 +330,111 @@ PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat 
   }
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*--------------------------  ADOL-C versions -------------------------------- */
+
+PetscErrorCode ResidualJacobianAdolc(Vec X,Mat J,Mat B,void *ctx)
+{
+  PetscErrorCode ierr;
+  Userctx        *user = (Userctx*)ctx;
+  PetscScalar    *x_vec;
+  PetscScalar    val[10];
+  PetscInt       i,k,ncols,row[2],col[10];
+  PetscInt       net_start=user->neqs_gen;
+  const PetscInt    *cols;
+  const PetscScalar *yvals;
+
+  PetscFunctionBegin;
+  ierr = MatSetOption(J,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr);
+  ierr = VecGetArray(X,&x_vec);CHKERRQ(ierr);
+  ierr = AdolcComputeRHSJacobian(J,x_vec,user->adctx);CHKERRQ(ierr);
+
+  // Manual differentiation of MatMult:
+
+  for (i=0; i<nbus; i++) {
+    ierr   = MatGetRow(user->Ybus,2*i,&ncols,&cols,&yvals);CHKERRQ(ierr);
+    row[0] = net_start + 2*i;
+    for (k=0; k<ncols; k++) {
+      col[k] = net_start + cols[k];
+      val[k] = yvals[k];
+    }
+    ierr = MatSetValues(J,1,row,ncols,col,val,INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatRestoreRow(user->Ybus,2*i,&ncols,&cols,&yvals);CHKERRQ(ierr);
+
+    ierr   = MatGetRow(user->Ybus,2*i+1,&ncols,&cols,&yvals);CHKERRQ(ierr);
+    row[0] = net_start + 2*i+1;
+    for (k=0; k<ncols; k++) {
+      col[k] = net_start + cols[k];
+      val[k] = yvals[k];
+    }
+    ierr = MatSetValues(J,1,row,ncols,col,val,INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatRestoreRow(user->Ybus,2*i+1,&ncols,&cols,&yvals);CHKERRQ(ierr);
+  }
+  ierr = MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  ierr = VecRestoreArray(X,&x_vec);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode RHSJacobianAdolc(TS ts,PetscReal t,Vec X,Mat A,Mat B,void *ctx)
+{
+  PetscErrorCode ierr;
+  Userctx        *user=(Userctx*)ctx;
+
+  PetscFunctionBegin;
+  user->t = t;
+  ierr = ResidualJacobianAdolc(X,A,B,user);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat B,Userctx *user)
+{
+  PetscErrorCode ierr;
+  PetscScalar    *x_vec;
+  Vec            Xcopy;
+  PetscScalar    val[10];
+  PetscInt       i,k,ncols,row[2],col[10];
+  PetscInt       net_start=user->neqs_gen;
+  const PetscInt    *cols;
+  const PetscScalar *yvals;
+
+  PetscFunctionBegin;
+
+  user->t = t;
+  ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);  // X is read-only
+  ierr = VecCopy(X,Xcopy);CHKERRQ(ierr);        // Copy values over
+  ierr = VecGetArray(Xcopy,&x_vec);CHKERRQ(ierr);
+  ierr = MatSetOption(A,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr); // FIXME
+  ierr = AdolcComputeIJacobian(A,x_vec,a,user->adctx);CHKERRQ(ierr);
+
+  // Manual differentiation of MatMult:
+
+  for (i=0; i<nbus; i++) {
+    ierr   = MatGetRow(user->Ybus,2*i,&ncols,&cols,&yvals);CHKERRQ(ierr);
+    row[0] = net_start + 2*i;
+    for (k=0; k<ncols; k++) {
+      col[k] = net_start + cols[k];
+      val[k] = yvals[k];
+    }
+    ierr = MatSetValues(A,1,row,ncols,col,val,INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatRestoreRow(user->Ybus,2*i,&ncols,&cols,&yvals);CHKERRQ(ierr);
+
+    ierr   = MatGetRow(user->Ybus,2*i+1,&ncols,&cols,&yvals);CHKERRQ(ierr);
+    row[0] = net_start + 2*i+1;
+    for (k=0; k<ncols; k++) {
+      col[k] = net_start + cols[k];
+      val[k] = yvals[k];
+    }
+    ierr = MatSetValues(A,1,row,ncols,col,val,INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatRestoreRow(user->Ybus,2*i+1,&ncols,&cols,&yvals);CHKERRQ(ierr);
+  }
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  ierr = VecRestoreArray(Xcopy,&x_vec);CHKERRQ(ierr);
+  ierr = VecDestroy(&Xcopy);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }

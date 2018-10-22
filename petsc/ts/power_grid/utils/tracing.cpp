@@ -1,3 +1,4 @@
+#include <adolc/adolc.h>
 #include "init.cpp"
 #include "conversion.cpp"
 
@@ -167,12 +168,10 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
   ierr = VecGetArray(Fnet,&fnet_p);CHKERRQ(ierr);
 
   /* Mark independent variables */
-  for (i=0; i<user->neqs_gen; i++) {
+  for (i=0; i<user->neqs_gen; i++)
     xgen[i] <<= xgen_p[i];
-  }
-  for (i=0; i<user->neqs_net; i++) {
+  for (i=0; i<user->neqs_net; i++)
     xnet[i] <<= xnet_p[i];
-  }
 
   /* Generator subsystem */
   for (i=0; i < ngen; i++) {
@@ -248,12 +247,10 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
   ierr = VecRestoreArray(user->V0,&v0);CHKERRQ(ierr);
 
   /* Mark dependent variables */
-  for (i=0; i<user->neqs_gen; i++) {
+  for (i=0; i<user->neqs_gen; i++)
     fgen[i] >>= fgen_p[i];
-  }
-  for (i=0; i<user->neqs_net; i++) {
+  for (i=0; i<user->neqs_net; i++)
     fnet[i] >>= fnet_p[i];
-  }
 
   trace_off();
 
