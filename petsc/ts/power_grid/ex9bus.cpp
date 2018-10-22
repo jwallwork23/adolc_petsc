@@ -234,8 +234,6 @@ int main(int argc,char **argv)
   }
   ierr = VecDestroy(&Xdot);CHKERRQ(ierr);
 
-  ierr = MatView(J,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);  // TODO: temp
-
   /* Save initial solution */
 
   idx=user.stepnum*(user.neqs_pgrid+1);

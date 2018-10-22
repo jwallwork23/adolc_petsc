@@ -52,7 +52,6 @@ extern PetscErrorCode FormInitialSolution(DM,Vec,void*);
 /* Problem specific functions for the purpose of automatic Jacobian computation */
 extern PetscErrorCode RHSJacobianADOLC(TS,PetscReal,Vec,Mat,Mat,void*);
 extern PetscErrorCode RHSLocalActive(DM da,PetscScalar **f,PetscScalar **uarray,void *ptr);
-extern PetscErrorCode RHSJacobianPassContext(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx);
 
 int main(int argc,char **argv)
 {
