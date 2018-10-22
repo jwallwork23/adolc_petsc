@@ -394,6 +394,7 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A
   Vec            Xcopy;
 
   PetscFunctionBegin;
+
   user->t = t;
   ierr = MatZeroEntries(B);CHKERRQ(ierr); 	// TODO?
   ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);  // X is read-only

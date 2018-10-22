@@ -224,12 +224,12 @@ int main(int argc,char **argv)
 
   /* Just to set up the Jacobian structure */
   if (byhand) {
-    ierr = IJacobianByHand(ts,0.0,X,Xdot,0.0,J,J,&user);CHKERRQ(ierr);
+    ierr = IJacobianByHand(ts,0.0,X,Xdot,1.0,J,J,&user);CHKERRQ(ierr);
   } else {
     if (user.semiexplicit) {
      ierr = RHSJacobianAdolc(ts,0.0,X,J,J,&user);CHKERRQ(ierr);
     } else {
-     ierr = IJacobianAdolc(ts,0.0,X,Xdot,0.0,J,J,&user);CHKERRQ(ierr);
+     ierr = IJacobianAdolc(ts,0.0,X,Xdot,1.0,J,J,&user);CHKERRQ(ierr);
     }
   }
   ierr = VecDestroy(&Xdot);CHKERRQ(ierr);

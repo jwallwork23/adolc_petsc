@@ -337,7 +337,7 @@ PetscErrorCode IFunctionActive(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
 
   PetscFunctionBegin;
 
-  ierr = RHSFunctionActive(ts,t,X,F,ctx);CHKERRQ(ierr);
+  ierr = RHSFunctionActive(ts,t,X,F,ctx);CHKERRQ(ierr);  // Traces on tape 1
   ierr = VecGetArray(F,&f_p);CHKERRQ(ierr);
   ierr = VecGetArray(Xdot,&xdot_p);CHKERRQ(ierr);
 
