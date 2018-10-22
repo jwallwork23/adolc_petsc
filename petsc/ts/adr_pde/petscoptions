@@ -15,5 +15,5 @@
 # TS options
 -ts_monitor
 -ts_adjoint_monitor
-#-ts_monitor_draw_solution
+-ts_monitor_draw_solution
 #-ts_max_steps 1

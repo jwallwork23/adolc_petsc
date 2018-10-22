@@ -191,7 +191,6 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
     fgen[idx+1] = (-Edp + (Xq[i] - Xqp[i])*Iq)/Tq0p[i];
     fgen[idx+2] = w - w_s;
     fgen[idx+3] = (TM[i] - Edp*Id - Eqp*Iq - (Xqp[i] - Xdp[i])*Id*Iq - D[i]*(w - w_s))/M[i];
-    // FIXME: Why are the nonlinear terms not tracing through??
 
     Vr = xnet[2*gbus[i]]; /* Real part of generator terminal voltage */
     Vi = xnet[2*gbus[i]+1]; /* Imaginary part of the generator terminal voltage */

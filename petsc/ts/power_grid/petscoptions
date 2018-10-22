@@ -14,4 +14,5 @@
 -ts_adapt_type none
 -ts_exact_final_time MATCHSTEP
 #-ts_theta_endpoint
-#-ts_monitor
+-ts_monitor
+-ts_adjoint_monitor

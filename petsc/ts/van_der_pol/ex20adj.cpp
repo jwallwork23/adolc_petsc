@@ -95,7 +95,6 @@ static PetscErrorCode IFunctionActive1(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,vo
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
-  const PetscScalar mu   = user->mu;
   const PetscScalar *x,*xdot;
   PetscScalar       *f;
 
@@ -110,7 +109,7 @@ static PetscErrorCode IFunctionActive1(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,vo
   trace_on(1);						// Start of active section
   x_a[0] <<= x[0]; x_a[1] <<= x[1];			// Mark independence
   f_a[0] = xdot[0] - x_a[1];
-  f_a[1] = c21*(xdot[0]-x_a[1]) + xdot[1] - mu*((1.0-x_a[0]*x_a[0])*x_a[1] - x_a[0]);
+  f_a[1] = c21*(xdot[0]-x_a[1]) + xdot[1] - user->mu*((1.0-x_a[0]*x_a[0])*x_a[1] - x_a[0]);
   f_a[0] >>= f[0]; f_a[1] >>= f[1];			// Mark dependence
   trace_off();						// End of active section
 
@@ -124,7 +123,6 @@ static PetscErrorCode IFunctionActive2(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,vo
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
-  const PetscScalar mu   = user->mu;
   const PetscScalar *x,*xdot;
   PetscScalar       *f;
 
@@ -139,7 +137,7 @@ static PetscErrorCode IFunctionActive2(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,vo
   trace_on(2);						// Start of active section
   xdot_a[0] <<= xdot[0]; xdot_a[1] <<= xdot[1];		// Mark independence
   f_a[0] = xdot_a[0] - x[1];
-  f_a[1] = c21*(xdot_a[0]-x[1]) + xdot_a[1] - mu*((1.0-x[0]*x[0])*x[1] - x[0]);
+  f_a[1] = c21*(xdot_a[0]-x[1]) + xdot_a[1] - user->mu*((1.0-x[0]*x[0])*x[1] - x[0]);
   f_a[0] >>= f[0]; f_a[1] >>= f[1];			// Mark dependence
   trace_off();						// End of active section
 
@@ -188,7 +186,8 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   Vec               Xcopy;
 
   PetscFunctionBeginUser;
-  ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);	// FIXME
+  ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);	// Needs duplicating, as X is read-only
+  ierr = VecCopy(X,Xcopy);CHKERRQ(ierr);	// This copies the values over
   ierr = VecGetArray(Xcopy,&x);CHKERRQ(ierr);
   ierr = AdolcComputeIJacobian(A,x,a,user->adctx);CHKERRQ(ierr);
   ierr = VecRestoreArray(Xcopy,&x);CHKERRQ(ierr);

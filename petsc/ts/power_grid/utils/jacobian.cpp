@@ -395,11 +395,12 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A
 
   PetscFunctionBegin;
   user->t = t;
-  ierr = MatZeroEntries(B);CHKERRQ(ierr); // TODO?
-  ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);  // X is read-only  TODO: remove this
+  ierr = MatZeroEntries(B);CHKERRQ(ierr); 	// TODO?
+  ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);  // X is read-only
+  ierr = VecCopy(X,Xcopy);CHKERRQ(ierr);        // Copy values over
   ierr = VecGetArray(Xcopy,&x_vec);CHKERRQ(ierr);
   ierr = MatSetOption(A,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr); // FIXME
-  ierr = AdolcComputeIJacobianGlobal(A,x_vec,a,user->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeIJacobian(A,x_vec,a,user->adctx);CHKERRQ(ierr);
   ierr = VecRestoreArray(Xcopy,&x_vec);CHKERRQ(ierr);
   ierr = VecDestroy(&Xcopy);CHKERRQ(ierr);
   PetscFunctionReturn(0);
