@@ -7,11 +7,10 @@ FPPFLAGS		=
 CLEANFILES		= ex9bus ex9busadj *.tap *.info *.o
 
 INCLUDES		= -I./
-INCLUDES		+= -I${ADOLC_HOME}/ADOL-C/include
 INCLUDES		+= -I${ADOLC_BUILDDIR}/ADOL-C/include
 
 LIB 			= ${PETSC_TS_LIB}
-LIB			+= -L${ADOLC_HOME}/build -ladolc
+LIB			+= -L${ADOLC_BUILDDIR}/lib64 -ladolc
 
 CC 			= g++
 

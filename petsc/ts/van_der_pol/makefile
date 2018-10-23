@@ -8,7 +8,7 @@ CLEANFILES	= ex16adj ex16opt_ic ex20adj *.tap *.txt *.o
 CC		= g++
 
 INCLUDES	=
-LIB		= ${PETSC_TS_LIB} -L${ADOLC_BUILDDIR} -ladolc
+LIB		= ${PETSC_TS_LIB} -L${ADOLC_BUILDDIR}/lib64 -ladolc
 
 include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules
