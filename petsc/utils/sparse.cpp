@@ -98,6 +98,22 @@ PetscErrorCode CountColors(ISColoring iscoloring,PetscInt *p)
   PetscFunctionReturn(0);
 }
 
+// TODO: Generate sparsity pattern using PETSc alone:
+// TODO: Can this be combined with the colour counting and seed matrix computation?
+PetscErrorCode GenerateSparsityPattern(ISColoring iscoloring,unsigned int **sparsity)
+{
+  PetscErrorCode ierr;
+  IS             *is;
+  PetscInt       p;
+
+  PetscFunctionBegin;
+  ierr = ISColoringGetIS(iscoloring,&p,&is);CHKERRQ(ierr);
+
+  ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+
 /*
   Generate a seed matrix defining the partition of columns of a matrix by a particular coloring,
   used for matrix compression

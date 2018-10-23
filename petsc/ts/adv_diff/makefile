@@ -1,7 +1,7 @@
 ALL: clean ex47
 CFLAGS			=
 FFLAGS			=
-CXXFLAGS		= -std=c++11 -I${ADOLC_BUILDDIR}/ADOL-C/include
+CXXFLAGS		= -std=c++11 -I${ADOLC_BUILDDIR}/include
 CPPFLAGS		=
 FPPFLAGS		=
 CLEANFILES		= ex47 binaryoutput *.tap *.info *.txt *.o *.vtu

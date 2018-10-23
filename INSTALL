@@ -1,4 +1,4 @@
-# To ensure consistent installation of PETSc and ADOL-C:
+# To ensure consistent installation of PETSc, ColPack and ADOL-C:
 
 cd $HOME/software
 git clone -b maint https://bitbucket.org/petsc/petsc petsc
@@ -9,10 +9,21 @@ cd petsc
 make all test
 
 cd $HOME/software
+git clone https://github.com/CSCsw/ColPack.git colpack
+export COLPACK_HOME=$HOME/software/colpack
+cd $COLPACK_HOME
+autoreconf -vif                                
+fullpath=$(pwd)
+./configure --prefix=${fullpath}  
+make -j 4              # Where "4" is the number of cores on your machine
+make install
+export LD_LIBRARY_PATH=${COLPACK_HOME}/lib:${LD_LIBRARY_PATH}
+
+cd $HOME/software
 svn checkout https://projects.coin-or.org/svn/ADOL-C/releases/2.6.0 adolc
 mkdir adolc/build
-export $ADOLC_BUILDDIR=adolc/build
+export ADOLC_BUILDDIR=adolc/build
 cd $ADOLC_BUILDDIR
-../configure
+../configure --prefix=${ADOLC_BUILDDIR} --enable-sparse --with-colpack=${COLPACK_HOME}
 make
 make install

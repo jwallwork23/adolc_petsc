@@ -157,17 +157,21 @@ int main(int argc,char **argv)
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     if (adctx->sparse) {
 
+      // Extract colouring
+      ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
+      ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
+
       // Generate sparsity pattern and create an associated colouring
       ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
       JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
       jac_pat(1,adctx->m,adctx->n,u_vec,JP,ctrl);
+
+      // TODO: Avoid need for adolc_sparse using the below
+      //ierr = GenerateSparsityPattern(iscoloring,JP);CHKERRQ(ierr);
+
       if (adctx->sparse_view) {
         ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
       }
-
-      // Extract colouring
-      ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
-      ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
 
       // Generate seed matrix
       ierr = AdolcMalloc2(adctx->n,adctx->p,&Seed);CHKERRQ(ierr);

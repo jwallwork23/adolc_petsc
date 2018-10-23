@@ -1,7 +1,7 @@
 ALL: clean ex1
 CFLAGS			=
 FFLAGS			=
-CXXFLAGS		= -std=c++11 -I${ADOLC_BUILDDIR}/ADOL-C/include
+CXXFLAGS		= -std=c++11 -I${ADOLC_BUILDDIR}/include
 CPPFLAGS		=
 FPPFLAGS		=
 CLEANFILES		= ex1 binaryoutput *.tap *.info *.txt *.o
