@@ -1,27 +1,25 @@
-ALL: clean ex9bus
+ALL: clean ex5_mf
 CFLAGS			=
 FFLAGS			=
-CXXFLAGS		= -std=c++11
+CXXFLAGS		=
 CPPFLAGS		=
 FPPFLAGS		=
-CLEANFILES		= ex9bus ex9busadj *.tap *.info *.o *.txt
+CLEANFILES		= ex5_mf ex5adj_mf binaryoutput *.tap *.info *.txt *.o
 
 INCLUDES		= -I./
-INCLUDES		+= -I${ADOLC_BUILDDIR}/ADOL-C/include
 
 LIB 			= ${PETSC_TS_LIB}
-LIB			+= -L${ADOLC_BUILDDIR}/lib64 -ladolc
 
-CC 			= g++
+CC 			= ${CLINKER}
 
 include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules
 
-ex9bus: ex9bus.o
+ex5_mf: ex5_mf.o
 	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
 	${RM} $^
 
-ex9busadj: ex9busadj.o
+ex5adj_mf: ex5adj_mf.o
 	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
 	${RM} $^
 
