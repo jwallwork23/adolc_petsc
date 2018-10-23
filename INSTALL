@@ -1,0 +1,18 @@
+# To ensure consistent installation of PETSc and ADOL-C:
+
+cd $HOME/software
+git clone -b maint https://bitbucket.org/petsc/petsc petsc
+export PETSC_DIR=$HOME/petsc
+export PETSC_ARCH=myarch
+cd petsc
+./configure --download-exodusii --download-hdf5 --download-netcdf --download-zlib --download-pnetcdf
+make all test
+
+cd $HOME/software
+svn checkout https://projects.coin-or.org/svn/ADOL-C/releases/2.6.0 adolc
+mkdir adolc/build
+export $ADOLC_BUILDDIR=adolc/build
+cd $ADOLC_BUILDDIR
+../configure
+make
+make install

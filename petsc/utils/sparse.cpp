@@ -168,42 +168,6 @@ PetscErrorCode GetRecoveryMatrix(PetscScalar **S,unsigned int **sparsity,PetscIn
 }
 
 /*
-  Establish a look-up vector whose entries contain the colour used for that diagonal entry. Clearly
-  we require the number of dependent and independent variables to be equal in this case.
-
-  Input parameters:
-  S        - the seed matrix defining the coloring
-  sparsity - the sparsity pattern of the matrix to be recovered, typically computed using an ADOL-C
-             function, such as jac_pat or hess_pat
-  m        - the number of rows of Seed (and the matrix to be recovered)
-  p        - the number of colors used (also the number of columns in Seed)
-
-  Output parameter:
-  R        - the recovery vector to be used for de-compression
-*/
-PetscErrorCode GenerateSeedMatrixPlusRecovery(ISColoring iscoloring,PetscScalar **S,PetscScalar *R)
-{
-  PetscErrorCode ierr;
-  IS             *is;
-  PetscInt       p,size,colour,j;
-  const PetscInt *indices;
-
-  PetscFunctionBegin;
-  ierr = ISColoringGetIS(iscoloring,&p,&is);CHKERRQ(ierr);
-  for (colour=0; colour<p; colour++) {
-    ierr = ISGetLocalSize(is[colour],&size);CHKERRQ(ierr);
-    ierr = ISGetIndices(is[colour],&indices);CHKERRQ(ierr);
-    for (j=0; j<size; j++) {
-      S[indices[j]][colour] = 1.;
-      R[indices[j]] = colour;
-    }
-    ierr = ISRestoreIndices(is[colour],&indices);CHKERRQ(ierr);
-  }
-  ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-/*
   Recover the values of a sparse matrix from a compressed format and insert these into a matrix
 
   Input parameters:
@@ -232,34 +196,6 @@ PetscErrorCode RecoverJacobian(Mat A,InsertMode mode,PetscInt m,PetscInt p,Petsc
         ierr = MatSetValuesLocal(A,1,&i,1,&j,&C[i][colour],mode);CHKERRQ(ierr);
       }
     }
-  }
-  PetscFunctionReturn(0);
-}
-
-/*
-  Recover the diagonal of the Jacobian from its compressed matrix format
-
-  Input parameters:
-  mode - use INSERT_VALUES or ADD_VALUES, as required
-  m    - number of rows of matrix.
-  R    - recovery vector to use in the decompression procedure
-  C    - compressed matrix to recover values from
-  a    - shift value for implicit problems (select NULL or unity for explicit problems)
-
-  Output parameter:
-  A    - Mat to be populated with values from compressed matrix
-*/
-PetscErrorCode RecoverDiagonal(Mat A,InsertMode mode,PetscInt m,PetscScalar *R,PetscScalar **C,PetscReal *a)
-{
-  PetscErrorCode ierr;
-  PetscInt       i,colour;
-
-  PetscFunctionBegin;
-  for (i=0; i<m; i++) {
-    colour = (PetscInt)R[i];
-    if (a)
-      C[i][colour] *= *a;
-    ierr = MatSetValuesLocal(A,1,&i,1,&i,&C[i][colour],mode);CHKERRQ(ierr);
   }
   PetscFunctionReturn(0);
 }
