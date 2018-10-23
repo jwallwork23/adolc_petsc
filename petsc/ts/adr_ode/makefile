@@ -1,24 +1,18 @@
 ALL: clean ex1
 CFLAGS			=
 FFLAGS			=
-CXXFLAGS		= -std=c++11
+CXXFLAGS		= -std=c++11 -I${ADOLC_BUILDDIR}/ADOL-C/include
 CPPFLAGS		=
 FPPFLAGS		=
 CLEANFILES		= ex1 binaryoutput *.tap *.info *.txt *.o
 
-INCLUDES		= -I./
-INCLUDES		+= -I${ADOLC_BUILDDIR}/ADOL-C/include
-
-LIB 			= ${PETSC_TS_LIB}
-LIB			+= -L${ADOLC_BUILDDIR}/lib64 -ladolc
-
-CC 			= g++
+LIB 			= ${PETSC_TS_LIB} -L${ADOLC_BUILDDIR}/lib64 -ladolc
 
 include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules
 
 ex1: ex1.o
-	$(CC) $(INCLUDES) $(CXXFLAGS) -o $@ $^ $(LIB)
+	-${CLINKER} -o $@ $^ $(LIB)
 	${RM} $^
 
 include ${PETSC_DIR}/lib/petsc/conf/test

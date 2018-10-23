@@ -1,18 +1,12 @@
 ALL: clean ex9bus
 CFLAGS			=
 FFLAGS			=
-CXXFLAGS		= -std=c++11
+CXXFLAGS		= -std=c++11 -I${ADOLC_BUILDDIR}/ADOL-C/include
 CPPFLAGS		=
 FPPFLAGS		=
 CLEANFILES		= ex9bus ex9busadj *.tap *.info *.o *.txt
 
-INCLUDES		= -I./
-INCLUDES		+= -I${ADOLC_BUILDDIR}/ADOL-C/include
-
-LIB 			= ${PETSC_TS_LIB}
-LIB			+= -L${ADOLC_BUILDDIR}/lib64 -ladolc
-
-CC 			= g++
+LIB 			= ${PETSC_TS_LIB} -L${ADOLC_BUILDDIR}/lib64 -ladolc
 
 include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules

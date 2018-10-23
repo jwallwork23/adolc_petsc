@@ -1,7 +1,7 @@
 ALL: ex1
 CFLAGS		=
 FFLAGS		=
-CXXFLAGS	= -std=c++11
+CXXFLAGS	= -std=c++11 -I${ADOLC_BUILDDIR}/ADOL-C/include
 CPPFLAGS	=
 FPPFLAGS	=
 CLEANFILES	= ex1 *.tap
@@ -12,7 +12,7 @@ include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules
 
 ex1: ex1.o
-	$(CC) $(CXXFLAGS) -o $@ $^ $(LIB)
+	-${CLINKER} -o $@ $^ $(LIB)
 	${RM} $^
 
 include ${PETSC_DIR}/lib/petsc/conf/test

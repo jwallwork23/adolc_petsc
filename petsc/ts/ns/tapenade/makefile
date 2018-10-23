@@ -1,13 +1,11 @@
 ALL: clean diff ex46
-CFLAGS			= -Wall
+CFLAGS			=
 FFLAGS			=
 CPPFLAGS		=
 FPPFLAGS		=
 CLEANFILES		= ex46 binaryoutput *.tap *.info *.txt utils/*.msg utils/*_d.c utils/*~ utils/*_dv.c
 
 LIB 			= ${PETSC_TS_LIB}
-
-CC 			= gcc
 
 include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules
@@ -24,7 +22,7 @@ diff2:
 	tapenade -multi -head $(DERIV) -O utils utils/residuals.c
 
 ex46: ex46.o
-	$(CC) $(INCLUDES) $(CFLAGS) -o $@ $^ $(LIB)
+	-${CLINKER} -o $@ $^ $(LIB)
 	${RM} $^
 
 include ${PETSC_DIR}/lib/petsc/conf/test
