@@ -75,6 +75,7 @@ PetscErrorCode GetColoring(DM da,ISColoring *iscoloring)
 
   PetscFunctionBegin;
   ierr = DMCreateColoring(da,IS_COLORING_LOCAL,iscoloring);CHKERRQ(ierr);
+  //ierr = DMCreateColoring(da,IS_COLORING_GLOBAL,iscoloring);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -98,18 +99,34 @@ PetscErrorCode CountColors(ISColoring iscoloring,PetscInt *p)
   PetscFunctionReturn(0);
 }
 
-// TODO: Generate sparsity pattern using PETSc alone:
-// TODO: Can this be combined with the colour counting and seed matrix computation?
-PetscErrorCode GenerateSparsityPattern(ISColoring iscoloring,unsigned int **sparsity)
+// TODO: Generate sparsity pattern using PETSc alone
+PetscErrorCode DMGetSparsity(DM da,unsigned int **sparsity)
 {
   PetscErrorCode ierr;
-  IS             *is;
-  PetscInt       p;
+  PetscInt       i,j,nnz;
+  //PetscInt       nrows,ncols;
+  PetscInt       rowstart,rowend;
+  const PetscInt *cols;
+  Mat            A;
 
   PetscFunctionBegin;
-  ierr = ISColoringGetIS(iscoloring,&p,&is);CHKERRQ(ierr);
+  ierr = DMCreateMatrix(da,&A);CHKERRQ(ierr);
+  //ierr = MatGetSize(A,&nrows,&ncols);CHKERRQ(ierr);
+  //for (i=0; i<nrows; i++) {
+  ierr = MatGetOwnershipRange(A,&rowstart,&rowend);CHKERRQ(ierr);
+  for (i=rowstart; i<rowend; i++) {
+    ierr = MatGetRow(A,i,&nnz,&cols,NULL);CHKERRQ(ierr);
 
-  ierr = ISColoringRestoreIS(iscoloring,&is);CHKERRQ(ierr);
+    ierr = PetscPrintf(MPI_COMM_WORLD,"%d: ",i);CHKERRQ(ierr);
+    for (j=0; j<nnz; j++) {
+      ierr = PetscPrintf(MPI_COMM_WORLD,"%d, ",cols[j]);CHKERRQ(ierr);
+    }
+    ierr = PetscPrintf(MPI_COMM_WORLD,"\n");CHKERRQ(ierr);
+
+    ierr = MatRestoreRow(A,i,&nnz,&cols,NULL);CHKERRQ(ierr);
+  }
+  ierr = MatDestroy(&A);CHKERRQ(ierr);
+
   PetscFunctionReturn(0);
 }
 

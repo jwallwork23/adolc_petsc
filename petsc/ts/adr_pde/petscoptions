@@ -1,6 +1,10 @@
+# Mat options
+#-mat_view draw
+#-draw_pause -1
+
 # DMDA options
-#-da_grid_x 12
-#-da_grid_y 12
+#-da_grid_x 15
+#-da_grid_y 15
 
 # KSP and PC options
 -ksp_monitor
@@ -15,5 +19,6 @@
 # TS options
 -ts_monitor
 -ts_adjoint_monitor
-#-ts_monitor_draw_solution
+-ts_monitor_draw_solution
+-ts_adjoint_monitor_sensi draw
 #-ts_max_steps 1

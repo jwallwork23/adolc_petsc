@@ -47,12 +47,18 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
+
+  //PetscScalar norm;
+  //ierr = VecNorm(localX0,NORM_2,&norm);CHKERRQ(ierr);
+  //ierr = PetscPrintf(MPI_COMM_WORLD,"localX0: %e\n",norm);CHKERRQ(ierr);
+  //ierr = VecNorm(localX1,NORM_2,&norm);CHKERRQ(ierr);
+  //ierr = PetscPrintf(MPI_COMM_WORLD,"localX1: %e\n",norm);CHKERRQ(ierr);
+
   ierr = VecGetArrayRead(localX0,&x0);CHKERRQ(ierr);
   ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
 
   /* dF/dx part */
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
-  //printf("%d,%d\n",m,n);
   fos_forward(1,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
@@ -84,6 +90,10 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
   ierr = PetscFree(action);CHKERRQ(ierr);
+
+  //ierr = VecNorm(Y,NORM_2,&norm);CHKERRQ(ierr);
+  //ierr = PetscPrintf(MPI_COMM_WORLD,"Y: %e\n",norm);CHKERRQ(ierr);
+
 
   /* Restore local vector */
   ierr = VecRestoreArray(localX1,&x1);CHKERRQ(ierr);

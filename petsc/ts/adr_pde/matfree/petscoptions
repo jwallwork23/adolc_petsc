@@ -9,7 +9,7 @@
 
 # SNES options
 -snes_monitor
--snes_test_jacobian
+#-snes_test_jacobian
 #-snes_test_jacobian_view
 
 # TS options

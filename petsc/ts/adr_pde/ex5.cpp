@@ -164,7 +164,10 @@ int main(int argc,char **argv)
       // Generate sparsity pattern and create an associated colouring
       ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
       JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
+      printf("m = %d, n = %d\n",adctx->m,adctx->n);
       jac_pat(1,adctx->m,adctx->n,u_vec,JP,ctrl);
+
+      ierr = DMGetSparsity(da,JP);CHKERRQ(ierr);
 
       // TODO: Avoid need for adolc_sparse using the below
       //ierr = GenerateSparsityPattern(iscoloring,JP);CHKERRQ(ierr);

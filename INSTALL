@@ -23,7 +23,9 @@ cd $HOME/software
 svn checkout https://projects.coin-or.org/svn/ADOL-C/releases/2.6.0 adolc
 mkdir adolc/build
 export ADOLC_BUILDDIR=adolc/build
-cd $ADOLC_BUILDDIR
-../configure --prefix=${ADOLC_BUILDDIR} --enable-sparse --with-colpack=${COLPACK_HOME}
+cd $ADOLC_HOME
+./configure --prefix=/homes/jwallwork/software/adol-c/ADOL-C-2.6.0/build --enable-sparse --enable-docexa --enable-addexa --with-colpack=/homes/jwallwork/software/colpack
+#cd $ADOLC_BUILDDIR
+#../configure --prefix=${ADOLC_BUILDDIR} --enable-sparse --with-colpack=${COLPACK_HOME}
 make
 make install
