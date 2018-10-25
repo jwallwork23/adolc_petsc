@@ -226,6 +226,25 @@ PetscErrorCode RecoverJacobian(Mat A,InsertMode mode,PetscInt m,PetscInt p,Petsc
       if (j != -1) {
         if (a)
           C[i][colour] *= *a;
+        ierr = MatSetValues(A,1,&i,1,&j,&C[i][colour],mode);CHKERRQ(ierr);
+      }
+    }
+  }
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode RecoverJacobianLocal(Mat A,InsertMode mode,PetscInt m,PetscInt p,PetscScalar **R,PetscScalar **C,PetscReal *a)
+{
+  PetscErrorCode ierr;
+  PetscInt       i,j,colour;
+
+  PetscFunctionBegin;
+  for (i=0; i<m; i++) {
+    for (colour=0; colour<p; colour++) {
+      j = (PetscInt) R[i][colour];
+      if (j != -1) {
+        if (a)
+          C[i][colour] *= *a;
         ierr = MatSetValuesLocal(A,1,&i,1,&j,&C[i][colour],mode);CHKERRQ(ierr);
       }
     }
