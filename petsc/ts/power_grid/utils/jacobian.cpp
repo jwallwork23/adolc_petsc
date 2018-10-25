@@ -437,7 +437,8 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A
   ierr = MatSetOption(A,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr); // FIXME
   ierr = AdolcComputeIJacobian(A,x_vec,a,user->adctx);CHKERRQ(ierr);
 
-  // Manual differentiation of MatMult:
+  // Manual differentiation of MatMult
+  // TODO: Trace with external and use that
 
   for (i=0; i<nbus; i++) {
     ierr   = MatGetRow(user->Ybus,2*i,&ncols,&cols,&yvals);CHKERRQ(ierr);

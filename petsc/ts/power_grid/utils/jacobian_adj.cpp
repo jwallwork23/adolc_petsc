@@ -411,7 +411,7 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A
   ierr = AdolcComputeIJacobian(A,x_vec,a,user->adctx);CHKERRQ(ierr);
 
   // Manual differentiation of MatMult
-  // TODO: How to automate this? Would require ADOL-C to be able to trace PETSc functions
+  // TODO: Trace with external functions
 
   for (i=0; i<nbus; i++) {
     ierr   = MatGetRow(user->Ybus,2*i,&ncols,&cols,&yvals);CHKERRQ(ierr);
