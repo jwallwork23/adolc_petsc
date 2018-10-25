@@ -6,9 +6,10 @@ static char help[] = "Demonstrates automatic, matrix-free Jacobian generation us
   Here implicit Crank-Nicolson timestepping is used to solve the same problem as in ex5.c. Another
   key difference is that functions are calculated in a local sense, using the local implementations
   IFunctionLocalPassive and IFunctionLocalActive, as in ex5imp. These are passed to the TS solver
-  using DMTSSetIFunctionLocal. The Jacobian is generated matrix-free using MyMult, which overloads the
-  MatMult operation. The function IJacobian acts to pass TS context information to the matrix-free
-  context.
+  using DMTSSetIFunctionLocal. The Jacobian is generated matrix-free using JacobianVectorProduct,
+  which overloads the MatMult operation. For the adjoint solve, the Jacobian transpose is generated
+  matrix-free using JacobianTransposeVectorProduct. The function IJacobian acts to pass TS context
+  information to the matrix-free context.
 */
 
 #include <petscsys.h>
@@ -95,6 +96,7 @@ int main(int argc,char **argv)
   ierr = DMDAGetGhostCorners(da,NULL,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
   matctx.m = 2*gxm*gym;
   matctx.n = 2*gxm*gym;
+  matctx.flg = PETSC_FALSE;
 
   // Create contiguous 1-arrays of AFields
   u_c = new AField[gxm*gym];

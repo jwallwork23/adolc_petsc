@@ -32,5 +32,6 @@ typedef struct {
   PetscReal shift;
   PetscInt  m,n;
   TS        ts;
+  PetscBool flg;
 } MatCtx;
 #endif

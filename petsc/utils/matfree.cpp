@@ -48,12 +48,6 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
 
-  //PetscScalar norm;
-  //ierr = VecNorm(localX0,NORM_2,&norm);CHKERRQ(ierr);
-  //ierr = PetscPrintf(MPI_COMM_WORLD,"localX0: %e\n",norm);CHKERRQ(ierr);
-  //ierr = VecNorm(localX1,NORM_2,&norm);CHKERRQ(ierr);
-  //ierr = PetscPrintf(MPI_COMM_WORLD,"localX1: %e\n",norm);CHKERRQ(ierr);
-
   ierr = VecGetArrayRead(localX0,&x0);CHKERRQ(ierr);
   ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
 
@@ -90,10 +84,6 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
   ierr = PetscFree(action);CHKERRQ(ierr);
-
-  //ierr = VecNorm(Y,NORM_2,&norm);CHKERRQ(ierr);
-  //ierr = PetscPrintf(MPI_COMM_WORLD,"Y: %e\n",norm);CHKERRQ(ierr);
-
 
   /* Restore local vector */
   ierr = VecRestoreArray(localX1,&x1);CHKERRQ(ierr);
@@ -147,7 +137,8 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
 
   /* dF/dx part */
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
-  zos_forward(1,m,n,1,x,NULL); // TODO: This should be optional
+  if (!mctx->flg)
+    zos_forward(1,m,n,1,x,NULL);
   fos_reverse(1,m,n,y,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
@@ -164,7 +155,10 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = VecAssemblyEnd(X);CHKERRQ(ierr);   /*       to INSERT_VALUES and ADD_VALUES         */
 
   /* a * dF/d(xdot) part */
-  zos_forward(2,m,n,1,x,NULL); // TODO: This should be optional
+  if (!mctx->flg) {
+    zos_forward(2,m,n,1,x,NULL);
+    mctx->flg = PETSC_TRUE;
+  }
   fos_reverse(2,m,n,y,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
@@ -189,7 +183,7 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   PetscFunctionReturn(0);
 }
 
-// TODO: Modify the below to use matrix-free AD
+// TODO: Modify the below to use matrix-free preconditioning
 
 typedef struct {
   Vec diag;

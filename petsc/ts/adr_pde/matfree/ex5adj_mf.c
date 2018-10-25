@@ -621,13 +621,6 @@ PetscErrorCode MyMultByHand(Mat A_shell,Vec X,Vec Y)
   ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
 
-  PetscScalar norm;
-  ierr = VecNorm(localX0,NORM_2,&norm);CHKERRQ(ierr);
-  ierr = PetscPrintf(MPI_COMM_WORLD,"localX0: %e\n",norm);CHKERRQ(ierr);
-  ierr = VecNorm(localX1,NORM_2,&norm);CHKERRQ(ierr);
-  ierr = PetscPrintf(MPI_COMM_WORLD,"localX1: %e\n",norm);CHKERRQ(ierr);
-
-
   ierr = DMDAVecGetArrayRead(da,localX0,&x0);CHKERRQ(ierr);
   ierr = DMDAVecGetArray(da,localX1,&x1);CHKERRQ(ierr);
 
@@ -648,30 +641,24 @@ PetscErrorCode MyMultByHand(Mat A_shell,Vec X,Vec Y)
         val += -actx->D1*sx*x1[j][i+1].u;
         val += -actx->D1*sy*x1[j-1][i].u;
         val += -actx->D1*sy*x1[j+1][i].u;
-        ierr = VecSetValuesLocal(Y,1,&k,&val,INSERT_VALUES);CHKERRQ(ierr);
-      }
-      k++;
 
-      if ((i >= info.xs) && (i < info.xs+info.xm) && (j >= info.ys) && (j < info.ys+info.ym)) {
+        k++;
 
         /* dv/dt equation */
 
-        val = (2*actx->D2*(sx + sy) - 2*uc*vc + actx->gamma + actx->kappa + mctx->shift) * x1[j][i].v;
+        val += (2*actx->D2*(sx + sy) - 2*uc*vc + actx->gamma + actx->kappa + mctx->shift) * x1[j][i].v;
         val += -actx->D2*sx*x1[j][i-1].v;
         val += -actx->D2*sx*x1[j][i+1].v;
         val += -actx->D2*sy*x1[j-1][i].v;
         val += -actx->D2*sy*x1[j+1][i].v;
         ierr = VecSetValuesLocal(Y,1,&k,&val,INSERT_VALUES);CHKERRQ(ierr);
+        k--;
       }
-      k++;
+      k+=2;
     }
   }
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
-
-  ierr = VecNorm(Y,NORM_2,&norm);CHKERRQ(ierr);
-  ierr = PetscPrintf(MPI_COMM_WORLD,"Y: %e\n",norm);CHKERRQ(ierr);
-
 
   /* Restore local vector */
   ierr = DMDAVecRestoreArray(da,localX1,&x1);CHKERRQ(ierr);

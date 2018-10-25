@@ -2,7 +2,7 @@
 #define c12 0
 #define c21 2.0
 #define c22 1.0
-static char help[] = "Performs adjoint sensitivity analysis for the van der Pol equation.\n";
+static char help[] = "Illustrates automatic Jacobian generation using ADOL-C for an adjoint sensitivity analysis of the van der Pol equation.\n";
 
 /*
    Concepts: TS^time-dependent nonlinear problems
@@ -11,42 +11,7 @@ static char help[] = "Performs adjoint sensitivity analysis for the van der Pol 
    Processors: 1
 */
 /* ------------------------------------------------------------------------
-
-   This program solves the van der Pol DAE ODE equivalent
-      [ u_1' ] = [      u_2              ]  (2)
-      [ u_2' ]   [ mu[(1-u_1^2)u_2-u_1]  ]
-   on the domain 0 <= x <= 1, with the boundary conditions
-       u_1(0) = 2, u_2(0) = -6.666665432100101e-01,
-   and
-       mu = 10^6,
-   and computes the sensitivities of the final solution w.r.t. initial conditions and parameter \mu with the implicit theta method and its discrete adjoint.
-
-   Notes:
-   This code demonstrates the TSAdjoint interface to a DAE system.
-
-   The user provides the implicit right-hand-side function
-   [ G(u',u,t) ] = [u' - f(u,t)] = [ u_1'] - [        u_2           ]
-                                   [ u_2']   [ mu[(1-u_1^2)u_2-u_1] ]
-
-   and the Jacobian of G (from the PETSc user manual)
-
-              dG   dG
-   J(G) = a * -- + --
-              du'  du
-
-   and the JacobianP of the explicit right-hand side of (2) f(u,t) ( which is equivalent to -G(0,u,t) ).
-   df   [       0         ]
-   -- = [                 ]
-   dp   [ (1 - u_1^2) u_2 ].
-
-   See ex20.c for more details on the Jacobian.
-
-   Many DAEs can be represented in a general form M u_t = f(u,t).
-   Thus both sides of (1) are multiplied by an artificial matrix
-   M = [ c11 c12 ]
-       [ c21 c22 ]
-   to turn (1) into the general form. This operation does not change the solution and it is intended for illustration only.
-
+   See ex20adj for description of DAE ODE equivalent.
   ------------------------------------------------------------------------- */
 #include <petscts.h>
 #include <petsctao.h>
@@ -63,8 +28,9 @@ struct _n_User {
   PetscReal ftime;
   Mat       A;                       /* Jacobian matrix */
   Mat       Jacp;                    /* JacobianP matrix */
-  Vec       x,lambda[2],mup[2];  /* adjoint variables */
+  Vec       x,lambda[2],mup[2];      /* adjoint variables */
 
+  /* Automatic differentiation support */
   AdolcCtx  *adctx;
 };
 
@@ -98,20 +64,20 @@ static PetscErrorCode IFunctionActive1(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,vo
   const PetscScalar *x,*xdot;
   PetscScalar       *f;
 
-  adouble           f_a[2];				// adouble for dependent variables
-  adouble           x_a[2];				// adouble for independent variables
+  adouble           f_a[2];				/* adouble for dependent variables */
+  adouble           x_a[2];				/* adouble for independent variables */
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecGetArrayRead(Xdot,&xdot);CHKERRQ(ierr);
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);
 
-  trace_on(1);						// Start of active section
-  x_a[0] <<= x[0]; x_a[1] <<= x[1];			// Mark independence
+  trace_on(1);						/* Start of active section */
+  x_a[0] <<= x[0]; x_a[1] <<= x[1];			/* Mark independence */
   f_a[0] = xdot[0] - x_a[1];
   f_a[1] = c21*(xdot[0]-x_a[1]) + xdot[1] - user->mu*((1.0-x_a[0]*x_a[0])*x_a[1] - x_a[0]);
-  f_a[0] >>= f[0]; f_a[1] >>= f[1];			// Mark dependence
-  trace_off();						// End of active section
+  f_a[0] >>= f[0]; f_a[1] >>= f[1];			/* Mark dependence */
+  trace_off();						/* End of active section */
 
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(Xdot,&xdot);CHKERRQ(ierr);
@@ -126,20 +92,20 @@ static PetscErrorCode IFunctionActive2(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,vo
   const PetscScalar *x,*xdot;
   PetscScalar       *f;
 
-  adouble           f_a[2];				// adouble for dependent variables
-  adouble           xdot_a[2];				// adouble for independent variables
+  adouble           f_a[2];				/* adouble for dependent variables */
+  adouble           xdot_a[2];				/* adouble for independent variables */
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecGetArrayRead(Xdot,&xdot);CHKERRQ(ierr);
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);
 
-  trace_on(2);						// Start of active section
-  xdot_a[0] <<= xdot[0]; xdot_a[1] <<= xdot[1];		// Mark independence
+  trace_on(2);						/* Start of active section */
+  xdot_a[0] <<= xdot[0]; xdot_a[1] <<= xdot[1];		/* Mark independence */
   f_a[0] = xdot_a[0] - x[1];
   f_a[1] = c21*(xdot_a[0]-x[1]) + xdot_a[1] - user->mu*((1.0-x[0]*x[0])*x[1] - x[0]);
-  f_a[0] >>= f[0]; f_a[1] >>= f[1];			// Mark dependence
-  trace_off();						// End of active section
+  f_a[0] >>= f[0]; f_a[1] >>= f[1];			/* Mark dependence */
+  trace_off();						/* End of active section */
 
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(Xdot,&xdot);CHKERRQ(ierr);
@@ -159,19 +125,19 @@ static PetscErrorCode RHSFunctionActiveP(TS ts,PetscReal t,Vec X,Vec F,void *ctx
   PetscScalar       *f;
   const PetscScalar *x;
 
-  adouble           f_a[2];                             // adouble for dependent variables
-  adouble           x_a[2],mu_a;                        // adouble for independent variables
+  adouble           f_a[2];                             /* adouble for dependent variables */
+  adouble           x_a[2],mu_a;                        /* adouble for independent variables */
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);
 
-  trace_on(3);                                          // Start of active section
-  x_a[0] <<= x[0];x_a[1] <<= x[1];mu_a <<= mu;          // Mark independence
+  trace_on(3);                                          /* Start of active section */
+  x_a[0] <<= x[0];x_a[1] <<= x[1];mu_a <<= mu;          /* Mark independence */
   f_a[0] = x_a[1];
   f_a[1] = mu_a*(1.-x_a[0]*x_a[0])*x_a[1]-x_a[0];
-  f_a[0] >>= f[0];f_a[1] >>= f[1];                      // Mark dependence
-  trace_off();                                          // End of active section
+  f_a[0] >>= f[0];f_a[1] >>= f[1];                      /* Mark dependence */
+  trace_off();                                          /* End of active section */
 
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
@@ -186,8 +152,8 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   Vec               Xcopy;
 
   PetscFunctionBeginUser;
-  ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);	// Needs duplicating, as X is read-only
-  ierr = VecCopy(X,Xcopy);CHKERRQ(ierr);	// This copies the values over
+  ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);	/* Needs duplicating, as X is read-only */
+  ierr = VecCopy(X,Xcopy);CHKERRQ(ierr);	/* This copies the values over */
   ierr = VecGetArray(Xcopy,&x);CHKERRQ(ierr);
   ierr = AdolcComputeIJacobian(A,x,a,user->adctx);CHKERRQ(ierr);
   ierr = VecRestoreArray(Xcopy,&x);CHKERRQ(ierr);
@@ -205,6 +171,9 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
   ierr = VecGetArray(X,&x);CHKERRQ(ierr);
   ierr = AdolcComputeRHSJacobianP(A,x,&user->mu,3,user->adctx);CHKERRQ(ierr);
   ierr = VecRestoreArray(X,&x);CHKERRQ(ierr);
+
+  ierr = MatView(A,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);  // TODO: temp
+
   PetscFunctionReturn(0);
 }
 

@@ -1,3 +1,6 @@
+-log_view
+#-history ex5.log
+
 # Mat options
 #-mat_view draw
 #-draw_pause -1
@@ -19,6 +22,6 @@
 # TS options
 -ts_monitor
 -ts_adjoint_monitor
--ts_monitor_draw_solution
--ts_adjoint_monitor_sensi draw
+#-ts_monitor_draw_solution
+#-ts_adjoint_monitor_sensi draw
 #-ts_max_steps 1

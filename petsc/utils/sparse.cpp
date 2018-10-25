@@ -99,7 +99,7 @@ PetscErrorCode CountColors(ISColoring iscoloring,PetscInt *p)
   PetscFunctionReturn(0);
 }
 
-// TODO: Generate sparsity pattern using PETSc alone
+// FIXME: Generate sparsity pattern using PETSc alone
 PetscErrorCode DMGetSparsity(DM da,unsigned int **sparsity)
 {
   PetscErrorCode ierr;
