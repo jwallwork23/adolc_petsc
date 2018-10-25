@@ -44,8 +44,8 @@ static PetscErrorCode IFunction(TS,PetscReal,Vec,Vec,Vec,void*);
 static PetscErrorCode IJacobian(TS,PetscReal,Vec,Vec,PetscReal,Mat,Mat,void*);
 static PetscErrorCode MyMult(Mat,Vec,Vec);
 static PetscErrorCode MyMultByHand(Mat,Vec,Vec);
-static PetscErrorCode MyMultTranspose(Mat,Vec,Vec);		// FIXME
-static PetscErrorCode MyMultTransposeByHand(Mat,Vec,Vec);	// TODO
+static PetscErrorCode MyMultTranspose(Mat,Vec,Vec);
+static PetscErrorCode MyMultTransposeByHand(Mat,Vec,Vec);
 static PetscErrorCode IFunctionLocal(DMDALocalInfo*,PetscReal,Field**,Field**,Field**,void*);
 static PetscErrorCode IJacobianLocal(DMDALocalInfo*,PetscReal,Field**,Field**,PetscReal,Mat,Mat,void*);
 
@@ -122,8 +122,8 @@ int main(int argc,char **argv)
     ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void (*)(void))MyMultTranspose);CHKERRQ(ierr);
   } else {
     ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))MyMultByHand);CHKERRQ(ierr);
-    ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void (*)(void))MyMultTranspose);CHKERRQ(ierr);
-  } // TODO
+    ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void (*)(void))MyMultTransposeByHand);CHKERRQ(ierr);
+  }
   ierr = VecDuplicate(x,&matctx.X);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.Xdot);CHKERRQ(ierr);
 
@@ -590,7 +590,9 @@ static PetscErrorCode IJacobianLocal(DMDALocalInfo *info,PetscReal t,Field**u,Fi
   PetscFunctionReturn(0);
 }
 
-// FIXME
+/*
+  Hand-coded matrix-free Jacobian vector product
+*/
 PetscErrorCode MyMultByHand(Mat A_shell,Vec X,Vec Y)
 {
   MatCtx            *mctx;
@@ -620,7 +622,6 @@ PetscErrorCode MyMultByHand(Mat A_shell,Vec X,Vec Y)
   ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
-
   ierr = DMDAVecGetArrayRead(da,localX0,&x0);CHKERRQ(ierr);
   ierr = DMDAVecGetArray(da,localX1,&x1);CHKERRQ(ierr);
 
@@ -667,3 +668,106 @@ PetscErrorCode MyMultByHand(Mat A_shell,Vec X,Vec Y)
   ierr = DMRestoreLocalVector(da,&localX0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
+
+
+/*
+  Hand-coded matrix-free Jacobian transpose vector product
+*/
+PetscErrorCode MyMultTransposeByHand(Mat A_shell,Vec Y,Vec X)
+{
+  MatCtx            *mctx;
+  AppCtx            *actx;
+  PetscErrorCode    ierr;
+  PetscInt          i,j,k = 0,idx;
+  PetscReal         hx,hy,sx,sy;
+  const Field       **y;
+  Field             **x;
+  PetscScalar       val,uc,vc;
+  Vec               localX,localY;
+  DM                da;
+  DMDALocalInfo     info;
+
+  PetscFunctionBegin;
+
+  hx = 2.50/(PetscReal)(info.mx);sx = 1.0/(hx*hx);
+  hy = 2.50/(PetscReal)(info.my);sy = 1.0/(hy*hy);
+
+  /* Get matrix-free context info */
+  ierr = MatShellGetContext(A_shell,(void**)&mctx);CHKERRQ(ierr);
+  actx = mctx->actx;
+
+  /* Get local input vectors and extract data, x0 and x1*/
+  ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
+  ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localX);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localY);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localX);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX);CHKERRQ(ierr);
+  ierr = VecSet(Y,0);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
+  ierr = DMDAVecGetArrayRead(da,localX,&x);CHKERRQ(ierr);
+  ierr = DMDAVecGetArray(da,localY,&y);CHKERRQ(ierr);
+
+  for (j=info.gys; j<info.gys+info.gym; j++) {
+    for (i=info.gxs; i<info.gxs+info.gxm; i++) {
+      if ((i >= info.xs) && (i < info.xs+info.xm) && (j >= info.ys) && (j < info.ys+info.ym)) {
+        uc = y[j][i].u;
+        vc = y[j][i].v;
+
+        val = (2*actx->D1*(sx+sy) + vc*vc + actx->gamma + mctx->shift) * x[j][i].u;
+        ierr = VecSetValuesLocal(X,1,&k,&val,ADD_VALUES);CHKERRQ(ierr);
+
+        val = -actx->D1*sx*x[j][i-1].u;
+        idx = 2*(i-1+j*info.gxm);
+        ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
+
+        val = -actx->D1*sx*x[j][i+1].u;
+        idx = 2*(i+1+j*info.gxm);
+        ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
+
+        val = -actx->D1*sy*x[j-1][i].u;
+        idx = 2*(i+(j-1)*info.gxm);
+        ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
+
+        val = -actx->D1*sy*x[j+1][i].u;
+        idx = 2*(i+1+(j+1)*info.gxm);
+        ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
+
+        k++;
+
+        val = (2*actx->D2*(sx + sy) - 2*uc*vc + actx->gamma + actx->kappa + mctx->shift) * x[j][i].v;
+        ierr = VecSetValuesLocal(X,1,&k,&val,ADD_VALUES);CHKERRQ(ierr);
+
+        val = -actx->D2*sx*x[j][i-1].u;
+        idx = 2*(i-1+j*info.gxm)+1;
+        ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
+
+        val = -actx->D2*sx*x[j][i+1].u;
+        idx = 2*(i+1+j*info.gxm)+1;
+        ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
+
+        val = -actx->D2*sy*x[j-1][i].u;
+        idx = 2*(i+(j-1)*info.gxm+1);
+        ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
+
+        val = -actx->D2*sy*x[j+1][i].u;
+        idx = 2*(i+1+(j+1)*info.gxm)+1;
+        ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
+
+        k--;
+      }
+      k+=2;
+    }
+  }
+  ierr = VecAssemblyBegin(X);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(X);CHKERRQ(ierr);
+
+  /* Restore local vector */
+  ierr = DMDAVecRestoreArray(da,localY,&y);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,localX,&x);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localY);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localX);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
