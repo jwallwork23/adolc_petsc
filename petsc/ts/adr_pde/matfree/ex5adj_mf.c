@@ -682,7 +682,7 @@ PetscErrorCode MyMultTransposeByHand(Mat A_shell,Vec Y,Vec X)
   PetscReal         hx,hy,sx,sy;
   const Field       **y;
   Field             **x;
-  PetscScalar       val,uc,vc;
+  PetscScalar       val,ucx,vcx,ucy,vcy;
   Vec               localX,localY;
   DM                da;
   DMDALocalInfo     info;
@@ -703,56 +703,58 @@ PetscErrorCode MyMultTransposeByHand(Mat A_shell,Vec Y,Vec X)
   ierr = DMGetLocalVector(da,&localY);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localX);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX);CHKERRQ(ierr);
-  ierr = VecSet(Y,0);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
   ierr = DMDAVecGetArrayRead(da,localX,&x);CHKERRQ(ierr);
   ierr = DMDAVecGetArray(da,localY,&y);CHKERRQ(ierr);
 
+  ierr = VecSet(X,0);CHKERRQ(ierr);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
       if ((i >= info.xs) && (i < info.xs+info.xm) && (j >= info.ys) && (j < info.ys+info.ym)) {
-        uc = y[j][i].u;
-        vc = y[j][i].v;
+        ucx = x[j][i].u;
+        vcx = x[j][i].v;
+        ucy = y[j][i].u;
+        vcy = y[j][i].v;
 
-        val = (2*actx->D1*(sx+sy) + vc*vc + actx->gamma + mctx->shift) * x[j][i].u;
+        val = (2*actx->D1*(sx+sy) + vcy*vcy + actx->gamma + mctx->shift) * ucx;
         ierr = VecSetValuesLocal(X,1,&k,&val,ADD_VALUES);CHKERRQ(ierr);
 
-        val = -actx->D1*sx*x[j][i-1].u;
-        idx = 2*(i-1+j*info.gxm);
+        val = -actx->D1*sx*ucx;
+        idx = k-2;
         ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
 
-        val = -actx->D1*sx*x[j][i+1].u;
-        idx = 2*(i+1+j*info.gxm);
+        val = -actx->D1*sx*ucx;
+        idx = k+2;
         ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
 
-        val = -actx->D1*sy*x[j-1][i].u;
-        idx = 2*(i+(j-1)*info.gxm);
+        val = -actx->D1*sy*ucx;
+        idx = k-2*info.gxm;
         ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
 
-        val = -actx->D1*sy*x[j+1][i].u;
-        idx = 2*(i+1+(j+1)*info.gxm);
+        val = -actx->D1*sy*ucx;
+        idx = k+2*info.gxm;
         ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
 
         k++;
 
-        val = (2*actx->D2*(sx + sy) - 2*uc*vc + actx->gamma + actx->kappa + mctx->shift) * x[j][i].v;
+        val = (2*actx->D2*(sx + sy) - 2*ucy*vcy + actx->gamma + actx->kappa + mctx->shift) * vcx;
         ierr = VecSetValuesLocal(X,1,&k,&val,ADD_VALUES);CHKERRQ(ierr);
 
-        val = -actx->D2*sx*x[j][i-1].u;
-        idx = 2*(i-1+j*info.gxm)+1;
+        val = -actx->D2*sx*vcx;
+        idx = k-2;
         ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
 
-        val = -actx->D2*sx*x[j][i+1].u;
-        idx = 2*(i+1+j*info.gxm)+1;
+        val = -actx->D2*sx*vcx;
+        idx = k+2;
         ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
 
-        val = -actx->D2*sy*x[j-1][i].u;
-        idx = 2*(i+(j-1)*info.gxm+1);
+        val = -actx->D2*sy*vcx;
+        idx = k-2*info.gxm;
         ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
 
-        val = -actx->D2*sy*x[j+1][i].u;
-        idx = 2*(i+1+(j+1)*info.gxm)+1;
+        val = -actx->D2*sy*vcx;
+        idx = k+2*info.gxm;
         ierr = VecSetValuesLocal(X,1,&idx,&val,ADD_VALUES);CHKERRQ(ierr);
 
         k--;

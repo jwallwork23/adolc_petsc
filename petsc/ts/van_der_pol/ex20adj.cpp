@@ -4,6 +4,8 @@
 #define c22 1.0
 static char help[] = "Illustrates automatic Jacobian generation using ADOL-C for an adjoint sensitivity analysis of the van der Pol equation.\n";
 
+// FIXME: Adjoint run does not agree with hand-coded version!
+
 /*
    Concepts: TS^time-dependent nonlinear problems
    Concepts: TS^van der Pol equation DAE equivalent
@@ -15,7 +17,7 @@ static char help[] = "Illustrates automatic Jacobian generation using ADOL-C for
   ------------------------------------------------------------------------- */
 #include <petscts.h>
 #include <petsctao.h>
-#include <adolc/adolc.h>	// Include ADOL-C
+#include <adolc/adolc.h>
 #include "../../utils/drivers.cpp"
 
 typedef struct _n_User *User;
@@ -35,7 +37,7 @@ struct _n_User {
 };
 
 /*
-*  User-defined routines
+  'Passive' RHS function, used in residual evaluations during the time integration.
 */
 static PetscErrorCode IFunctionPassive(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
 {
@@ -57,6 +59,10 @@ static PetscErrorCode IFunctionPassive(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,vo
   PetscFunctionReturn(0);
 }
 
+/*
+  Trace RHS to mark on tape 1 the dependence of f upon x. This tape is used in generating the
+  Jacobian transform.
+*/
 static PetscErrorCode IFunctionActive1(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
 {
   PetscErrorCode    ierr;
@@ -85,6 +91,10 @@ static PetscErrorCode IFunctionActive1(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,vo
   PetscFunctionReturn(0);
 }
 
+/*
+  Trace RHS to mark on tape 2 the dependence of f upon xdot. This tape is used in generating the
+  Jacobian transform (under implicit TS).
+*/
 static PetscErrorCode IFunctionActive2(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
 {
   PetscErrorCode    ierr;
@@ -114,14 +124,13 @@ static PetscErrorCode IFunctionActive2(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,vo
 }
 
 /*
-  Trace RHS to additionally mark dependence upon the parameter mu on tape 3. This is used in
+  Trace RHS again to mark on tape 3 the dependence of f upon the parameter mu. This tape is used in
   generating JacobianP.
 */
 static PetscErrorCode RHSFunctionActiveP(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
-  const PetscScalar mu   = user->mu;
   PetscScalar       *f;
   const PetscScalar *x;
 
@@ -133,7 +142,7 @@ static PetscErrorCode RHSFunctionActiveP(TS ts,PetscReal t,Vec X,Vec F,void *ctx
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);
 
   trace_on(3);                                          /* Start of active section */
-  x_a[0] <<= x[0];x_a[1] <<= x[1];mu_a <<= mu;          /* Mark independence */
+  x_a[0] <<= x[0];x_a[1] <<= x[1];mu_a <<= user->mu;    /* Mark independence */
   f_a[0] = x_a[1];
   f_a[1] = mu_a*(1.-x_a[0]*x_a[0])*x_a[1]-x_a[0];
   f_a[0] >>= f[0];f_a[1] >>= f[1];                      /* Mark dependence */
@@ -144,6 +153,9 @@ static PetscErrorCode RHSFunctionActiveP(TS ts,PetscReal t,Vec X,Vec F,void *ctx
   PetscFunctionReturn(0);
 }
 
+/*
+  Compute the Jacobian w.r.t. x using ADOL-C.
+*/
 static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode    ierr;
@@ -161,6 +173,9 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   PetscFunctionReturn(0);
 }
 
+/*
+  Compute the Jacobian w.r.t. mu using ADOL-C.
+*/
 static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
 {
   PetscErrorCode    ierr;
@@ -171,13 +186,12 @@ static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
   ierr = VecGetArray(X,&x);CHKERRQ(ierr);
   ierr = AdolcComputeRHSJacobianP(A,x,&user->mu,3,user->adctx);CHKERRQ(ierr);
   ierr = VecRestoreArray(X,&x);CHKERRQ(ierr);
-
-  ierr = MatView(A,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);  // TODO: temp
-
   PetscFunctionReturn(0);
 }
 
-/* Monitor timesteps and use interpolation to output at integer multiples of 0.1 */
+/*
+  Monitor timesteps and use interpolation to output at integer multiples of 0.1
+*/
 static PetscErrorCode Monitor(TS ts,PetscInt step,PetscReal t,Vec X,void *ctx)
 {
   PetscErrorCode    ierr;
@@ -223,7 +237,7 @@ int main(int argc,char **argv)
   if (size != 1) SETERRQ(PETSC_COMM_SELF,1,"This is a uniprocessor example only!");
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    Set runtime options
+    Set runtime options and create AdolcCtx
     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscNew(&adctx);CHKERRQ(ierr);
   user.next_output = 0.0;

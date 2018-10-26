@@ -1,8 +1,7 @@
 SA-data/
 test/
+results/
 *.txt
-ex13
-ex13hong.c
 ex16
 ex16adj
 ex16opt_p

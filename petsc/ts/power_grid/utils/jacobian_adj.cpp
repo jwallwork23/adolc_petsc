@@ -407,10 +407,11 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A
   ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);  // X is read-only
   ierr = VecCopy(X,Xcopy);CHKERRQ(ierr);        // Copy values over
   ierr = VecGetArray(Xcopy,&x_vec);CHKERRQ(ierr);
-  ierr = MatSetOption(A,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr); // FIXME
+  ierr = MatSetOption(A,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr);
   ierr = AdolcComputeIJacobian(A,x_vec,a,user->adctx);CHKERRQ(ierr);
 
-  // Manual differentiation of MatMult:
+  // Manual differentiation of MatMult
+  // TODO: Trace with external functions
 
   for (i=0; i<nbus; i++) {
     ierr   = MatGetRow(user->Ybus,2*i,&ncols,&cols,&yvals);CHKERRQ(ierr);
