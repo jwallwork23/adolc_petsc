@@ -1,4 +1,4 @@
-all: clean diff
+all: clean cleandiff forward reverse
 
 CFLAGS	= -Wall
 CC	= gcc
