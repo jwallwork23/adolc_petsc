@@ -1,25 +1,26 @@
 C  =====================================================================
 C
-      SUBROUTINE TRANS(M,N,A,LDA,UDA,C)
+      SUBROUTINE AXM(M,N,A,LDA,ALPHA)
 C
-C     Scalar arguments
-      INTEGER K,M,N,LDA,UDA
+C     .. Scalar arguments ..
+      DOUBLE PRECISION ALPHA
+      INTEGER M,N,LDA
 C
-C     Array arguments
-      DOUBLE PRECISION A(LDA,UDA),C(UDA,LDA)
+C     .. Array arguments ..
+      DOUBLE PRECISION A(LDA,*)
 C
 C  =====================================================================
 C
-C     Local scalars
+C     .. Local scalars ..
       DOUBLE PRECISION TEMP
       INTEGER I,J
 C
-C     C := A**T
+C     A := alpha*A
 C
       DO 10 J = 1,N
           DO 20 I = 1,M
-              TEMP = A(I,J)
-              C(J,I) = TEMP
+              TEMP = ALPHA*A(I,J)
+              A(I,J) = TEMP
    20     CONTINUE
    10 CONTINUE
 C
