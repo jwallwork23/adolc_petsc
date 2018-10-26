@@ -2,6 +2,7 @@
 
 colpack/
 misc/
+.idea/
 
 # File types
 *.o
