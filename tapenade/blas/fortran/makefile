@@ -6,6 +6,12 @@ forward:
 reverse:
 	tapenade -reverse -head "DGEMM (A B)\(C)" dgemm.f
 
+test.o: test.f
+	gfortran -c -o $@ $^
+
+test: test.o
+	gfortran -o $@ $^
+
 clean:
 	rm -rf *.o
 

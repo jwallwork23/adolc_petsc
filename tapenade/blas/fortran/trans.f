@@ -1,5 +1,4 @@
 C  =====================================================================
-C
       SUBROUTINE TRANS(M,N,A,C)
 C
 C     Scalar arguments
