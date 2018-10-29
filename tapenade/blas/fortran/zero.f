@@ -1,6 +1,6 @@
 C  =====================================================================
 C
-      SUBROUTINE ZEROOUT(M,N,A,LDA)
+      SUBROUTINE ZEROUT(M,N,A,LDA)
 C
 C     .. Scalar arguments ..
       INTEGER M,N,LDA

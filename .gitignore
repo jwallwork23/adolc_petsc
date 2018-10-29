@@ -1,6 +1,9 @@
 # Directories
 
 colpack/
+tapenade/luexam
+tapenade/powexam
+tapenade/odexam
 misc/
 .idea/
 

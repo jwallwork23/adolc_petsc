@@ -1,6 +1,6 @@
 C  =====================================================================
-      SUBROUTINE DGEMM_FORWARD(TRANSA,TRANSB,M,N,K,ALPHA,A,AD,LDA,B,BD,
-     +                         LDB,BETA,C,CD,LDC)
+      SUBROUTINE DGEMMF(TRANSA,TRANSB,M,N,K,ALPHA,A,AD,LDA,B,BD,LDB,
+     +                         BETA,C,CD,LDC)
 C
       INCLUDE 'dgemm.f'
       INCLUDE 'zero.f'
@@ -17,16 +17,16 @@ C
 C  =====================================================================
 C     ..
 C     .. External Subroutines ..
-      EXTERNAL ZEROOUT,DGEMM
+      EXTERNAL ZEROUT,DGEMM
 C     ..
 C     .. Parameters ..
       DOUBLE PRECISION ONE
-      PARAMETER (ONE=1.0d+0)
+      PARAMETER (ONE=1.0D+0)
 C     ..
 C
 C     Undifferentiated function call
 C
-      CALL ZEROOUT(M,N,CD,LDC)
+      CALL ZEROUT(M,N,CD,LDC)
       CALL DGEMM(TRANSA,TRANSB,M,N,K,ALPHA,A,LDA,B,LDB,BETA,C,LDC)
 C
 C     Differentiated function call
