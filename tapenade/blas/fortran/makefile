@@ -13,7 +13,7 @@ test: test.o
 	gfortran -o $@ $^
 
 clean:
-	rm -rf *.o
+	rm -rf *.o test
 
 cleandiff:
 	rm -rf *_d.f *_b.f *.msg

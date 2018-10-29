@@ -192,6 +192,9 @@
 *  -- Univ. of California Berkeley, Univ. of Colorado Denver and NAG Ltd..--
 *     December 2016
 *
+      INCLUDE 'lsame.f'
+      INCLUDE 'xerbla.f'
+*
 *     .. Scalar Arguments ..
       DOUBLE PRECISION ALPHA,BETA
       INTEGER K,LDA,LDB,LDC,M,N
