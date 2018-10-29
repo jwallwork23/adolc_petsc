@@ -2,13 +2,14 @@ C =====================================================================
 C
       INCLUDE "trans.f"
       INCLUDE "zero.f"
+      INCLUDE "dgemm.f"
 C
 C =====================================================================
 C      EXTERNAL TRANS
 C
       INTEGER M,N
-      PARAMETER (K=3,L=5)
-      DOUBLE PRECISION A(K,L),B(L,K)
+      PARAMETER (M=3,N=5)
+      DOUBLE PRECISION A(M,N),B(N,M)
 C
 C     Supply values in storage order
       DATA A/
@@ -19,20 +20,20 @@ C     Supply values in storage order
      5     13,14,15/
 C
       WRITE (6,*) "A:"
-      WRITE (6,1) ((A(I,J),J = 1,L),I = 1,K)
+      WRITE (6,1) ((A(I,J),J = 1,N),I = 1,M)
 C
       WRITE (6,*)
       WRITE (6,*) "B = Transpose(A):"
 C
-      CALL TRANS(K,L,A,B)
+      CALL TRANS(M,N,A,B)
 C
-      WRITE (6,2) ((B(I,J),J = 1,K),I = 1,L)
+      WRITE (6,2) ((B(I,J),J = 1,M),I = 1,N)
 C
-      CALL ZEROUT(K,L,A,K)
+      CALL ZEROUT(M,N,A,M)
 C
       WRITE (6,*)
       WRITE (6,*) "A = 0:"
-      WRITE (6,1) ((A(I,J),J = 1,L),I = 1,K)
+      WRITE (6,1) ((A(I,J),J = 1,N),I = 1,M)
 C
 C     Five and three values per line, resp.
     1 FORMAT (5F6.1)
