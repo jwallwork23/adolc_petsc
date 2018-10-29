@@ -20,10 +20,8 @@ C
 C     A := 0
 C
       DO 10 J = 1,N
-          DO 20 I = 1,M
-              A(I,J) = ZERO
-   20     CONTINUE
-   10 CONTINUE
+        DO 10 I = 1,M
+   10     A(I,J) = ZERO
 C
       RETURN
 C

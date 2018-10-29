@@ -1,11 +1,12 @@
 C =====================================================================
 C
-      INCLUDE 'trans.f'
+      INCLUDE "trans.f"
+      INCLUDE "zero.f"
 C
 C =====================================================================
 C      EXTERNAL TRANS
 C
-      INTEGER K,L
+      INTEGER M,N
       PARAMETER (K=3,L=5)
       DOUBLE PRECISION A(K,L),B(L,K)
 C
@@ -26,6 +27,12 @@ C
       CALL TRANS(K,L,A,B)
 C
       WRITE (6,2) ((B(I,J),J = 1,K),I = 1,L)
+C
+      CALL ZEROUT(K,L,A,K)
+C
+      WRITE (6,*)
+      WRITE (6,*) "A = 0:"
+      WRITE (6,1) ((A(I,J),J = 1,L),I = 1,K)
 C
 C     Five and three values per line, resp.
     1 FORMAT (5F6.1)
