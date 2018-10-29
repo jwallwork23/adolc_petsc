@@ -2,9 +2,8 @@ C  =====================================================================
       SUBROUTINE DGEMMR(TRANSA,TRANSB,M,N,K,ALPHA,A,AB,LDA,B,BB,LDB,
      +                         BETA,C,CB,LDC)
 C
-      INCLUDE 'dgemm.f'
-      INCLUDE 'zero.f'
-      INCLUDE 'trans.f'
+      INCLUDE "zero.f"
+      INCLUDE "trans.f"
 C
 C     .. Scalar arguments ..
       DOUBLE PRECISION ALPHA,BETA

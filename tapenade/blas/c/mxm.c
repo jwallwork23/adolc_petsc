@@ -19,6 +19,22 @@ void mxm(int m,int p,int n,double A[m][p],double B[p][n],double C[m][n])
 }
 
 /*
+  Incremental pointwise matrix multiply
+
+  C = C + A.*B
+*/
+void mpm(int m,int n,double A[m][n],double B[m][n],double C[m][n])
+{
+  int i,j;
+
+  for (i=0; i<m; i++) {
+    for (j=0; j<n; j++) {
+      C[i][j] += A[i][j] * B[i][j];
+    }
+  }
+}
+
+/*
   Zero array entries
 */
 void zeroout(int m,int n,double A[m][n])

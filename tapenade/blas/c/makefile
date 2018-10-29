@@ -6,11 +6,11 @@ CC	= gcc
 
 forward:
 	rm -rf *_d.c *_d.msg
-	tapenade -tangent -head "mxm (A B)\(C)" mxm.c
+	tapenade -tangent -head "mxm (A B)\(C) mpm (A B)\(C)" mxm.c
 
 reverse:
 	rm -rf *_b.c *_b.msg
-	tapenade -reverse -head "mxm (A B)\(C)" mxm.c
+	tapenade -reverse -head "mxm (A B)\(C) mpm (A,B)\(C)" mxm.c
 
 clean:
 	rm -rf test *.o
@@ -20,7 +20,6 @@ cleandiff:
 
 test.o: test.c
 	$(CC) $(CFLAGS) -c -o $@ $^
-
 
 test: test.o
 	$(CC) -o $@ $^

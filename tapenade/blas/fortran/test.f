@@ -2,14 +2,19 @@ C =====================================================================
 C
       INCLUDE "trans.f"
       INCLUDE "zero.f"
-      INCLUDE "dgemm.f"
 C
 C =====================================================================
-C      EXTERNAL TRANS
 C
+C     External subroutines
+      EXTERNAL TRANS,ZEROUT,DGEMM
+C     Scalars
       INTEGER M,N
       PARAMETER (M=3,N=5)
-      DOUBLE PRECISION A(M,N),B(N,M)
+      PARAMETER (ONE=1.0D+0,ZERO=0.0D+0)
+      CHARACTER TRANSA,TRANSB
+C
+C     Arrays
+      DOUBLE PRECISION A(M,N),B(N,M),C(M,M)
 C
 C     Supply values in storage order
       DATA A/
@@ -22,12 +27,26 @@ C
       WRITE (6,*) "A:"
       WRITE (6,1) ((A(I,J),J = 1,N),I = 1,M)
 C
+C     TEST 1: transpose function
+C
       WRITE (6,*)
       WRITE (6,*) "B = Transpose(A):"
 C
       CALL TRANS(M,N,A,B)
 C
       WRITE (6,2) ((B(I,J),J = 1,M),I = 1,N)
+C
+C     TEST 2: dgemm
+C
+      TRANSA = "N"
+      TRANSB = "N"
+      CALL DGEMM(TRANSA,TRANSB,M,M,N,ONE,A,M,B,N,ZERO,C,M)
+C
+      WRITE (6,*)
+      WRITE (6,*) "C = A*B:"
+      WRITE (6,2) ((C(I,J),J = 1,M),I = 1,M)
+C
+C     TEST 3: zeroing function
 C
       CALL ZEROUT(M,N,A,M)
 C

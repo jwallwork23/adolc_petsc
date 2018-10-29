@@ -15,7 +15,7 @@ C     .. Local scalars ..
 C     ..
 C     .. Parameters ..
       DOUBLE PRECISION ZERO
-      PARAMETER ZERO=0.0D+0
+      PARAMETER (ZERO=0.0D+0)
 C
 C     A := 0
 C
