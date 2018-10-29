@@ -1,12 +1,12 @@
 C  =====================================================================
 C
-      SUBROUTINE ZEROUT(M,N,A,LDA)
+      SUBROUTINE ZEROUT(M,N,A)
 C
 C     .. Scalar arguments ..
-      INTEGER M,N,LDA
+      INTEGER M,N
 C
 C     .. Array arguments ..
-      DOUBLE PRECISION A(LDA,*)
+      DOUBLE PRECISION A(M,N)
 C
 C  =====================================================================
 C

@@ -34,6 +34,8 @@ void mpm(int m,int n,double A[m][n],double B[m][n],double C[m][n])
   }
 }
 
+// TODO: Kronecker product?
+
 /*
   Zero array entries
 */

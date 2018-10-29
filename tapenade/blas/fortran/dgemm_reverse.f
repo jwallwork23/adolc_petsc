@@ -22,10 +22,10 @@ C     .. External functions ..
       EXTERNAL LSAME
 C     ..
 C     .. External subroutines ..
-      EXTERNAL ZEROUT,DGEMM,TRANS
+      EXTERNAL TRANS,ZEROUT,DGEMM,TRANS
 C     ..
 C     .. Arrays ..
-      DOUBLE PRECISION TEMPAB(LDA,*),TEMPBB(LDB,*)
+      DOUBLE PRECISION TEMPAB(K,M),TEMPBB(N,K)
 C     ..
 C     .. Logical scalars ..
       CHARACTER NOTAT,NOTBT
@@ -49,17 +49,22 @@ C
           NOTBT = 'T'
       END IF
 
-      CALL ZEROUT(M,P,AB,LDA)
-      CALL ZEROUT(P,N,BB,LDB)
-      TEMPAB = AB
+      CALL ZEROUT(M,K,AB)
+      CALL ZEROUT(K,N,BB)
       TEMPBB = BB
-      CALL DGEMM('N',NOTBT,M,K,N,ALPHA,CB,LDC,B,LDB,ONE,TEMPAB,LDA)
-      CALL DGEMM(NOTAT,'N',P,N,M,ALPHA,A,LDA,CB,LDC,1,TEMPBB,LDB)
-      IF .NOT. (NOTA)
-          CALL TRANS(M,P,TEMPAB,AB)
+      IF (NOTA) THEN
+        CALL DGEMM('N',NOTBT,M,K,N,ALPHA,CB,M,B,LDB,ONE,AB,M)
+      ELSE
+        CALL TRANS(M,K,AB,TEMPAB)
+        CALL DGEMM('N',NOTBT,M,K,N,ALPHA,CB,M,B,LDB,ONE,TEMPAB,K)
+        CALL TRANS(K,M,TEMPAB,AB)
       END IF
-      IF .NOT. (NOTB)
-          CALL TRANS(P,N,TEMPBB,BB)
+      IF (NOTB) THEN
+        CALL DGEMM(NOTAT,'N',K,N,M,ALPHA,A,LDA,CB,LDC,1,BB,N)
+      ELSE
+        CALL TRANS(K,N,BB,TEMPBB)
+        CALL DGEMM(NOTAT,'N',K,N,M,ALPHA,A,LDA,CB,LDC,1,TEMPBB,N)
+        CALL TRANS(N,K,TEMPBB,BB)
       END IF
 C
       RETURN

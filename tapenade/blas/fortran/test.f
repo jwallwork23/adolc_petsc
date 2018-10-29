@@ -36,7 +36,7 @@ C
 C
       WRITE (6,2) ((B(I,J),J = 1,M),I = 1,N)
 C
-C     TEST 2: dgemm
+C     TEST 2: dgemm  FIXME
 C
       TRANSA = "N"
       TRANSB = "N"
@@ -48,7 +48,7 @@ C
 C
 C     TEST 3: zeroing function
 C
-      CALL ZEROUT(M,N,A,M)
+      CALL ZEROUT(M,N,A)
 C
       WRITE (6,*)
       WRITE (6,*) "A = 0:"

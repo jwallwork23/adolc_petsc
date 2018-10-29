@@ -25,7 +25,7 @@ C     ..
 C
 C     Undifferentiated function call
 C
-      CALL ZEROUT(M,N,CD,LDC)
+      CALL ZEROUT(M,N,CD)
       CALL DGEMM(TRANSA,TRANSB,M,N,K,ALPHA,A,LDA,B,LDB,BETA,C,LDC)
 C
 C     Differentiated function call
