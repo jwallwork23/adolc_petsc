@@ -1,12 +1,12 @@
 C  =====================================================================
 C
-      SUBROUTINE TRANS(M,N,A,LDA,UDA,C)
+      SUBROUTINE TRANS(M,N,A,C)
 C
 C     Scalar arguments
-      INTEGER K,M,N,LDA,UDA
+      INTEGER M,N
 C
 C     Array arguments
-      DOUBLE PRECISION A(LDA,UDA),C(UDA,LDA)
+      DOUBLE PRECISION A(M,N),C(N,M)
 C
 C  =====================================================================
 C
