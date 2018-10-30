@@ -17,43 +17,23 @@ int main(int argc,char **argv)
   ierr = PetscMalloc3(m*k,&Ab,k*n,&Bb,m*n,&Cb);CHKERRQ(ierr);
 
   printf("Initialise matrices A and B to be differentiated:\n");
-  for (i=0; i<m; ++i) {
-    for (j=0; j<k; ++j) {
-      A[i+j*k] = i+1;
-    }
-  }
+  for (i=0; i<m; ++i) {for (j=0; j<k; ++j) {A[i+j*k] = i+1;}}
   printmat("A:",m,k,A);
-  for (i=0; i<k; ++i) {
-    for (j=0; j<n; ++j) {
-      B[i+j*n] = j+1;
-    }
-  }
+  for (i=0; i<k; ++i) {for (j=0; j<n; ++j) {B[i+j*n] = j+1;}}
   printmat("B:",k,n,B);
 
   printf("\n\nInitialise forward seed matrices Ad and Bd:\n");
-  for (i=0; i<m; ++i) {
-    for (j=0; j<k; ++j) {
-      Ad[i+j*k] = -i;
-    }
-  }
+  for (i=0; i<m; ++i) {for (j=0; j<k; ++j) {Ad[i+j*k] = -i;}}
   printmat("Ad:",m,k,Ad);
-  for (i=0; i<k; ++i) {
-    for (j=0; j<n; ++j) {
-      Bd[i+j*n] = 3*j;
-    }
-  }
+  for (i=0; i<k; ++i) {for (j=0; j<n; ++j) {Bd[i+j*n] = 3*j;}}
   printmat("Bd:",k,n,Bd);
 
   printf("\n\nInitialise reverse seed matrix Cb:\n");
-  for (i=0; i<m; ++i) {
-    for (j=0; j<n; ++j) {
-      Cb[i+j*n] = 2*i-j;
-    }
-  }
+  for (i=0; i<m; ++i) {for (j=0; j<n; ++j) {Cb[i+j*n] = 2*i-j;}}
   printmat("Cb:",k,n,Cb);
 
-  ierr = PetscDGEMMForward("N","N",&m,&n,&k,&alpha,A,Ad,&m,B,Bd,&k,&beta,C,Cd,&m);CHKERRQ(ierr);
-  ierr = PetscDGEMMReverse("T","N",&m,&n,&k,&alpha,A,Ab,&m,B,Bb,&k,&beta,C,Cb,&m);CHKERRQ(ierr);
+  ierr = PetscDGEMMForward("T","T",&m,&n,&k,&alpha,A,Ad,&m,B,Bd,&k,&beta,C,Cd,&m);CHKERRQ(ierr);
+  ierr = PetscDGEMMReverse("T","T",&m,&n,&k,&alpha,A,Ab,&m,B,Bb,&k,&beta,C,Cb,&m);CHKERRQ(ierr);
 
   printf("\n\nResults of multiplication and differentiation:\n");
   printmat("\nC = A*B:",m,n,C);
