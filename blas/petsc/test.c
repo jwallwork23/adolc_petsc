@@ -53,7 +53,7 @@ int main(int argc,char **argv)
   printmat("Cb:",k,n,Cb);
 
   ierr = PetscDGEMMForward("N","N",&m,&n,&k,&alpha,A,Ad,&m,B,Bd,&k,&beta,C,Cd,&m);CHKERRQ(ierr);
-  ierr = PetscDGEMMReverse("N","N",&m,&n,&k,&alpha,A,Ab,&m,B,Bb,&k,&beta,C,Cb,&m);CHKERRQ(ierr);
+  ierr = PetscDGEMMReverse("T","N",&m,&n,&k,&alpha,A,Ab,&m,B,Bb,&k,&beta,C,Cb,&m);CHKERRQ(ierr);
 
   printf("\n\nResults of multiplication and differentiation:\n");
   printmat("\nC = A*B:",m,n,C);
@@ -80,4 +80,3 @@ void printmat(const char *name,PetscInt m,PetscInt n,PetscScalar *A)
     printf("\n");
   }
 }
-

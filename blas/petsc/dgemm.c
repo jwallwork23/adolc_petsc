@@ -11,6 +11,19 @@ PetscErrorCode ZeroOut(PetscInt m,PetscScalar *array)
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode Trans(PetscInt m,PetscInt n,PetscScalar *A,PetscScalar *At)
+{
+  PetscInt i,j;
+
+  PetscFunctionBegin;
+  for (i=0; i<m; i++) {
+    for (j=0; j<n; j++) {
+      At[j+i*m] = A[i+j*n];
+    }
+  }
+  PetscFunctionReturn(0);
+}
+
 PetscErrorCode PetscDGEMMForward(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscScalar *AD,PetscBLASInt *LDA,PetscScalar *B,PetscScalar *BD,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CD,PetscBLASInt *LDC)
 {
   PetscErrorCode ierr;
@@ -42,9 +55,10 @@ PetscErrorCode PetscDGEMMReverse(const char* TRANSA,const char* TRANSB,PetscBLAS
   PetscInt       kn = (*k)*(*n);
   char           leaveA,leaveB;
   char           trans[2] = "NT";
+  PetscScalar    *ABT,*BBT;
 
   PetscFunctionBegin;
-
+  ierr = PetscMalloc2(&mk,&ABT,&kn,&BBT);CHKERRQ(ierr);
   if (*TRANSA == trans[0])
     leaveA = trans[1];
   else
@@ -54,12 +68,23 @@ PetscErrorCode PetscDGEMMReverse(const char* TRANSA,const char* TRANSB,PetscBLAS
   else
     leaveB = trans[0];
 
-  ierr = ZeroOut(mk,AB);CHKERRQ(ierr);
-  ierr = ZeroOut(kn,BB);CHKERRQ(ierr);
+  ierr = ZeroOut(mk,ABT);CHKERRQ(ierr);
+  ierr = ZeroOut(kn,BBT);CHKERRQ(ierr);
 
   /* Case 1: TRANSA == TRANSB == "N" */
-  BLASgemm_(&trans[0],&leaveB,M,K,N,ALPHA,CB,LDC,B,LDB,&one,AB,LDA);
-  BLASgemm_(&leaveA,&trans[0],M,N,K,ALPHA,A,LDA,CB,LDC,&one,BB,LDB);
+  BLASgemm_(&trans[0],&leaveB,M,K,N,ALPHA,CB,LDC,B,LDB,&one,ABT,LDA);
+  BLASgemm_(&leaveA,&trans[0],M,N,K,ALPHA,A,LDA,CB,LDC,&one,BBT,LDB);
+/*
+  if (*TRANSA == trans[0])
+    AB = ABT;
+  else
+    ierr = Trans(m,k,AB,ABT);CHKERRQ(ierr);
+  if (*TRANSB == trans[0])
+    BB = BBT;
+  else
+    ierr = Trans(m,k,BB,BBT);CHKERRQ(ierr);
+*/
+  ierr = PetscFree2(ABT,BBT);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
