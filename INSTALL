@@ -2,7 +2,7 @@
 
 cd $HOME/software
 git clone -b maint https://bitbucket.org/petsc/petsc petsc
-export PETSC_DIR=$HOME/petsc
+export PETSC_DIR=$HOME/software/petsc
 export PETSC_ARCH=myarch
 cd petsc
 ./configure --download-exodusii --download-hdf5 --download-netcdf --download-zlib --download-pnetcdf
@@ -29,3 +29,10 @@ cd $ADOLC_HOME
 #../configure --prefix=${ADOLC_BUILDDIR} --enable-sparse --with-colpack=${COLPACK_HOME}
 make
 make install
+
+cd $HOME/software
+git clone https://github.com/Reference-LAPACK/lapack lapack
+export LAPACK_HOME=$HOME/software/lapack
+cd $LAPACK_HOME
+mv make.inc.example make.inc
+make
