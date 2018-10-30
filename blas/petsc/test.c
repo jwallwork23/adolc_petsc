@@ -32,8 +32,8 @@ int main(int argc,char **argv)
   for (i=0; i<m; ++i) {for (j=0; j<n; ++j) {Cb[i+j*n] = 2*i-j;}}
   printmat("Cb:",k,n,Cb);
 
-  ierr = PetscDGEMMForward("T","T",&m,&n,&k,&alpha,A,Ad,&m,B,Bd,&k,&beta,C,Cd,&m);CHKERRQ(ierr);
-  ierr = PetscDGEMMReverse("T","T",&m,&n,&k,&alpha,A,Ab,&m,B,Bb,&k,&beta,C,Cb,&m);CHKERRQ(ierr);
+  ierr = PetscGEMMForward("T","T",&m,&n,&k,&alpha,A,Ad,&m,B,Bd,&k,&beta,C,Cd,&m);CHKERRQ(ierr);
+  ierr = PetscGEMMReverse("T","T",&m,&n,&k,&alpha,A,Ab,&m,B,Bb,&k,&beta,C,Cb,&m);CHKERRQ(ierr);
 
   printf("\n\nResults of multiplication and differentiation:\n");
   printmat("\nC = A*B:",m,n,C);
