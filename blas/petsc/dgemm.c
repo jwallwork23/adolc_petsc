@@ -47,7 +47,7 @@ PetscErrorCode PetscGEMMReverse(const char* TRANSA,const char* TRANSB,PetscBLASI
   for (i=0; i<mk; ++i) AB[i] = 0.;
   for (i=0; i<kn; ++i) BB[i] = 0.;
 
-  /* Call BLASgemm in the appropriate way*/
+  /* Reverse derivative for A */
   if (*TRANSA == trans[0]) {
     leaveA = trans[1];
     BLASgemm_(&trans[0],&leaveB,M,K,N,ALPHA,CB,LDC,B,LDB,&one,AB,LDA);
@@ -55,6 +55,8 @@ PetscErrorCode PetscGEMMReverse(const char* TRANSA,const char* TRANSB,PetscBLASI
     leaveA = trans[0];
     BLASgemm_(TRANSB,&trans[1],K,M,N,ALPHA,B,LDB,CB,LDC,&one,AB,LDA);
   }
+
+  /* Reverse derivative for B */
   if (*TRANSB == trans[0])
     BLASgemm_(&leaveA,&trans[0],M,N,K,ALPHA,A,LDA,CB,LDC,&one,BB,LDB);
   else
