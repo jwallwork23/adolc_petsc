@@ -1,5 +1,5 @@
 #include <petscmat.h>
-#include "dgemm.c"
+#include "dgemm_deriv.c"
 
 void printmat(const char *name,PetscInt m,PetscInt n,PetscScalar *A);
 

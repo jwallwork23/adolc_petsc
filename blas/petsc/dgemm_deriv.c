@@ -35,8 +35,7 @@ PetscErrorCode PetscGEMMForward(const char* TRANSA,const char* TRANSB,PetscBLASI
 PetscErrorCode PetscGEMMReverse(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscScalar *AB,PetscBLASInt *LDA,PetscScalar *B,PetscScalar *BB,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CB,PetscBLASInt *LDC)
 {
   PetscScalar    one = 1.;
-  PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,*k = (PetscInt*) K;
-  PetscInt       mk = (*m)*(*k),kn = (*k)*(*n),i;
+  PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,*k = (PetscInt*) K,i;
   char           leaveA,leaveB,trans[2] = "NT";
 
   PetscFunctionBegin;
@@ -44,8 +43,8 @@ PetscErrorCode PetscGEMMReverse(const char* TRANSA,const char* TRANSB,PetscBLASI
     leaveB = trans[1];
   else
     leaveB = trans[0];
-  for (i=0; i<mk; ++i) AB[i] = 0.;
-  for (i=0; i<kn; ++i) BB[i] = 0.;
+  for (i=0; i<(*m)*(*k); ++i) AB[i] = 0.;
+  for (i=0; i<(*k)*(*n); ++i) BB[i] = 0.;
 
   /* Reverse derivative for A */
   if (*TRANSA == trans[0]) {
