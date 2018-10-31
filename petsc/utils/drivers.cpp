@@ -362,7 +362,7 @@ PetscErrorCode AdolcComputeIJacobianAndDiagonalLocal(Vec diag,PetscScalar *u_vec
 {
   AdolcCtx       *adctx = (AdolcCtx*)ctx;
   PetscErrorCode ierr;
-  PetscInt       i,j,m = adctx->m,n = adctx->n,p = adctx->p;
+  PetscInt       i,m = adctx->m,n = adctx->n,p = adctx->p;
   PetscScalar    **J;
 
   PetscFunctionBegin;
@@ -374,7 +374,7 @@ PetscErrorCode AdolcComputeIJacobianAndDiagonalLocal(Vec diag,PetscScalar *u_vec
   else
     jacobian(1,m,n,u_vec,J);
   if (adctx->sparse) {
-    ierr = RecoverDiagonalLocal(diag,INSERT_VALUES,m,p,adctx->rec,J,NULL);CHKERRQ(ierr);
+    ierr = RecoverDiagonalLocal(diag,INSERT_VALUES,m,adctx->rec,J,NULL);CHKERRQ(ierr);
   } else {
     for (i=0; i<m; i++) {
       if (fabs(J[i][i]) > 1.e-16) {
@@ -391,13 +391,12 @@ PetscErrorCode AdolcComputeIJacobianAndDiagonalLocal(Vec diag,PetscScalar *u_vec
   else
     jacobian(2,m,n,u_vec,J);
   if (adctx->sparse) {
-    ierr = RecoverDiagonalLocal(diag,ADD_VALUES,m,p,adctx->rec,J,NULL);CHKERRQ(ierr);
+    ierr = RecoverDiagonalLocal(diag,ADD_VALUES,m,adctx->rec,J,NULL);CHKERRQ(ierr);
   } else {
     for (i=0; i<m; i++) {
       if (fabs(J[i][i]) > 1.e-16) {
         J[i][i] *= a;
         ierr = VecSetValuesLocal(diag,1,&i,&J[i][i],ADD_VALUES);CHKERRQ(ierr);
-        }
       }
     }
   }
