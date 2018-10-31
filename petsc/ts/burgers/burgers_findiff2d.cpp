@@ -44,7 +44,7 @@ int main(int argc,char **argv)
   ierr = PetscOptionsGetBool(NULL,NULL,"-forwardonly",&forwardonly,NULL);CHKERRQ(ierr);
   PetscFunctionBeginUser;
   appctx.D     = 8.0e-5;
-  appctx.kappa = .06;
+  appctx.kappa = .1;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
