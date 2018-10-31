@@ -20,6 +20,7 @@
 
 # TS options
 -ts_monitor
+-ts_dt 0.25
 -ts_adjoint_monitor
 -ts_monitor_draw_solution
 -ts_adjoint_monitor_sensi draw
@@ -27,4 +28,4 @@
 -ts_trajectory_monitor
 -ts_trajectory_type memory
 #-ts_trajectory_solution_only 0
--ts_max_steps 10
+-ts_max_steps 50

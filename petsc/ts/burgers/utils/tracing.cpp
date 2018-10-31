@@ -30,8 +30,8 @@ PetscErrorCode IFunctionLocalPassive(DMDALocalInfo *info,PetscReal t,Field**u,Fi
       vxx       = (-2.0*vc + u[j][i-1].v + u[j][i+1].v)*s2x;
       vy        = (u[j+1][i].v - u[j-1][i].v)*s1y;
       vyy       = (-2.0*vc + u[j-1][i].v + u[j+1][i].v)*s2y;
-      f[j][i].u = udot[j][i].u - appctx->D*(uxx + uyy) + appctx->kappa*(uc*ux+vc*vx);
-      f[j][i].v = udot[j][i].v - appctx->D*(vxx + vyy) + appctx->kappa*(uc*uy+vc*vy);
+      f[j][i].u = udot[j][i].u - appctx->D*(uxx + uyy) + appctx->kappa*(uc*ux+vc*uy);
+      f[j][i].v = udot[j][i].v - appctx->D*(vxx + vyy) + appctx->kappa*(uc*vx+vc*vy);
     }
   }
   ierr = PetscLogFlops(16*xm*ym);CHKERRQ(ierr); // FIXME
@@ -85,8 +85,8 @@ PetscErrorCode IFunctionLocalActive(DMDALocalInfo *info,PetscReal t,Field**u,Fie
       vxx       = (-2.0*vc + u_a[j][i-1].v + u_a[j][i+1].v)*s2x;
       vy        = (u_a[j+1][i].v - u_a[j-1][i].v)*s1y;
       vyy       = (-2.0*vc + u_a[j-1][i].v + u_a[j+1][i].v)*s2y;
-      f_a[j][i].u = - appctx->D*(uxx + uyy) + appctx->kappa*(uc*ux+vc*vx);
-      f_a[j][i].v = - appctx->D*(vxx + vyy) + appctx->kappa*(uc*uy+vc*vy);
+      f_a[j][i].u = - appctx->D*(uxx + uyy) + appctx->kappa*(uc*ux+vc*uy);
+      f_a[j][i].v = - appctx->D*(vxx + vyy) + appctx->kappa*(uc*vx+vc*vy);
     }
   }
 
