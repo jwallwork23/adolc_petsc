@@ -1,6 +1,8 @@
 static char help[] = "Demonstrates automatic, matrix-free Jacobian generation using ADOL-C for a time-dependent PDE in 2d, solved using implicit timestepping.\n";
 
 /*
+  TODO
+
   See ex5.c for details on the equation.
 
   Here implicit Crank-Nicolson timestepping is used to solve the same problem as in ex5.c. Another
@@ -41,9 +43,7 @@ int main(int argc,char **argv)
   ierr = PetscInitialize(&argc,&argv,"petscoptions",help);if (ierr) return ierr;
   ierr = PetscOptionsGetBool(NULL,NULL,"-forwardonly",&forwardonly,NULL);CHKERRQ(ierr);
   PetscFunctionBeginUser;
-  appctx.D1     = 8.0e-5;
-  appctx.D2     = 4.0e-5;
-  appctx.gamma = .024;
+  appctx.D     = 8.0e-5;
   appctx.kappa = .06;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -123,8 +123,7 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = PetscNew(&adctx);CHKERRQ(ierr);
   adctx->no_an = PETSC_FALSE;appctx.adctx = adctx;
-  ierr = IFunction(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
-  ierr = IFunction2(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
+  ierr = IFunctionActive(ts,1.,x,matctx.Xdot,r,&appctx);CHKERRQ(ierr);
   ierr = PetscFree(adctx);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
