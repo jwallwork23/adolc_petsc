@@ -3,9 +3,13 @@
 #include "init.cpp"
 
 
+/* --------------------------------------------------------------------------------
+   Drivers for RHSJacobian and IJacobian
+   ----------------------------------------------------------------------------- */
+
 /*
   Compute Jacobian for explicit TS in compressed format and recover from this, using
-  precomputed seed and recovery matrices. If sparse mode is used, full Jacobian is
+  precomputed seed and recovery matrices. If sparse mode is not used, full Jacobian is
   assembled (not recommended!).
 
   TODO: Make tape tag selectable
@@ -53,7 +57,7 @@ PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscScalar *u_vec,void *ctx)
 
 /*
   Compute Jacobian for explicit TS in compressed format and recover from this, using
-  precomputed seed and recovery matrices. If sparse mode is used, full Jacobian is
+  precomputed seed and recovery matrices. If sparse mode is not used, full Jacobian is
   assembled (not recommended!).
 
   TODO: Make tape tag selectable
@@ -98,6 +102,157 @@ PetscErrorCode AdolcComputeRHSJacobianLocal(Mat A,PetscScalar *u_vec,void *ctx)
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
+
+/*
+  Compute Jacobian for implicit TS in compressed format and recover from this, using
+  precomputed seed and recovery matrices. If sparse mode is not used, full Jacobian is
+  assembled (not recommended!).
+
+  TODO: Make tape tags selectable
+
+  Input parameters:
+  u_vec - vector at which to evaluate Jacobian
+  ctx   - ADOL-C context, as defined above
+
+  Output parameter:
+  A     - Mat object corresponding to Jacobian
+*/
+PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
+{
+  AdolcCtx       *adctx = (AdolcCtx*)ctx;
+  PetscErrorCode ierr;
+  PetscInt       i,j,m = adctx->m,n = adctx->n,p = adctx->p;
+  PetscScalar    **J;
+
+  PetscFunctionBegin;
+  ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
+
+  /* dF/dx part */
+  if (adctx->Seed)
+    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+  else
+    jacobian(1,m,n,u_vec,J);
+  ierr = MatZeroEntries(A);CHKERRQ(ierr);
+  if (adctx->sparse) {
+    if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
+      ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/dx:",m,p,J);CHKERRQ(ierr);
+    }
+    ierr = RecoverJacobian(A,INSERT_VALUES,m,p,adctx->Rec,J,NULL);CHKERRQ(ierr);
+  } else {
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          ierr = MatSetValues(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+  }
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  /* a * dF/d(xdot) part */
+  if (adctx->Seed)
+    fov_forward(2,m,n,p,u_vec,adctx->Seed,NULL,J);
+  else
+    jacobian(2,m,n,u_vec,J);
+  if (adctx->sparse) {
+    if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
+      ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/d(xdot):",m,p,J);CHKERRQ(ierr);
+      adctx->sparse_view_done = PETSC_TRUE;
+    }
+    ierr = RecoverJacobian(A,ADD_VALUES,m,p,adctx->Rec,J,&a);CHKERRQ(ierr);
+  } else {
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          J[i][j] *= a;
+          ierr = MatSetValues(A,1,&i,1,&j,&J[i][j],ADD_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+  }
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = AdolcFree2(J);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Compute local portion of Jacobian for implicit TS in compressed format and recover from this, using
+  precomputed seed and recovery matrices. If sparse mode is not used, full Jacobian is
+  assembled (not recommended!).
+
+  TODO: Make tape tags selectable
+
+  Input parameters:
+  u_vec - vector at which to evaluate Jacobian
+  ctx   - ADOL-C context, as defined above
+
+  Output parameter:
+  A     - Mat object corresponding to Jacobian
+*/
+PetscErrorCode AdolcComputeIJacobianLocal(Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
+{
+  AdolcCtx       *adctx = (AdolcCtx*)ctx;
+  PetscErrorCode ierr;
+  PetscInt       i,j,m = adctx->m,n = adctx->n,p = adctx->p;
+  PetscScalar    **J;
+
+  PetscFunctionBegin;
+  ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
+
+  /* dF/dx part */
+  if (adctx->Seed)
+    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+  else
+    jacobian(1,m,n,u_vec,J);
+  if (adctx->sparse) {
+    if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
+      ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/dx:",m,p,J);CHKERRQ(ierr);
+    }
+    ierr = RecoverJacobianLocal(A,INSERT_VALUES,m,p,adctx->Rec,J,NULL);CHKERRQ(ierr);
+  } else {
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+  }
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  /* a * dF/d(xdot) part */
+  if (adctx->Seed)
+    fov_forward(2,m,n,p,u_vec,adctx->Seed,NULL,J);
+  else
+    jacobian(2,m,n,u_vec,J);
+  if (adctx->sparse) {
+    if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
+      ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/d(xdot):",m,p,J);CHKERRQ(ierr);
+      adctx->sparse_view_done = PETSC_TRUE;
+    }
+    ierr = RecoverJacobianLocal(A,ADD_VALUES,m,p,adctx->Rec,J,&a);CHKERRQ(ierr);
+  } else {
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          J[i][j] *= a;
+          ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],ADD_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+  }
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = AdolcFree2(J);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/* --------------------------------------------------------------------------------
+   Drivers for Jacobian w.r.t. a parameter
+   ----------------------------------------------------------------------------- */
 
 /*
   Compute Jacobian w.r.t a parameter for explicit TS.
@@ -185,10 +340,14 @@ PetscErrorCode AdolcComputeRHSJacobianPLocal(Mat A,PetscScalar *u_vec,PetscScala
   PetscFunctionReturn(0);
 }
 
+
+/* --------------------------------------------------------------------------------
+   Drivers for Jacobian diagonal
+   ----------------------------------------------------------------------------- */
+
 /*
-  Compute Jacobian for implicit TS in compressed format and recover from this, using
-  precomputed seed and recovery matrices. If sparse mode is used, full Jacobian is
-  assembled (not recommended!).
+  Compute local portion of Jacobian diagonal for implicit TS in compressed format and recover
+  from this, using precomputed seed matrix and recovery vector.
 
   TODO: Make tape tags selectable
 
@@ -197,83 +356,9 @@ PetscErrorCode AdolcComputeRHSJacobianPLocal(Mat A,PetscScalar *u_vec,PetscScala
   ctx   - ADOL-C context, as defined above
 
   Output parameter:
-  A     - Mat object corresponding to Jacobian
+  diag  - Vec object corresponding to Jacobian diagonal
 */
-PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
-{
-  AdolcCtx       *adctx = (AdolcCtx*)ctx;
-  PetscErrorCode ierr;
-  PetscInt       i,j,m = adctx->m,n = adctx->n,p = adctx->p;
-  PetscScalar    **J;
-
-  PetscFunctionBegin;
-  ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
-
-  /* dF/dx part */
-  if (adctx->Seed)
-    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
-  else
-    jacobian(1,m,n,u_vec,J);
-  ierr = MatZeroEntries(A);CHKERRQ(ierr);
-  if (adctx->sparse) {
-    if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
-      ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/dx:",m,p,J);CHKERRQ(ierr);
-    }
-    ierr = RecoverJacobian(A,INSERT_VALUES,m,p,adctx->Rec,J,NULL);CHKERRQ(ierr);
-  } else {
-    for (i=0; i<m; i++) {
-      for (j=0; j<n; j++) {
-        if (fabs(J[i][j]) > 1.e-16) {
-          ierr = MatSetValues(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
-        }
-      }
-    }
-  }
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-
-  /* a * dF/d(xdot) part */
-  if (adctx->Seed)
-    fov_forward(2,m,n,p,u_vec,adctx->Seed,NULL,J);
-  else
-    jacobian(2,m,n,u_vec,J);
-  if (adctx->sparse) {
-    if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
-      ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/d(xdot):",m,p,J);CHKERRQ(ierr);
-      adctx->sparse_view_done = PETSC_TRUE;
-    }
-    ierr = RecoverJacobian(A,ADD_VALUES,m,p,adctx->Rec,J,&a);CHKERRQ(ierr);
-  } else {
-    for (i=0; i<m; i++) {
-      for (j=0; j<n; j++) {
-        if (fabs(J[i][j]) > 1.e-16) {
-          J[i][j] *= a;
-          ierr = MatSetValues(A,1,&i,1,&j,&J[i][j],ADD_VALUES);CHKERRQ(ierr);
-        }
-      }
-    }
-  }
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = AdolcFree2(J);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-/*
-  Compute local portion of Jacobian for implicit TS in compressed format and recover from this, using
-  precomputed seed and recovery matrices. If sparse mode is used, full Jacobian is
-  assembled (not recommended!).
-
-  TODO: Make tape tags selectable
-
-  Input parameters:
-  u_vec - vector at which to evaluate Jacobian
-  ctx   - ADOL-C context, as defined above
-
-  Output parameter:
-  A     - Mat object corresponding to Jacobian
-*/
-PetscErrorCode AdolcComputeIJacobianLocal(Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
+PetscErrorCode AdolcComputeIJacobianAndDiagonalLocal(Vec diag,PetscScalar *u_vec,PetscReal a,void *ctx)
 {
   AdolcCtx       *adctx = (AdolcCtx*)ctx;
   PetscErrorCode ierr;
@@ -289,21 +374,16 @@ PetscErrorCode AdolcComputeIJacobianLocal(Mat A,PetscScalar *u_vec,PetscReal a,v
   else
     jacobian(1,m,n,u_vec,J);
   if (adctx->sparse) {
-    if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
-      ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/dx:",m,p,J);CHKERRQ(ierr);
-    }
-    ierr = RecoverJacobianLocal(A,INSERT_VALUES,m,p,adctx->Rec,J,NULL);CHKERRQ(ierr);
+    ierr = RecoverDiagonalLocal(diag,INSERT_VALUES,m,p,adctx->rec,J,NULL);CHKERRQ(ierr);
   } else {
     for (i=0; i<m; i++) {
-      for (j=0; j<n; j++) {
-        if (fabs(J[i][j]) > 1.e-16) {
-          ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
-        }
+      if (fabs(J[i][i]) > 1.e-16) {
+        ierr = VecSetValuesLocal(diag,1,&i,&J[i][i],INSERT_VALUES);CHKERRQ(ierr);
       }
     }
   }
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(diag);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(diag);CHKERRQ(ierr);
 
   /* a * dF/d(xdot) part */
   if (adctx->Seed)
@@ -311,23 +391,19 @@ PetscErrorCode AdolcComputeIJacobianLocal(Mat A,PetscScalar *u_vec,PetscReal a,v
   else
     jacobian(2,m,n,u_vec,J);
   if (adctx->sparse) {
-    if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
-      ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/d(xdot):",m,p,J);CHKERRQ(ierr);
-      adctx->sparse_view_done = PETSC_TRUE;
-    }
-    ierr = RecoverJacobianLocal(A,ADD_VALUES,m,p,adctx->Rec,J,&a);CHKERRQ(ierr);
+    ierr = RecoverDiagonalLocal(diag,ADD_VALUES,m,p,adctx->rec,J,NULL);CHKERRQ(ierr);
   } else {
     for (i=0; i<m; i++) {
-      for (j=0; j<n; j++) {
-        if (fabs(J[i][j]) > 1.e-16) {
-          J[i][j] *= a;
-          ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],ADD_VALUES);CHKERRQ(ierr);
+      if (fabs(J[i][i]) > 1.e-16) {
+        J[i][i] *= a;
+        ierr = VecSetValuesLocal(diag,1,&i,&J[i][i],ADD_VALUES);CHKERRQ(ierr);
         }
       }
     }
   }
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(diag);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(diag);CHKERRQ(ierr);
   ierr = AdolcFree2(J);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
+
