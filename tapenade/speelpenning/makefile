@@ -8,7 +8,7 @@ all: clean exec
 # # Establish which c files to generate objects from
 # %.o:%.c
 # 	gcc $^ -c -o$@
-
+#
 # # Define object for execution
 # exec: $(OBJ)
 #	gcc $(OBJ) -o exec
