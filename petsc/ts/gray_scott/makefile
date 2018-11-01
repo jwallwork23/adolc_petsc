@@ -1,7 +1,8 @@
 ALL: clean ex5
 CFLAGS			=
 FFLAGS			=
-CXXFLAGS		= -std=c++11 -I${ADOLC_BUILDDIR}/ADOL-C/include
+#CXXFLAGS		= -std=c++11 -I${ADOLC_BUILDDIR}/ADOL-C/include
+CXXFLAGS		= -std=c++11 -I${ADOLC_HOME}/ADOL-C/include
 CPPFLAGS		=
 FPPFLAGS		=
 CLEANFILES		= ex5 ex5adj ex5imp ex5mf binaryoutput *.tap *.info *.txt *.o
