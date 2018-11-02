@@ -2,7 +2,7 @@
 
 
 /*
-  Forward derivative of BLASgemm.
+  Forward derivative of BLASgemm w.r.t. both A and B.
 
   The derivative code was initially obtained by transformation of the LAPACK Fortran source code
   using the Tapenade automatic differentiation tool. This was then re-interpreted in terms of calls
@@ -22,6 +22,44 @@ PetscErrorCode PetscGEMMForward(const char* TRANSA,const char* TRANSB,PetscBLASI
   for (i=0; i<(*m)*(*n); ++i) CD[i] = 0.;
   BLASgemm_(TRANSA,TRANSB,M,N,K,ALPHA,AD,LDA,B,LDB,BETA,CD,LDC);
   BLASgemm_(TRANSA,TRANSB,M,N,K,ALPHA,A,LDA,BD,LDB,&one,CD,LDC);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Forward derivative of BLASgemm w.r.t. first input, A.
+*/
+PetscErrorCode PetscGEMMForward1(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscScalar *AD,PetscBLASInt *LDA,PetscScalar *B,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CD,PetscBLASInt *LDC)
+{
+  PetscScalar    one = 1.;
+  PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,i;
+
+  PetscFunctionBegin;
+
+  /* Undifferentiated call */
+  BLASgemm_(TRANSA,TRANSB,M,N,K,ALPHA,A,LDA,B,LDB,BETA,C,LDC);
+
+  /* Differentiated call */
+  for (i=0; i<(*m)*(*n); ++i) CD[i] = 0.;
+  BLASgemm_(TRANSA,TRANSB,M,N,K,ALPHA,AD,LDA,B,LDB,BETA,CD,LDC);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Forward derivative of BLASgemm w.r.t. second input, B.
+*/
+PetscErrorCode PetscGEMMForward2(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscBLASInt *LDA,PetscScalar *B,PetscScalar *BD,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CD,PetscBLASInt *LDC)
+{
+  PetscScalar    one = 1.;
+  PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,i;
+
+  PetscFunctionBegin;
+
+  /* Undifferentiated call */
+  BLASgemm_(TRANSA,TRANSB,M,N,K,ALPHA,A,LDA,B,LDB,BETA,C,LDC);
+
+  /* Differentiated call */
+  for (i=0; i<(*m)*(*n); ++i) CD[i] = 0.;
+  BLASgemm_(TRANSA,TRANSB,M,N,K,ALPHA,A,LDA,BD,LDB,&BETA,CD,LDC);
   PetscFunctionReturn(0);
 }
 

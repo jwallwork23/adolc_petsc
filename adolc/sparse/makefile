@@ -14,22 +14,20 @@ LIB		+= -L${COLPACK_HOME}/lib -lColPack -Wl,-rpath,${COLPACK_HOME}/lib -lm
 include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules
 
-example_utils.o: example_utils.cpp
-	$(CC) $(CXXFLAGS) -o $@ $^ $(LIB)
-
-../../petsc/utils/matfree.o: ../../petsc/utils/matfree.cpp
-	$(CC) $(CXXFLAGS) -o $@ $^ $(LIB)
-
 petsc_version: petsc_version.o
-	$(CC) $(CXXFLAGS) -o $@ $^ $(LIB)
+	-${CLINKER} -o $@ $^ $(LIB)
 	${RM} $^
 
 reverse: reverse.o
-	$(CC) $(CXXFLAGS) -o $@ $^ $(LIB)
+	-${CLINKER} -o $@ $^ $(LIB)
 	${RM} $^
 
 matfree: matfree.o
-	$(CC) $(CXXFLAGS) -o $@ $^ $(LIB)
+	-${CLINKER} -o $@ $^ $(LIB)
+	${RM} $^
+
+traceless: traceless.o
+	-${CLINKER} -o $@ $^ $(LIB)
 	${RM} $^
 
 include ${PETSC_DIR}/lib/petsc/conf/test
