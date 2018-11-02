@@ -34,7 +34,7 @@ int main(int argc,char **args)
   ierr = VecSetSizes(ctx.X,PETSC_DECIDE,n);CHKERRQ(ierr);
   ierr = VecSetFromOptions(ctx.X);CHKERRQ(ierr);
   ierr = VecSetValues(ctx.X,n,ni,xdat,INSERT_VALUES);CHKERRQ(ierr);
-  ierr = PetscPrintf(comm,"\nInput vector : ");CHKERRQ(ierr);
+  ierr = PetscPrintf(comm,"Input vector:\n");CHKERRQ(ierr);
   ierr = VecView(ctx.X,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
   /* Vec for dependent variables */
@@ -57,9 +57,9 @@ int main(int argc,char **args)
   ierr = MatMult(J,ctx.X,W);CHKERRQ(ierr);
 
   /* Print results */
-  ierr = PetscPrintf(comm,"\nFunction evaluation : \n");CHKERRQ(ierr);
+  ierr = PetscPrintf(comm,"\nFunction evaluation:\n");CHKERRQ(ierr);
   ierr = VecView(ctx.Y,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  ierr = PetscPrintf(comm,"\nJacobian vector product :\n");CHKERRQ(ierr);
+  ierr = PetscPrintf(comm,"\nJacobian vector product:\n");CHKERRQ(ierr);
   ierr = VecView(W,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
   ierr = VecDestroy(&W);CHKERRQ(ierr);
@@ -91,7 +91,7 @@ PetscErrorCode JacobianVectorProduct(Mat J,Vec x_ro,Vec y)
   PetscInt          m,n,i;
   PetscScalar       *x0dat,*x1dat,tmp;
   adouble           *xad,*yad;
-  Vec               x;
+  Vec               x0,x1;
 
   PetscFunctionBegin;
 
@@ -100,10 +100,13 @@ PetscErrorCode JacobianVectorProduct(Mat J,Vec x_ro,Vec y)
   xad = new adouble[n];
   yad = new adouble[m];
   ierr = MatShellGetContext(J,&ctx);CHKERRQ(ierr);
-  ierr = VecDuplicate(x_ro,&x);CHKERRQ(ierr);
-  ierr = VecCopy(x_ro,x);CHKERRQ(ierr);
-  ierr = VecGetArray(x,&x1dat);CHKERRQ(ierr);
-  ierr = VecGetArray(ctx->X,&x0dat);CHKERRQ(ierr);
+  ierr = VecDuplicate(x_ro,&x1);CHKERRQ(ierr);
+  ierr = VecCopy(x_ro,x1);CHKERRQ(ierr);
+  ierr = VecGetArray(x1,&x1dat);CHKERRQ(ierr);
+  ierr = VecDuplicate(ctx->X,&x0);CHKERRQ(ierr);
+  ierr = VecCopy(ctx->X,x0);CHKERRQ(ierr);
+  ierr = VecGetArray(x1,&x1dat);CHKERRQ(ierr);
+  ierr = VecGetArray(x0,&x0dat);CHKERRQ(ierr);
 
   /* Call function c(x) and apply Jacobian vector product*/
   for(i=0; i<n; i++) {
@@ -118,9 +121,10 @@ PetscErrorCode JacobianVectorProduct(Mat J,Vec x_ro,Vec y)
   }
 
   /* Restore arrays and free memory */
-  ierr = VecRestoreArray(x,&x0dat);CHKERRQ(ierr);
-  ierr = VecRestoreArray(x,&x1dat);CHKERRQ(ierr);
-  ierr = VecDestroy(&x);CHKERRQ(ierr);
+  ierr = VecRestoreArray(x0,&x0dat);CHKERRQ(ierr);
+  ierr = VecRestoreArray(x1,&x1dat);CHKERRQ(ierr);
+  ierr = VecDestroy(&x0);CHKERRQ(ierr);
+  ierr = VecDestroy(&x1);CHKERRQ(ierr);
   delete[] yad;
   delete [] xad;
   PetscFunctionReturn(0);
