@@ -30,9 +30,5 @@ traceless: traceless.o
 	-${CLINKER} -o $@ $^ $(LIB)
 	${RM} $^
 
-test: test.o
-	g++ -o $@ $^ $(LIB)
-	${RM} $^
-
 include ${PETSC_DIR}/lib/petsc/conf/test
 
