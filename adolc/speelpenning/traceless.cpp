@@ -15,12 +15,11 @@ int main()
   cout << "number of independent variables = ? ";
   cin >> n;
   cout << endl;
-  adtl::setNumDir(n);			    // FIXME: This doesn't work
+  adtl::setNumDir(n);
 
   double  *xp = new double[n];
   double  yp = 0.0;
-  adouble *x = new adouble[n];
-  double  *e = new double[NUMBER_DIRECTIONS];
+  adouble x[n];
   adouble y = 1;
 
   cout << "x = [";
@@ -32,12 +31,15 @@ int main()
 
   for(i=0; i<n; i++) {
     x[i].setValue(xp[i]);
-    for (j=0; j<n; j++) {if (i==j) {e[j] = 1.;} else {e[j] = 0.;}}
-    x[i].setADValue(e);
-  }
-
-  for (i=0; i<n; i++)
+    for (j=0; j<n; j++) {
+      if (i==j) {
+        x[i].setADValue(j,1.);
+      } else {
+        x[i].setADValue(j,0.);
+      }
+    }
     y *= x[i];
+  }
 
   yp = y.getValue();
   cout << "y = " << yp << endl;
@@ -59,9 +61,6 @@ int main()
   cout << yp-1/(1.0+n) << " error in function \n";
   cout << errg <<" error in gradient \n";
 
-
-  delete[] e;
-  delete[] x;
   delete[] xp;
 
   return 0;
