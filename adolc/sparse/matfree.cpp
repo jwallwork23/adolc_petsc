@@ -43,35 +43,29 @@ int main(int argc,char **args)
       yad[i] >>= y[i];
   trace_off();
 
-  /* Function evaluation as above */
-  ierr = PetscPrintf(comm,"\n Function evaluation by RHS : ");CHKERRQ(ierr);
-  for(j=0;j<m;j++) {
-    ierr = PetscPrintf(comm," %e ",y[j]);CHKERRQ(ierr);
-  }
-  ierr = PetscPrintf(comm,"\n");CHKERRQ(ierr);
-
-  /* Trace over ZOS to check function evaluation and enable reverse mode */
-  zos_forward(tag,m,n,1,x,y);
-  ierr = PetscPrintf(comm,"\n Function evaluation by ZOS : ");CHKERRQ(ierr);
-  for(j=0;j<m;j++) {
-    ierr = PetscPrintf(comm," %e ",y[j]);CHKERRQ(ierr);
-    mi[j] = j;
-  }
-  ierr = PetscPrintf(comm,"\n");CHKERRQ(ierr);
-
   /* Insert independent variable values into a Vec */
   ierr = VecCreate(comm,&X);CHKERRQ(ierr);
   ierr = VecSetSizes(X,PETSC_DECIDE,n);CHKERRQ(ierr);
   ierr = VecSetFromOptions(X);CHKERRQ(ierr);
   ierr = VecSetValues(X,n,ni,x,INSERT_VALUES);CHKERRQ(ierr);
-  //ierr = VecView(X,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  ierr = PetscPrintf(comm,"\nInput vector : ");CHKERRQ(ierr);
+  ierr = VecView(X,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+
+  /* Trace over ZOS to check function evaluation and enable reverse mode */
+  zos_forward(tag,m,n,1,x,y);
+  ierr = PetscPrintf(comm,"\nFunction evaluation by ZOS:\n");CHKERRQ(ierr);
+  for(j=0;j<m;j++) {
+    ierr = PetscPrintf(comm,"%.5f\n",y[j]);CHKERRQ(ierr);
+    mi[j] = j;
+  }
 
   /* Insert dependent variable values into a Vec */
   ierr = VecCreate(comm,&Y);CHKERRQ(ierr);
   ierr = VecSetSizes(Y,PETSC_DECIDE,m);CHKERRQ(ierr);
   ierr = VecSetFromOptions(Y);CHKERRQ(ierr);
   ierr = VecSetValues(Y,m,mi,y,INSERT_VALUES);CHKERRQ(ierr);
-  //ierr = VecView(Y,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  ierr = PetscPrintf(comm,"\nFunction evaluation by RHS:\n");CHKERRQ(ierr);
+  ierr = VecView(Y,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
   /* Create matrix free matrix */
   ierr = MatCreateShell(comm,m,n,m,n,NULL,&J);CHKERRQ(ierr);
@@ -123,33 +117,32 @@ int main(int argc,char **args)
   Output parameters:
   y - product of J and x
 */
-PetscErrorCode JacobianVectorProduct(Mat J,Vec x,Vec y)
+PetscErrorCode JacobianVectorProduct(Mat J,Vec x_ro,Vec y)
 {
   PetscErrorCode    ierr;
   PetscInt          m,n,i;
-  const PetscScalar *dat_ro;
   PetscScalar       *action,*dat;
+  Vec               x;
 
   PetscFunctionBegin;
 
   /* Read data and allocate memory */
   ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
-  ierr = PetscMalloc1(n,&dat);CHKERRQ(ierr);
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(x,&dat_ro);CHKERRQ(ierr);
-  for (i=0; i<n; i++)
-    dat[i] = dat_ro[i]; // FIXME: How to avoid this conversion from read only?
+  ierr = VecDuplicate(x_ro,&x);CHKERRQ(ierr);
+  ierr = VecCopy(x_ro,x);CHKERRQ(ierr);
+  ierr = VecGetArray(x,&dat);CHKERRQ(ierr);
 
   /* Compute action of Jacobian on vector */
   fos_forward(tag,m,n,0,dat,dat,NULL,action);
-  ierr = VecRestoreArrayRead(x,&dat_ro);CHKERRQ(ierr);
+  ierr = VecRestoreArray(x,&dat);CHKERRQ(ierr);
   for (i=0; i<m; i++) {
     ierr = VecSetValues(y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
   }
 
   /* Free memory */
+  ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = PetscFree(action);CHKERRQ(ierr);
-  ierr = PetscFree(dat);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -163,20 +156,21 @@ PetscErrorCode JacobianVectorProduct(Mat J,Vec x,Vec y)
   x - Jacobian transpose vector product
 */
 /* Intended to overload MatMultTranspose in matrix-free methods */
-PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec y,Vec x)
+PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec y_ro,Vec x)
 {
-  AdolcCtx            *ctx;
+  AdolcCtx          *ctx;
   PetscErrorCode    ierr;
   PetscInt          i,m,n;
-  const PetscScalar *dat_ro;
   PetscScalar       *action,*dat;
+  Vec               y;
 
   PetscFunctionBegin;
 
   /* Read data and allocate memory */
   ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
-  ierr = PetscMalloc1(m,&dat);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(y,&dat_ro);CHKERRQ(ierr);
+  ierr = VecDuplicate(y_ro,&y);CHKERRQ(ierr);
+  ierr = VecCopy(y_ro,y);CHKERRQ(ierr);
+  ierr = VecGetArray(y,&dat);CHKERRQ(ierr);
 
   /* Trace forward using independent variable values */
   ierr = MatShellGetContext(J,&ctx);CHKERRQ(ierr);
@@ -185,10 +179,8 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec y,Vec x)
 
   /* Compute action */
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
-  for (i=0; i<m; i++)
-    dat[i] = dat_ro[i]; // TODO: How to avoid this conversion from read only?
   fos_reverse(tag,m,n,dat,action);
-  ierr = VecRestoreArrayRead(y,&dat_ro);CHKERRQ(ierr);
+  ierr = VecRestoreArray(y,&dat);CHKERRQ(ierr);
 
   /* Set values in vector */
   for (i=0; i<n; i++) {
@@ -197,7 +189,7 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec y,Vec x)
 
   /* Free memory */
   ierr = PetscFree(action);CHKERRQ(ierr);
-  ierr = PetscFree(dat);CHKERRQ(ierr);
+  ierr = VecDestroy(&y);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
