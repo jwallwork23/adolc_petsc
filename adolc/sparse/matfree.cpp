@@ -1,6 +1,4 @@
-#include <petscts.h>
 #include <adolc/adolc.h>
-#include <adolc/adolc_sparse.h>
 #include "example_utils.cpp"
 
 #define tag 1
@@ -136,7 +134,6 @@ PetscErrorCode JacobianVectorProduct(Mat J,Vec x,Vec y)
 
   /* Read data and allocate memory */
   ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
-  ierr = PetscMalloc1(n,&dat_ro);CHKERRQ(ierr);
   ierr = PetscMalloc1(n,&dat);CHKERRQ(ierr);
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
   ierr = VecGetArrayRead(x,&dat_ro);CHKERRQ(ierr);
@@ -153,7 +150,6 @@ PetscErrorCode JacobianVectorProduct(Mat J,Vec x,Vec y)
   /* Free memory */
   ierr = PetscFree(action);CHKERRQ(ierr);
   ierr = PetscFree(dat);CHKERRQ(ierr);
-  ierr = PetscFree(dat_ro);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -179,7 +175,6 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec y,Vec x)
 
   /* Read data and allocate memory */
   ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
-  ierr = PetscMalloc1(m,&dat_ro);CHKERRQ(ierr);
   ierr = PetscMalloc1(m,&dat);CHKERRQ(ierr);
   ierr = VecGetArrayRead(y,&dat_ro);CHKERRQ(ierr);
 
@@ -203,7 +198,6 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec y,Vec x)
   /* Free memory */
   ierr = PetscFree(action);CHKERRQ(ierr);
   ierr = PetscFree(dat);CHKERRQ(ierr);
-  ierr = PetscFree(dat_ro);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 

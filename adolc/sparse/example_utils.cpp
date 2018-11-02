@@ -1,6 +1,9 @@
 #include <petscsnes.h>
-#include <adolc/adolc.h>
-#include <adolc/adolc_sparse.h>
+#ifndef ADOLC_TAPELESS
+#include <adolc/adouble.h>
+#else
+#include <adolc/adtl.h>
+#endif
 
 extern PetscErrorCode PassiveEvaluate(PetscScalar *x,PetscScalar *c);
 extern PetscErrorCode ActiveEvaluate(adouble *x,adouble *c);

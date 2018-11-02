@@ -1,7 +1,8 @@
-ALL: clean traceless
+ALL: clean basic
 
-CXXFLAGS	= -std=c++11 -I${ADOLC_BUILDDIR}/include -L${USER_LIB} -lboost_system
+CXXFLAGS	= -std=c++11 -I${ADOLC_BUILDDIR}/include 
 LIB 		= -L${ADOLC_BUILDDIR}/lib64 -ladolc -Wl,-rpath,${ADOLC_BUILDDIR}/lib64
+LIB		+= -L${USER_LIB} -lboost_system
 CC		= g++
 CLEANFILES	= *.o basic vector *~ *.tap
 
@@ -9,9 +10,6 @@ CLEANFILES	= *.o basic vector *~ *.tap
 	$(CC) $(CXXFLAGS) $^ -c -o $@
 
 basic: basic.o
-	$(CC) $^ -o $@ $(LIB)
-
-vector: vector.o
 	$(CC) $^ -o $@ $(LIB)
 
 clean:

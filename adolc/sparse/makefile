@@ -1,10 +1,10 @@
 ALL: petsc_version
-CFLAGS          =
 FFLAGS          =
+CFLAGS		=
 CXXFLAGS        = -std=c++11 -I${ADOLC_BUILDDIR}/include
-CPPFLAGS        =
+CPPFLAGS	=
 FPPFLAGS        =
-CLEANFILES      = petsc_version reverse matfree *.tap *.o exec
+CLEANFILES      = petsc_version reverse matfree traceless *.tap *.o exec
 CC              = g++
 
 LIB             = ${PETSC_TS_LIB} -L${USER_LIB} -lboost_system
@@ -28,6 +28,10 @@ matfree: matfree.o
 
 traceless: traceless.o
 	-${CLINKER} -o $@ $^ $(LIB)
+	${RM} $^
+
+test: test.o
+	g++ -o $@ $^ $(LIB)
 	${RM} $^
 
 include ${PETSC_DIR}/lib/petsc/conf/test
