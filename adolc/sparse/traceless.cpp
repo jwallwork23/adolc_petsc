@@ -1,3 +1,4 @@
+#include <iostream>
 #define ADOLC_TAPELESS
 #include <adolc/adtl.h>
 using namespace adtl;
@@ -5,21 +6,26 @@ using namespace adtl;
 
 extern PetscErrorCode JacobianVectorProduct(Mat J,Vec x,Vec y);
 
+typedef struct {
+  PetscScalar *X;    // Independent variable values
+  PetscScalar *Y;    // Dependent variable values
+} AdolcCtx;
+
 int main(int argc,char **args)
 {
   AdolcCtx        ctx;
   PetscErrorCode  ierr;
   MPI_Comm        comm = MPI_COMM_WORLD;
-  PetscInt        n = 6,m = 3,i,mi[m],ni[n];
-  PetscScalar     x[n],y[m];
+  PetscInt        n = 6,m = 3,i,ni[n];
   Vec             W,X,Y;
   Mat             J;
 
   ierr = PetscInitialize(&argc,&args,(char*)0,NULL);if (ierr) return ierr;
 
   /* Give values for independent variables */
+  ierr = PetscMalloc1(n,&ctx.X);CHKERRQ(ierr);
   for(i=0;i<n;i++) {
-    x[i] = log(1.0+i);
+    ctx.X[i] = log(1.0+i);
     ni[i] = i;
   }
 
@@ -27,10 +33,10 @@ int main(int argc,char **args)
   ierr = VecCreate(comm,&X);CHKERRQ(ierr);
   ierr = VecSetSizes(X,PETSC_DECIDE,n);CHKERRQ(ierr);
   ierr = VecSetFromOptions(X);CHKERRQ(ierr);
-  ierr = VecSetValues(X,n,ni,x,INSERT_VALUES);CHKERRQ(ierr);
+  ierr = VecSetValues(X,n,ni,ctx.X,INSERT_VALUES);CHKERRQ(ierr);
   //ierr = VecView(X,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
-  /* Insert dependent variable values into a Vec */
+  /* Vec for dependent variables */
   ierr = VecCreate(comm,&Y);CHKERRQ(ierr);
   ierr = VecSetSizes(Y,PETSC_DECIDE,m);CHKERRQ(ierr);
   ierr = VecSetFromOptions(Y);CHKERRQ(ierr);
@@ -50,11 +56,16 @@ int main(int argc,char **args)
   ierr = MatMult(J,X,W);CHKERRQ(ierr);
 
   /* Print results */
-  ierr = PetscPrintf(comm,"\nFunction evaluation : \n");CHKERRQ(ierr);
-  ierr = VecView(Y,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  //ierr = PetscPrintf(comm,"\nFunction evaluation : \n");CHKERRQ(ierr);
+  //ierr = VecView(Y,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   ierr = PetscPrintf(comm,"\nJacobian vector product :\n");CHKERRQ(ierr);
   ierr = VecView(W,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
+  ierr = VecDestroy(&W);CHKERRQ(ierr);
+  ierr = MatDestroy(&J);CHKERRQ(ierr);
+  ierr = VecDestroy(&Y);CHKERRQ(ierr);
+  ierr = VecDestroy(&X);CHKERRQ(ierr);
+  ierr = PetscFree(ctx.X);CHKERRQ(ierr);
   ierr = PetscFinalize();
 
   return ierr;
@@ -71,42 +82,43 @@ int main(int argc,char **args)
   Output parameters:
   y - product of J and x
 */
-PetscErrorCode JacobianVectorProduct(Mat J,Vec x,Vec y)
+PetscErrorCode JacobianVectorProduct(Mat J,Vec x_ro,Vec y)
 {
+  AdolcCtx          *ctx;
   PetscErrorCode    ierr;
   PetscInt          m,n,i;
-  const PetscScalar *dat_ro;
-  PetscScalar       *action,*dat,*ydat;
+  PetscScalar       *action,*xdat,tmp;
   adouble           xad[n],yad[m];
+  Vec               x;
 
   PetscFunctionBegin;
 
   /* Read data and allocate memory */
   ierr = MatGetSize(J,&m,&n);CHKERRQ(ierr);
-  ierr = PetscMalloc1(n,&dat);CHKERRQ(ierr);
+  ierr = MatShellGetContext(J,&ctx);CHKERRQ(ierr);
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(x,&dat_ro);CHKERRQ(ierr);
-  ierr = VecGetArray(y,&ydat);CHKERRQ(ierr);
+  ierr = VecDuplicate(x_ro,&x);CHKERRQ(ierr);
+  ierr = VecCopy(x_ro,x);CHKERRQ(ierr);
+  ierr = VecGetArray(x,&xdat);CHKERRQ(ierr);
 
   /* Call function c(x) and apply Jacobian vector product*/
   for(i=0; i<n; i++) {
-    xad[i] = dat_ro[i];
-    xad[i].setADValue(dat_ro[i]);
+    xad[i] = ctx->X[i];
+    tmp = xdat[i];
+    xad[i].setADValue(&tmp);
+    std::cout << "xad[" << i << "] = " << xad[i] << std::endl;
   }
   ierr = ActiveEvaluate(xad,yad);CHKERRQ(ierr);
   for(i=0; i<m; i++) {
-    ydat[i] = yad[i].getValue();
-    action[i] = yad[i].getADValue();
-  }
-  for (i=0; i<m; i++) {
-    ierr = VecSetValues(y,1,&i,&action[i],INSERT_VALUES);CHKERRQ(ierr);
+    //ctx->Y[i] = yad[i].getValue();
+    action = (PetscScalar*) yad[i].getADValue();
+    ierr = VecSetValues(y,1,&i,action,INSERT_VALUES);CHKERRQ(ierr);
   }
 
   /* Restore arrays and free memory */
-  ierr = VecRestoreArray(y,&ydat);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(x,&dat_ro);CHKERRQ(ierr);
+  ierr = VecRestoreArray(x,&xdat);CHKERRQ(ierr);
+  ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = PetscFree(action);CHKERRQ(ierr);
-  ierr = PetscFree(dat);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 

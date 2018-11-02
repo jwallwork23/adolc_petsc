@@ -7,8 +7,8 @@ extern PetscErrorCode JacobianVectorProduct(Mat J,Vec x,Vec y);
 extern PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec y,Vec x);
 
 typedef struct {
-  PetscScalar *indep_vals; // Need to provide a 1-array containing independent variable values
-  PetscBool   trace;       // Toggle whether or not to trace forward, thereby writing to tape
+  PetscScalar *X;    // Independent variable values
+  PetscBool   trace; // Toggle whether or not to trace forward, thereby writing to tape
 } AdolcCtx;
 
 int main(int argc,char **args)
@@ -29,7 +29,7 @@ int main(int argc,char **args)
     x[i] = log(1.0+i);
     ni[i] = i;
   }
-  ctx.indep_vals = x;
+  ctx.X = x;
   ctx.trace = PETSC_TRUE;
 
   /* Trace function c(x) */
@@ -181,7 +181,7 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat J,Vec y,Vec x)
   /* Trace forward using independent variable values */
   ierr = MatShellGetContext(J,&ctx);CHKERRQ(ierr);
   if (ctx->trace)
-    zos_forward(tag,m,n,1,ctx->indep_vals,NULL);
+    zos_forward(tag,m,n,1,ctx->X,NULL);
 
   /* Compute action */
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
