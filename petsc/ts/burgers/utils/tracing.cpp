@@ -1,6 +1,5 @@
 #include "init.cpp"
 
-
 PetscErrorCode IFunctionLocalPassive(DMDALocalInfo *info,PetscReal t,Field**u,Field**udot,Field**f,void *ptr)
 {
   AppCtx         *appctx = (AppCtx*)ptr;

@@ -17,4 +17,8 @@ burgers_findiff2d: burgers_findiff2d.o
 	-${CLINKER} -o $@ $^ $(LIB)
 	${RM} $^
 
+burgers_findiff2d_traceless: burgers_findiff2d_traceless.o
+	-${CLINKER} -o $@ $^ $(LIB)
+	${RM} $^
+
 include ${PETSC_DIR}/lib/petsc/conf/test

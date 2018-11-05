@@ -8,7 +8,7 @@
   using the Tapenade automatic differentiation tool. This was then re-interpreted in terms of calls
   to BLASgemm itself, so that no new BLAS level functions need be written.
 */
-PetscErrorCode PetscGEMMForward(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscScalar *AD,PetscBLASInt *LDA,PetscScalar *B,PetscScalar *BD,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CD,PetscBLASInt *LDC)
+PetscErrorCode GEMMDot(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscScalar *AD,PetscBLASInt *LDA,PetscScalar *B,PetscScalar *BD,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CD,PetscBLASInt *LDC)
 {
   PetscScalar    one = 1.;
   PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,i;
@@ -28,7 +28,7 @@ PetscErrorCode PetscGEMMForward(const char* TRANSA,const char* TRANSB,PetscBLASI
 /*
   Forward derivative of BLASgemm w.r.t. first input, A.
 */
-PetscErrorCode PetscGEMMForward1(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscScalar *AD,PetscBLASInt *LDA,PetscScalar *B,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CD,PetscBLASInt *LDC)
+PetscErrorCode GEMMDotLeft(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscScalar *AD,PetscBLASInt *LDA,PetscScalar *B,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CD,PetscBLASInt *LDC)
 {
   PetscScalar    one = 1.;
   PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,i;
@@ -47,7 +47,7 @@ PetscErrorCode PetscGEMMForward1(const char* TRANSA,const char* TRANSB,PetscBLAS
 /*
   Forward derivative of BLASgemm w.r.t. second input, B.
 */
-PetscErrorCode PetscGEMMForward2(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscBLASInt *LDA,PetscScalar *B,PetscScalar *BD,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CD,PetscBLASInt *LDC)
+PetscErrorCode GEMMDotRight(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscBLASInt *LDA,PetscScalar *B,PetscScalar *BD,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CD,PetscBLASInt *LDC)
 {
   PetscScalar    one = 1.;
   PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,i;
@@ -70,9 +70,9 @@ PetscErrorCode PetscGEMMForward2(const char* TRANSA,const char* TRANSB,PetscBLAS
   using the Tapenade automatic differentiation tool. This was then re-interpreted in terms of calls
   to BLASgemm itself, so that no new BLAS level functions need be written.
 */
-PetscErrorCode PetscGEMMReverse(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscScalar *AB,PetscBLASInt *LDA,PetscScalar *B,PetscScalar *BB,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CB,PetscBLASInt *LDC)
+PetscErrorCode GEMMBar(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscScalar *AB,PetscBLASInt *LDA,PetscScalar *B,PetscScalar *BB,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CB,PetscBLASInt *LDC)
 {
-  PetscScalar    one = 1.;
+  PetscScalar    one = 1.,zero = 0.;
   PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,*k = (PetscInt*) K,i;
   char           leaveA,leaveB,trans[2] = "NT";
 
@@ -98,5 +98,8 @@ PetscErrorCode PetscGEMMReverse(const char* TRANSA,const char* TRANSB,PetscBLASI
     BLASgemm_(&leaveA,&trans[0],M,N,K,ALPHA,A,LDA,CB,LDC,&one,BB,LDB);
   else
     BLASgemm_(&trans[1],TRANSA,N,M,K,ALPHA,CB,LDC,A,LDA,&one,BB,LDB);
+
+  /* Quick return scaled C */
+  BLASgemm_(&trans[0],&trans[0],M,N,K,&zero,A,LDA,B,LDB,BETA,CB,LDC);
   PetscFunctionReturn(0);
 }
