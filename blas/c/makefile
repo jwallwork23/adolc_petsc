@@ -1,8 +1,9 @@
-all: clean cleandiff dgemm test_AB
+all: clean cleandiff dgemm test_A
 
-CFLAGS	= -Wall -I${TAPENADE_HOME}/ADFirstAidKit -I${LAPACK_HOME}/CBLAS
-LIB	= -L${LAPACK_HOME} -lcblas -lrefblas -ltmglib -llapack
-TFLAGS  = -O derivatives
+CFLAGS		= -Wall -I${TAPENADE_HOME}/ADFirstAidKit -I${LAPACK_HOME}/CBLAS
+LIB		= -L${LAPACK_HOME} -lcblas -lrefblas -ltmglib -llapack
+TFLAGS  	= -O derivatives
+CLEANFILES	= test_AB test_A *.o *~
 
 mpm:
 	tapenade -tangent -head "mpm (A B)\(C)" -o mpm $(TFLAGS) mxm.c
@@ -29,7 +30,7 @@ dgemm:
 	tapenade -reverse -head "dgemm (B)\(C)" $(TFLAGS) -adjfuncname _B_b mxm.c
 
 clean:
-	rm -rf test *.o *~
+	rm -rf $(CLEANFILES)
 
 cleandiff:
 	rm -rf derivatives/*_d.c derivatives/*_d.msg derivatives/*_b.c derivatives/*_b.msg

@@ -31,7 +31,7 @@ int main(int argc,char* args[])
   inittest(m,p,n,A,B);
   zeroout(m,n,C);
   t = clock();
-  dgemm(0,0,m,A,B,C);
+  dgemm(0,0,one,m,A,B,one,C);
   t = clock() - t;
   printf("\n%30s: %.4e seconds","Single naive dgemm call",((double) t)/CLOCKS_PER_SEC);
   t = clock();
@@ -49,7 +49,7 @@ int main(int argc,char* args[])
   zeroout(m,n,C);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_A_d(m,p,n,A,Ad,B,C,Cd_tapenade);
+    dgemm_A_d(m,p,n,one,A,Ad,B,one,C,Cd_tapenade);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Forward mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 
@@ -58,8 +58,10 @@ int main(int argc,char* args[])
   initforward(m,p,n,Ad);
   zeroout(m,n,C);
   t = clock();
-  for (i=0; i<N; i++)
+  for (i=0; i<N; i++) {
+    cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&A[0][0],m,&B[0][0],m,zero,&C[0][0],m);
     dgemm_A_dot(m,p,n,one,A,Ad,B,one,C,Cd_byhand);
+  }
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Forward mode with dgemms",((double) t)/CLOCKS_PER_SEC);
   checkforward(m,n,Cd_byhand,Cd_tapenade);
@@ -69,7 +71,7 @@ int main(int argc,char* args[])
   initreverse(m,n,Cb);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_A_b(m,p,n,A,Ab_tapenade,B,C,Cb);
+    dgemm_A_b(m,p,n,one,A,Ab_tapenade,B,one,C,Cb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Reverse mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 

@@ -22,16 +22,18 @@ void mxm(int m,int p,int n,double A[m][p],double B[p][n],double C[m][n])
 /*
   Basic implementation of dgemm for square matrices
 */
-void dgemm(bool transa,bool transb,int m,double A[m][m],double B[m][m],double C[m][m])
+void dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double beta,double C[m][m])
 {
   int i,j,k;
+
+  // TODO: Quick exits
 
   if (!transa) {
     if (!transb) {
       for (i=0; i<m; i++) {
         for (j=0; j<m; j++) {
           for (k=0; k<m; k++) {
-            C[i][j] += A[i][k] * B[k][j];
+            C[i][j] = alpha * A[i][k] * B[k][j] + beta * C[i][j];
           }
         }
       }
@@ -39,7 +41,7 @@ void dgemm(bool transa,bool transb,int m,double A[m][m],double B[m][m],double C[
       for (i=0; i<m; i++) {
         for (j=0; j<m; j++) {
           for (k=0; k<m; k++) {
-            C[i][j] += A[i][k] * B[j][k];
+            C[i][j] = alpha * A[i][k] * B[j][k] + beta * C[i][j];
           }
         }
       }
@@ -49,7 +51,7 @@ void dgemm(bool transa,bool transb,int m,double A[m][m],double B[m][m],double C[
       for (i=0; i<m; i++) {
         for (j=0; j<m; j++) {
           for (k=0; k<m; k++) {
-            C[i][j] += A[k][i] * B[k][j];
+            C[i][j] = alpha * A[k][i] * B[k][j] + beta * C[i][j];
           }
         }
       }
@@ -57,7 +59,7 @@ void dgemm(bool transa,bool transb,int m,double A[m][m],double B[m][m],double C[
       for (i=0; i<m; i++) {
         for (j=0; j<m; j++) {
           for (k=0; k<m; k++) {
-            C[i][j] += A[k][i] * B[j][k];
+            C[i][j] = alpha * A[k][i] * B[j][k] + beta * C[i][j];
           }
         }
       }
@@ -86,12 +88,12 @@ void mpm(int m,int n,double A[m][n],double B[m][n],double C[m][n])
 
   vec(V) = (A \otimes B) vec(U)  <=>  V = B * U * A^T
 */
-void mtmv(int m,double A[m][m],double B[m][m],double U[m][m],double V[m][m])
+void mtmv(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double beta,double V[m][m])
 {
-  double tmp[m][m];
+  double tmp[m][m],one = 1.;
 
-  dgemm(0,0,m,B,U,tmp);
-  dgemm(0,1,m,tmp,A,V);
+  dgemm(0,0,m,one,B,U,beta,tmp);
+  dgemm(0,1,m,alpha,tmp,A,one,V); // FIXME ?
 }
 
 /*
