@@ -6,6 +6,7 @@
 #include "derivatives/dgemm_d.c"
 #include "derivatives/dgemm_b.c"
 
+// TODO: Use random matrices
 
 void inittest(int m,int p,int n,double A[m][p],double B[p][n]);
 void initforward(int m,int p,int n,double Ad[m][p],double Bd[p][n]);

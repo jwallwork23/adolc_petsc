@@ -6,6 +6,10 @@
 #include "derivatives/dgemm_A_d.c"
 #include "derivatives/dgemm_A_b.c"
 
+// TODO: Use random matrices
+//#include <stdlib.h>
+//int r = rand();
+// Possibly use modulo r % 5 or something
 
 void inittest(int m,int p,int n,double A[m][p],double B[p][n]);
 void initforward(int m,int p,int n,double Ad[m][p]);
