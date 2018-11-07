@@ -1,18 +1,22 @@
-all: clean cleandiff forward reverse
+all: clean cleandiff dgemm_forward dgemm_reverse
 
 CFLAGS	= -Wall -I${TAPENADE_HOME}/ADFirstAidKit
 CC	= gcc
 
-forward:
-	rm -rf *_d.c *_d.msg
-	tapenade -tangent -head "mxm (A B)\(C) mpm (A B)\(C)" mxm.c
+mpm:
+	tapenade -tangent -head "mpm (A B)\(C)" -o mpm mxm.c
+	tapenade -reverse -head "mpm (A B)\(C)" -o mpm mxm.c
 
-reverse:
-	rm -rf *_b.c *_b.msg
-	tapenade -reverse -head "mxm (A B)\(C) mpm (A,B)\(C)" mxm.c
+mxm:
+	tapenade -tangent -head "mxm (A B)\(C)" mxm.c
+	tapenade -reverse -head "mxm (A,B)\(C)" mxm.c
+
+dgemm:
+	tapenade -tangent -head "dgemm (A B)\(C)" -o dgemm mxm.c
+	tapenade -reverse -head "dgemm (A B)\(C)" -o dgemm mxm.c
 
 clean:
-	rm -rf test *.o
+	rm -rf test *.o *~
 
 cleandiff:
 	rm -rf *_d.c *_d.msg *_b.c *_b.msg

@@ -2,8 +2,8 @@
 #include <math.h>
 #include "derivatives.c"
 #include <time.h>
-#include "mxm_d.c"
-#include "mxm_b.c"
+#include "dgemm_d.c"
+#include "dgemm_b.c"
 
 
 void inittest(int m,int p,int n,double A[m][p],double B[p][n]);
@@ -19,7 +19,9 @@ int main(int argc,char* args[])
   clock_t t;
   int     m,p,n;
 
-  printf("m ?= ");scanf("%d",&m);printf("p ?= ");scanf("%d",&p);printf("n ?= ");scanf("%d",&n);
+  printf("m ?= ");
+  scanf("%d",&m);
+  p = m;n = m;
 
   double  A[m][p],B[p][n],C[m][n];
   double  Ad[m][p],Bd[p][n],Cd_mxm[m][n],Cd_tapenade[m][n];
@@ -31,7 +33,7 @@ int main(int argc,char* args[])
   inittest(m,p,n,A,B);
   zeroout(m,n,C);
   t = clock();
-  mxm(m,p,n,A,B,C);
+  dgemm(0,0,m,A,B,C);
   t = clock() - t;
   printf("Original mxm call: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
 
@@ -41,7 +43,7 @@ int main(int argc,char* args[])
   initforward(m,p,n,Ad,Bd);
   zeroout(m,n,C);
   t = clock();
-  mxm_d(m,p,n,A,Ad,B,Bd,C,Cd_tapenade);
+  dgemm_d(m,p,n,A,Ad,B,Bd,C,Cd_tapenade);
   t = clock() - t;
   printf("Forward mode with Tapenade: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
 
@@ -52,16 +54,16 @@ int main(int argc,char* args[])
   zeroout(m,n,C);
   t = clock();
   zeroout(m,n,Cd_mxm);
-  mxm_forward(m,p,n,A,Ad,B,Bd,C,Cd_mxm);
+  dgemm_dot(m,p,n,A,Ad,B,Bd,C,Cd_mxm);
   t = clock() - t;
-  printf("Forward mode with mxms: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
+  printf("Forward mode with dgemms: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
   checkforward(m,n,Cd_mxm,Cd_tapenade);
 
   /* TEST 4: reverse mode with Tapenade */
   inittest(m,p,n,A,B);
   initreverse(m,n,Cb);
   t = clock();
-  mxm_b(m,p,n,A,Ab_tapenade,B,Bb_tapenade,C,Cb);
+  dgemm_b(m,p,n,A,Ab_tapenade,B,Bb_tapenade,C,Cb);
   t = clock() - t;
   printf("Reverse mode with Tapenade: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
 
@@ -72,9 +74,9 @@ int main(int argc,char* args[])
   t = clock();
   zeroout(m,p,Ab_mxm);
   zeroout(p,n,Bb_mxm);
-  mxm_reverse(m,p,n,A,Ab_mxm,B,Bb_mxm,C,Cb);
+  dgemm_bar(m,p,n,A,Ab_mxm,B,Bb_mxm,C,Cb);
   t = clock() - t;
-  printf("Reverse mode with mxms: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
+  printf("Reverse mode with dgemms: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
   checkreverse(m,p,n,Ab_mxm,Ab_tapenade,Bb_mxm,Bb_tapenade);
 
   printf("All tests passed.\n");

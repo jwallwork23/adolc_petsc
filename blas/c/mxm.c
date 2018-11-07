@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdbool.h>
 
 /*
   Incremental matrix-matrix multiply
@@ -19,7 +20,53 @@ void mxm(int m,int p,int n,double A[m][p],double B[p][n],double C[m][n])
 }
 
 /*
-  Incremental pointwise matrix multiply
+  Basic implementation of dgemm for square matrices
+*/
+void dgemm(bool transa,bool transb,int m,double A[m][m],double B[m][m],double C[m][m])
+{
+  int i,j,k;
+
+  if (!transa) {
+    if (!transb) {
+      for (i=0; i<m; i++) {
+        for (j=0; j<m; j++) {
+          for (k=0; k<m; k++) {
+            C[i][j] += A[i][k] * B[k][j];
+          }
+        }
+      }
+    } else {
+      for (i=0; i<m; i++) {
+        for (j=0; j<m; j++) {
+          for (k=0; k<m; k++) {
+            C[i][j] += A[i][k] * B[j][k];
+          }
+        }
+      }
+    }
+  } else {
+    if (!transb) {
+      for (i=0; i<m; i++) {
+        for (j=0; j<m; j++) {
+          for (k=0; k<m; k++) {
+            C[i][j] += A[k][i] * B[k][j];
+          }
+        }
+      }
+    } else {
+      for (i=0; i<m; i++) {
+        for (j=0; j<m; j++) {
+          for (k=0; k<m; k++) {
+            C[i][j] += A[k][i] * B[j][k];
+          }
+        }
+      }
+    }
+  }
+}
+
+/*
+  Incremental pointwise matrix multiply (Hadamard product)
 
   C = C + A.*B
 */
