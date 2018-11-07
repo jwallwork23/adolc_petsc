@@ -8,7 +8,7 @@ EXE=exec
 COMPILE	= g++
 
 #compile flags
-CCFLAGS	= -Wall -fopenmp -O3 -std=c++11
+CXXFLAGS= -Wall -fopenmp -O3 -std=c++11
 
 # link flags
 LDFLAGS	= -Wall -fopenmp -O3 -std=c++11 -L${ADOLC_BUILDDIR}/lib64 -ladolc -ldl ${COLPACK_INSTALL_PATH}
@@ -25,7 +25,7 @@ INCLUDES+= -I${COLPACK_HOME}/Utilities
 all: clean $(EXE)
 
 %.o:%.cpp
-	$(COMPILE) $(INCLUDES) $(CCFLAGS) -c $< -o$@
+	$(COMPILE) $(INCLUDES) $(CXXFLAGS) -c $< -o$@
 
 $(EXE): $(OBJ)
 	$(COMPILE) $^ $(INCLUDES) $(LDFLAGS) -o $@

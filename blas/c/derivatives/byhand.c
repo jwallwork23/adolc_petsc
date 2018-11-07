@@ -1,4 +1,4 @@
-#include "mxm.c"
+#include "../mxm.c"
 
 /*-------------------------------
        FORWARD DERIVATIVES
@@ -96,3 +96,4 @@ void dgemm_bar(bool transa,bool transb,int m,double A[m][m],double Ab[m][m],doub
   else
     dgemm(1,transa,m,Cb,A,Bb);
 }
+

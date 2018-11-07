@@ -1,9 +1,10 @@
 #include <assert.h>
 #include <math.h>
-#include "derivatives.c"
 #include <time.h>
-#include "dgemm_d.c"
-#include "dgemm_b.c"
+
+#include "derivatives/byhand.c"
+#include "derivatives/dgemm_d.c"
+#include "derivatives/dgemm_b.c"
 
 
 void inittest(int m,int p,int n,double A[m][p],double B[p][n]);
@@ -19,8 +20,9 @@ int main(int argc,char* args[])
   clock_t t;
   int     m,p,n;
 
-  printf("m ?= ");
-  scanf("%d",&m);
+  //printf("m ?= ");
+  //scanf("%d",&m);
+  m = 250;
   p = m;n = m;
 
   double  A[m][p],B[p][n],C[m][n];
