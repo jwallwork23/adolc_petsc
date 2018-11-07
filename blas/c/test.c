@@ -18,13 +18,7 @@ void checkreverse(int m,int p,int n,double Ab_mxm[m][p],double Ab_tapenade[m][p]
 int main(int argc,char* args[])
 {
   clock_t t;
-  int     m,p,n;
-
-  //printf("m ?= ");
-  //scanf("%d",&m);
-  m = 250;
-  p = m;n = m;
-
+  int     m = 10,p = 10,n = 10,N = 1000,i;
   double  A[m][p],B[p][n],C[m][n];
   double  Ad[m][p],Bd[p][n],Cd_byhand[m][n],Cd_tapenade[m][n];
   double  Ab_byhand[m][p],Ab_tapenade[m][p],Bb_byhand[p][n],Bb_tapenade[p][n],Cb[m][n];
@@ -44,7 +38,8 @@ int main(int argc,char* args[])
   initforward(m,p,n,Ad,Bd);
   zeroout(m,n,C);
   t = clock();
-  dgemm_d(m,p,n,A,Ad,B,Bd,C,Cd_tapenade);
+  for (i=0; i<N; i++)
+    dgemm_d(m,p,n,A,Ad,B,Bd,C,Cd_tapenade);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Forward mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 
@@ -53,7 +48,8 @@ int main(int argc,char* args[])
   initforward(m,p,n,Ad,Bd);
   zeroout(m,n,C);
   t = clock();
-  dgemm_dot(m,p,n,A,Ad,B,Bd,C,Cd_byhand);
+  for (i=0; i<N; i++)
+    dgemm_dot(m,p,n,A,Ad,B,Bd,C,Cd_byhand);
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Forward mode with dgemms",((double) t)/CLOCKS_PER_SEC);
   checkforward(m,n,Cd_byhand,Cd_tapenade);
@@ -62,7 +58,8 @@ int main(int argc,char* args[])
   inittest(m,p,n,A,B);
   initreverse(m,n,Cb);
   t = clock();
-  dgemm_b(m,p,n,A,Ab_tapenade,B,Bb_tapenade,C,Cb);
+  for (i=0; i<N; i++)
+    dgemm_b(m,p,n,A,Ab_tapenade,B,Bb_tapenade,C,Cb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Reverse mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 
@@ -70,7 +67,8 @@ int main(int argc,char* args[])
   inittest(m,p,n,A,B);
   initreverse(m,n,Cb);
   t = clock();
-  dgemm_bar(m,p,n,A,Ab_byhand,B,Bb_byhand,C,Cb);
+  for (i=0; i<N; i++)
+    dgemm_bar(m,p,n,A,Ab_byhand,B,Bb_byhand,C,Cb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Reverse mode with dgemms",((double) t)/CLOCKS_PER_SEC);
   checkreverse(m,p,n,Ab_byhand,Ab_tapenade,Bb_byhand,Bb_tapenade);
