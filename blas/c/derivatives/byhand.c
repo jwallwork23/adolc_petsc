@@ -166,8 +166,7 @@ void dgemm_bar(bool transa,bool transb,int m,double alpha,double A[m][m],double 
       cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&Cb[0][0],m,&A[0][0],m,zero,&Bb[0][0],m);
     }
   }
-
-  // TODO: Rescale by beta
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,zero,&A[0][0],m,&B[0][0],m,beta,&Cb[0][0],m);
 }
 
 /*
@@ -190,8 +189,7 @@ void dgemm_A_bar(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
       cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&B[0][0],m,&Cb[0][0],m,zero,&Ab[0][0],m);
     }
   }
-
-  // TODO: Rescale by beta
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,zero,&A[0][0],m,&B[0][0],m,beta,&Cb[0][0],m);
 }
 
 /*
@@ -214,6 +212,5 @@ void dgemm_B_bar(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
       cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&Cb[0][0],m,&A[0][0],m,zero,&Bb[0][0],m);
     }
   }
-
-  // TODO: Rescale by beta
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,zero,&A[0][0],m,&B[0][0],m,beta,&Cb[0][0],m);
 }
