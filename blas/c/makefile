@@ -1,4 +1,4 @@
-all: clean cleandiff dgemm test
+all: clean cleandiff dgemm test_AB
 
 CFLAGS	= -Wall -I${TAPENADE_HOME}/ADFirstAidKit
 CC	= gcc
@@ -21,12 +21,12 @@ mxm:
 	tapenade -reverse -head "mxm (B)\(C)" -o mxm_B.c $(TFLAGS) mxm.c
 
 dgemm:
-	tapenade -tangent -head "dgemm (A B)\(C)" -o dgemm $(TFLAGS) mxm.c
-	tapenade -tangent -head "dgemm (A)\(C)" -o dgemm_A $(TFLAGS) mxm.c
-	tapenade -tangent -head "dgemm (B)\(C)" -o dgemm_B $(TFLAGS) mxm.c
-	tapenade -reverse -head "dgemm (A B)\(C)" -o dgemm $(TFLAGS) mxm.c
-	tapenade -reverse -head "dgemm (A)\(C)" -o dgemm_A $(TFLAGS) mxm.c
-	tapenade -reverse -head "dgemm (B)\(C)" -o dgemm_B $(TFLAGS) mxm.c
+	tapenade -tangent -head "dgemm (A B)\(C)" $(TFLAGS) mxm.c
+	tapenade -tangent -head "dgemm (A)\(C)" $(TFLAGS) -tgtfuncname _A_d mxm.c
+	tapenade -tangent -head "dgemm (B)\(C)" $(TFLAGS) -tgtfuncname _B_d mxm.c
+	tapenade -reverse -head "dgemm (A B)\(C)" $(TFLAGS) mxm.c
+	tapenade -reverse -head "dgemm (A)\(C)" $(TFLAGS) -adjfuncname _A_b mxm.c
+	tapenade -reverse -head "dgemm (B)\(C)" $(TFLAGS) -adjfuncname _B_b mxm.c
 
 clean:
 	rm -rf test *.o *~
@@ -34,9 +34,16 @@ clean:
 cleandiff:
 	rm -rf derivatives/*_d.c derivatives/*_d.msg derivatives/*_b.c derivatives/*_b.msg
 
-test.o: test.c
+test_AB.o: test_AB.c
 	$(CC) $(CFLAGS) -c -o $@ $^
 
-test: test.o
+test_AB: test_AB.o
+	$(CC) -o $@ $^
+	rm *.o
+
+test_A.o: test_A.c
+	$(CC) $(CFLAGS) -c -o $@ $^
+
+test_A: test_A.o
 	$(CC) -o $@ $^
 	rm *.o

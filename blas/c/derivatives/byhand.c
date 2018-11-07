@@ -35,7 +35,7 @@ void mpm_dot(int m,int n,double A[m][n],double Ad[m][n],double B[m][n],double Bd
 }
 
 /*
-  Forward mode simple dgemm
+  Forward mode simple dgemm w.r.t. both matrix arguments
 */
 void dgemm_dot(bool transa,bool transb,int m,double A[m][m],double Ad[m][m],double B[m][m],double Bd[m][m],double C[m][m],double Cd[m][m])
 {
@@ -45,6 +45,32 @@ void dgemm_dot(bool transa,bool transb,int m,double A[m][m],double Ad[m][m],doub
   /* Differentiated function call */
   zeroout(m,m,Cd);
   dgemm(transa,transb,m,Ad,B,Cd);
+  dgemm(transa,transb,m,A,Bd,Cd);
+}
+
+/*
+  Forward mode simple dgemm w.r.t first matrix argument
+*/
+void dgemm_A_dot(bool transa,bool transb,int m,double A[m][m],double Ad[m][m],double B[m][m],double C[m][m],double Cd[m][m])
+{
+  /* Undifferentiated function call */
+  dgemm(transa,transa,m,A,B,C);
+
+  /* Differentiated function call */
+  zeroout(m,m,Cd);
+  dgemm(transa,transb,m,Ad,B,Cd);
+}
+
+/*
+  Forward mode simple dgemm w.r.t. second matrix argument
+*/
+void dgemm_B_dot(bool transa,bool transb,int m,double A[m][m],double B[m][m],double Bd[m][m],double C[m][m],double Cd[m][m])
+{
+  /* Undifferentiated function call */
+  dgemm(transa,transa,m,A,B,C);
+
+  /* Differentiated function call */
+  zeroout(m,m,Cd);
   dgemm(transa,transb,m,A,Bd,Cd);
 }
 
@@ -81,7 +107,7 @@ void mpm_bar(int m,int n,double A[m][n],double Ab[m][n],double B[m][n],double Bb
 }
 
 /*
-  Reverse mode simple dgemm
+  Reverse mode simple dgemm w.r.t. both matrix arguments
 */
 void dgemm_bar(bool transa,bool transb,int m,double A[m][m],double Ab[m][m],double B[m][m],double Bb[m][m],double C[m][m],double Cb[m][m])
 {
@@ -97,3 +123,26 @@ void dgemm_bar(bool transa,bool transb,int m,double A[m][m],double Ab[m][m],doub
     dgemm(1,transa,m,Cb,A,Bb);
 }
 
+/*
+  Reverse mode simple dgemm w.r.t. first matrix argument
+*/
+void dgemm_A_bar(bool transa,bool transb,int m,double A[m][m],double Ab[m][m],double B[m][m],double C[m][m],double Cb[m][m])
+{
+  zeroout(m,m,Ab);
+  if (!transa)
+    dgemm(0,!transb,m,Cb,B,Ab);
+  else
+    dgemm(transb,1,m,B,Cb,Ab);
+}
+
+/*
+  Reverse mode simple dgemm w.r.t. second matrix argument
+*/
+void dgemm_B_bar(bool transa,bool transb,int m,double A[m][m],double B[m][m],double Bb[m][m],double C[m][m],double Cb[m][m])
+{
+  zeroout(m,m,Bb);
+  if (!transb)
+    dgemm(!transa,0,m,A,Cb,Bb);
+  else
+    dgemm(1,transa,m,Cb,A,Bb);
+}
