@@ -11,17 +11,20 @@ void initforward(int m,int p,int n,double Ad[m][p],double Bd[p][n]);
 void initreverse(int m,int n,double Cb[m][n]);
 
 void checkval(double approx,double exact);
-void checkmult(int m,int n,double C[m][n]);
-void checkforward(int m,int n,double Cd[m][n]);
-void checkreverse(int m,int p,int n,double Ab[m][p],double Bb[p][n]);
+void checkforward(int m,int n,double Cd_mxm[m][n],double Cd_tapenade[m][n]);
+void checkreverse(int m,int p,int n,double Ab_mxm[m][p],double Ab_tapenade[m][p],double Bb_mxm[p][n],double Bb_tapenade[p][n]);
 
-int main()
+int main(int argc,char* args[])
 {
   clock_t t;
-  int     m = 2,p=3,n=2;
+  int     m,p,n;
+
+  printf("m ?= ");scanf("%d",&m);printf("p ?= ");scanf("%d",&p);printf("n ?= ");scanf("%d",&n);
+
   double  A[m][p],B[p][n],C[m][n];
-  double  Ad[m][p],Bd[p][n],Cd[m][n];
-  double  Ab[m][p],Bb[p][n],Cb[m][n];
+  double  Ad[m][p],Bd[p][n],Cd_mxm[m][n],Cd_tapenade[m][n];
+  double  Ab_mxm[m][p],Ab_tapenade[m][p],Bb_mxm[p][n],Bb_tapenade[p][n],Cb[m][n];
+
 
   /* TEST 1: matrix-matrix multiply */
 
@@ -30,7 +33,6 @@ int main()
   t = clock();
   mxm(m,p,n,A,B,C);
   t = clock() - t;
-  checkmult(m,n,C);
   printf("Original mxm call: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
 
   /* TEST 2: forward mode with Tapenade */
@@ -39,9 +41,8 @@ int main()
   initforward(m,p,n,Ad,Bd);
   zeroout(m,n,C);
   t = clock();
-  mxm_d(m,p,n,A,Ad,B,Bd,C,Cd);
+  mxm_d(m,p,n,A,Ad,B,Bd,C,Cd_tapenade);
   t = clock() - t;
-  checkforward(m,n,Cd);
   printf("Forward mode with Tapenade: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
 
   /* TEST 3: forward mode with mxms */
@@ -50,19 +51,18 @@ int main()
   initforward(m,p,n,Ad,Bd);
   zeroout(m,n,C);
   t = clock();
-  zeroout(m,n,Cd);
-  mxm_forward(m,p,n,A,Ad,B,Bd,C,Cd);
+  zeroout(m,n,Cd_mxm);
+  mxm_forward(m,p,n,A,Ad,B,Bd,C,Cd_mxm);
   t = clock() - t;
-  checkforward(m,n,Cd);
   printf("Forward mode with mxms: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
+  checkforward(m,n,Cd_mxm,Cd_tapenade);
 
   /* TEST 4: reverse mode with Tapenade */
   inittest(m,p,n,A,B);
   initreverse(m,n,Cb);
   t = clock();
-  mxm_b(m,p,n,A,Ab,B,Bb,C,Cb);
+  mxm_b(m,p,n,A,Ab_tapenade,B,Bb_tapenade,C,Cb);
   t = clock() - t;
-  checkreverse(m,p,n,Ab,Bb);
   printf("Reverse mode with Tapenade: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
 
   /* TEST 5: reverse mode with mxms */
@@ -70,12 +70,12 @@ int main()
   inittest(m,p,n,A,B);
   initreverse(m,n,Cb);
   t = clock();
-  zeroout(m,p,Ab);
-  zeroout(p,n,Bb);
-  mxm_reverse(m,p,n,A,Ab,B,Bb,C,Cb);
+  zeroout(m,p,Ab_mxm);
+  zeroout(p,n,Bb_mxm);
+  mxm_reverse(m,p,n,A,Ab_mxm,B,Bb_mxm,C,Cb);
   t = clock() - t;
-  checkreverse(m,p,n,Ab,Bb);
   printf("Reverse mode with mxms: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
+  checkreverse(m,p,n,Ab_mxm,Ab_tapenade,Bb_mxm,Bb_tapenade);
 
   printf("All tests passed.\n");
 
@@ -89,48 +89,72 @@ void checkval(double approx,double exact)
 
 void inittest(int m,int p,int n,double A[m][p],double B[p][n])
 {
-  A[0][0] = 1.;A[0][1] = 2.;A[0][2] = 3.;
-  A[1][0] = 0.;A[1][1] = 1.;A[1][2] = 2.;
+  int i,j;
 
-  B[0][0] = 0.;B[0][1] = -1.;
-  B[1][0] = 1.;B[1][1] = 0.;
-  B[2][0] = 2.;B[2][1] = 1.;
-}
+  for (i=0; i<m; i++) {
+    for (j=0; j<p; j++) {
+      A[i][j] = i+j;
+    }
+  }
 
-void checkmult(int m, int n,double C[m][n])
-{
-  checkval(C[0][0],8.);checkval(C[0][1],2.);
-  checkval(C[1][0],5.);checkval(C[1][1],2.);
+  for (i=0; i<m; i++) {
+    for (j=0; j<p; j++) {
+      B[i][j] = -i;
+    }
+  }
 }
 
 void initforward(int m,int p,int n,double Ad[m][p],double Bd[p][n])
 {
-  Ad[0][0] = 1.;Ad[0][1] = 0.;Ad[0][2] = 0.;
-  Ad[1][0] = 0.;Ad[1][1] = 1.;Ad[1][2] = 0.;
+  int i,j;
 
-  Bd[0][0] = 1.;Bd[0][1] = 0.;
-  Bd[1][0] = 0.;Bd[1][1] = 1.;
-  Bd[2][0] = 0.;Bd[2][1] = 0.;
+  for (i=0; i<m; i++) {
+    for (j=0; j<p; j++) {
+      Ad[i][j] = i-j*j;
+    }
+  }
+
+  for (i=0; i<p; i++) {
+    for (j=0; j<n; j++) {
+      Bd[i][j] = 3*j;
+    }
+  }
 }
 
-void checkforward(int m,int n,double Cd[m][n])
+void checkforward(int m,int n,double Cd_mxm[m][n],double Cd_tapenade[m][n])
 {
-  checkval(Cd[0][0],1.);checkval(Cd[0][1],1.);
-  checkval(Cd[1][0],1.);checkval(Cd[1][1],1.);
+  int i,j;
+
+  for (i=0; i<m; i++) {
+    for (j=0; j<n; j++) {
+      checkval(Cd_mxm[i][j],Cd_tapenade[i][j]);
+    }
+  }
 }
 
 void initreverse(int m,int n,double Cb[m][n])
 {
-  Cb[0][0] = 1.;Cb[0][1] = -1.;
-  Cb[1][0] = -1.;Cb[1][1] = 1.;
+  int i,j;
+
+  for (i=0; i<m; i++) {
+    for (j=0; j<n; j++) {
+      Cb[i][j] = i*i;
+    }
+  }
 }
 
-void checkreverse(int m,int p,int n,double Ab[m][p],double Bb[p][n])
+void checkreverse(int m,int p,int n,double Ab_mxm[m][p],double Ab_tapenade[m][p],double Bb_mxm[p][n],double Bb_tapenade[p][n])
 {
-  checkval(Ab[0][0],1.);checkval(Ab[0][1],1.);checkval(Ab[0][2],1.);
-  checkval(Ab[1][0],-1.);checkval(Ab[1][1],-1.);checkval(Ab[1][2],-1.);
+  int i,j;
 
-  checkval(Bb[0][0],1.);checkval(Bb[0][1],-1.);
-  checkval(Bb[1][0],1.);checkval(Bb[1][1],-1.);
-  checkval(Bb[2][0],1.);checkval(Bb[2][1],-1.);
+  for (i=0; i<m; i++) {
+    for (j=0; j<p; j++) {
+      checkval(Ab_mxm[i][j],Ab_tapenade[i][j]);
+    }
+  }
+  for (i=0; i<p; i++) {
+    for (j=0; j<n; j++) {
+      checkval(Bb_mxm[i][j],Bb_tapenade[i][j]);
+    }
+  }
 }
