@@ -1,4 +1,4 @@
-all: clean cleandiff dgemm
+all: clean cleandiff dgemm test
 
 CFLAGS	= -Wall -I${TAPENADE_HOME}/ADFirstAidKit
 CC	= gcc

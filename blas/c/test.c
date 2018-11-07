@@ -26,60 +26,54 @@ int main(int argc,char* args[])
   p = m;n = m;
 
   double  A[m][p],B[p][n],C[m][n];
-  double  Ad[m][p],Bd[p][n],Cd_mxm[m][n],Cd_tapenade[m][n];
-  double  Ab_mxm[m][p],Ab_tapenade[m][p],Bb_mxm[p][n],Bb_tapenade[p][n],Cb[m][n];
+  double  Ad[m][p],Bd[p][n],Cd_byhand[m][n],Cd_tapenade[m][n];
+  double  Ab_byhand[m][p],Ab_tapenade[m][p],Bb_byhand[p][n],Bb_tapenade[p][n],Cb[m][n];
 
-
-  /* TEST 1: matrix-matrix multiply */
 
   inittest(m,p,n,A,B);
   zeroout(m,n,C);
   t = clock();
   dgemm(0,0,m,A,B,C);
   t = clock() - t;
-  printf("Original mxm call: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
+  printf("\n%30s: %.4e seconds\n\n","Single dgemm call",((double) t)/CLOCKS_PER_SEC);
 
-  /* TEST 2: forward mode with Tapenade */
+  printf("***** EXPERIMENT 1: differentiation w.r.t. both matrix inputs *****\n\n");
 
+  /* Forward mode with Tapenade */
   inittest(m,p,n,A,B);
   initforward(m,p,n,Ad,Bd);
   zeroout(m,n,C);
   t = clock();
   dgemm_d(m,p,n,A,Ad,B,Bd,C,Cd_tapenade);
   t = clock() - t;
-  printf("Forward mode with Tapenade: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
+  printf("%30s: %.4e seconds\n","Forward mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 
-  /* TEST 3: forward mode with mxms */
-
+  /* Forward mode with dgemms */
   inittest(m,p,n,A,B);
   initforward(m,p,n,Ad,Bd);
   zeroout(m,n,C);
   t = clock();
-  zeroout(m,n,Cd_mxm);
-  dgemm_dot(m,p,n,A,Ad,B,Bd,C,Cd_mxm);
+  dgemm_dot(m,p,n,A,Ad,B,Bd,C,Cd_byhand);
   t = clock() - t;
-  printf("Forward mode with dgemms: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
-  checkforward(m,n,Cd_mxm,Cd_tapenade);
+  printf("%30s: %.4e seconds\n\n","Forward mode with dgemms",((double) t)/CLOCKS_PER_SEC);
+  checkforward(m,n,Cd_byhand,Cd_tapenade);
 
-  /* TEST 4: reverse mode with Tapenade */
+  /* Reverse mode with Tapenade */
   inittest(m,p,n,A,B);
   initreverse(m,n,Cb);
   t = clock();
   dgemm_b(m,p,n,A,Ab_tapenade,B,Bb_tapenade,C,Cb);
   t = clock() - t;
-  printf("Reverse mode with Tapenade: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
+  printf("%30s: %.4e seconds\n","Reverse mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 
-  /* TEST 5: reverse mode with mxms */
-
+  /* Reverse mode with dgemms */
   inittest(m,p,n,A,B);
   initreverse(m,n,Cb);
   t = clock();
-  zeroout(m,p,Ab_mxm);
-  zeroout(p,n,Bb_mxm);
-  dgemm_bar(m,p,n,A,Ab_mxm,B,Bb_mxm,C,Cb);
+  dgemm_bar(m,p,n,A,Ab_byhand,B,Bb_byhand,C,Cb);
   t = clock() - t;
-  printf("Reverse mode with dgemms: %.4e seconds\n",((double) t)/CLOCKS_PER_SEC);
-  checkreverse(m,p,n,Ab_mxm,Ab_tapenade,Bb_mxm,Bb_tapenade);
+  printf("%30s: %.4e seconds\n\n","Reverse mode with dgemms",((double) t)/CLOCKS_PER_SEC);
+  checkreverse(m,p,n,Ab_byhand,Ab_tapenade,Bb_byhand,Bb_tapenade);
 
   printf("All tests passed.\n");
 
