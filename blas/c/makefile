@@ -1,8 +1,7 @@
 all: clean cleandiff forward reverse
 
-CFLAGS	= -Wall
+CFLAGS	= -Wall -I${TAPENADE_HOME}/ADFirstAidKit
 CC	= gcc
-
 
 forward:
 	rm -rf *_d.c *_d.msg

@@ -26,12 +26,12 @@ void mxm_forward(int m,int p,int n,double A[m][p],double Ad[m][p],double B[p][n]
 void mpm_forward(int m,int n,double A[m][n],double Ad[m][n],double B[m][n],double Bd[m][n],double C[m][n],double Cd[m][n])
 {
   /* Undifferentiated function call */
-  mpm(m,n,A,B,C)
+  mpm(m,n,A,B,C);
 
   /* Differentiated function call */
   zeroout(m,n,Cd);
-  mpn(m,n,Ad,B,Cd);
-  mpn(m,n,A,Bd,Cd);
+  mpm(m,n,Ad,B,Cd);
+  mpm(m,n,A,Bd,Cd);
 }
 
 /*-------------------------------
@@ -59,6 +59,6 @@ void mpm_reverse(int m,int n,double A[m][n],double Ab[m][n],double B[m][n],doubl
 {
   zeroout(m,n,Ab);
   zeroout(m,n,Bb);
-  mpn(m,n,Cb,B,Ab);
-  mpn(m,n,A,Cb,Bb);
+  mpm(m,n,Cb,B,Ab);
+  mpm(m,n,A,Cb,Bb);
 }
