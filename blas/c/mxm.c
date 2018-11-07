@@ -81,7 +81,18 @@ void mpm(int m,int n,double A[m][n],double B[m][n],double C[m][n])
   }
 }
 
-// TODO: Kronecker product?
+/*
+  Double Kronecker product (on square matrices)
+
+  vec(V) = (A \otimes B) vec(U)  <=>  V = B * U * A^T
+*/
+void mtmv(int m,double A[m][m],double B[m][m],double U[m][m],double V[m][m])
+{
+  double tmp[m][m];
+
+  dgemm(0,0,m,B,U,tmp);
+  dgemm(0,1,m,tmp,A,V);
+}
 
 /*
   Zero array entries

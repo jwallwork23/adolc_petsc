@@ -1,4 +1,5 @@
 #include "../mxm.c"
+#include <cblas.h>
 
 /*-------------------------------
        FORWARD DERIVATIVES
@@ -37,41 +38,88 @@ void mpm_dot(int m,int n,double A[m][n],double Ad[m][n],double B[m][n],double Bd
 /*
   Forward mode simple dgemm w.r.t. both matrix arguments
 */
-void dgemm_dot(bool transa,bool transb,int m,double A[m][m],double Ad[m][m],double B[m][m],double Bd[m][m],double C[m][m],double Cd[m][m])
+void dgemm_dot(bool transa,bool transb,int m,double alpha,double A[m][m],double Ad[m][m],double B[m][m],double Bd[m][m],double beta,double C[m][m],double Cd[m][m])
 {
-  /* Undifferentiated function call */
-  dgemm(transa,transa,m,A,B,C);
+  double one = 1.,zero = 0.;
 
-  /* Differentiated function call */
-  zeroout(m,m,Cd);
-  dgemm(transa,transb,m,Ad,B,Cd);
-  dgemm(transa,transb,m,A,Bd,Cd);
+  if (!transa) {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);   // FIXME: take outside
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&Ad[0][0],m,&B[0][0],m,zero,&Cd[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&Bd[0][0],m,one,&Cd[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&Ad[0][0],m,&B[0][0],m,zero,&Cd[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&Bd[0][0],m,one,&Cd[0][0],m);
+    }
+  } else {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&Ad[0][0],m,&B[0][0],m,zero,&Cd[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&Bd[0][0],m,one,&Cd[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&Ad[0][0],m,&B[0][0],m,zero,&Cd[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&Bd[0][0],m,one,&Cd[0][0],m);
+    }
+  }
 }
 
 /*
   Forward mode simple dgemm w.r.t first matrix argument
 */
-void dgemm_A_dot(bool transa,bool transb,int m,double A[m][m],double Ad[m][m],double B[m][m],double C[m][m],double Cd[m][m])
+void dgemm_A_dot(bool transa,bool transb,int m,double alpha,double A[m][m],double Ad[m][m],double B[m][m],double beta,double C[m][m],double Cd[m][m])
 {
-  /* Undifferentiated function call */
-  dgemm(transa,transa,m,A,B,C);
+  double zero = 0.;
 
-  /* Differentiated function call */
-  zeroout(m,m,Cd);
-  dgemm(transa,transb,m,Ad,B,Cd);
+  if (!transa) {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&Ad[0][0],m,&B[0][0],m,zero,&Cd[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&Ad[0][0],m,&B[0][0],m,zero,&Cd[0][0],m);
+    }
+  } else {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&Ad[0][0],m,&B[0][0],m,zero,&Cd[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&Ad[0][0],m,&B[0][0],m,zero,&Cd[0][0],m);
+    }
+  }
+}
+
+void dgemm_B_dot(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double Bd[m][m],double beta,double C[m][m],double Cd[m][m])
+{
+  double zero = 0.;
+
+  if (!transa) {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&Bd[0][0],m,zero,&Cd[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&Bd[0][0],m,zero,&Cd[0][0],m);
+    }
+  } else {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&Bd[0][0],m,zero,&Cd[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&Bd[0][0],m,zero,&Cd[0][0],m);
+    }
+  }
 }
 
 /*
-  Forward mode simple dgemm w.r.t. second matrix argument
+  Forward mode double Kronecker product w.r.t. both matrix arguments
 */
-void dgemm_B_dot(bool transa,bool transb,int m,double A[m][m],double B[m][m],double Bd[m][m],double C[m][m],double Cd[m][m])
+void mtmv_dot(int m,double A[m][m],double Ad[m][m],double B[m][m],double Bd[m][m],double U[m][m],double V[m][m],double Vd[m][m])
 {
-  /* Undifferentiated function call */
-  dgemm(transa,transa,m,A,B,C);
-
-  /* Differentiated function call */
-  zeroout(m,m,Cd);
-  dgemm(transa,transb,m,A,Bd,Cd);
+  // TODO
 }
 
 /*-------------------------------
@@ -109,40 +157,75 @@ void mpm_bar(int m,int n,double A[m][n],double Ab[m][n],double B[m][n],double Bb
 /*
   Reverse mode simple dgemm w.r.t. both matrix arguments
 */
-void dgemm_bar(bool transa,bool transb,int m,double A[m][m],double Ab[m][m],double B[m][m],double Bb[m][m],double C[m][m],double Cb[m][m])
+void dgemm_bar(bool transa,bool transb,int m,double alpha,double A[m][m],double Ab[m][m],double B[m][m],double Bb[m][m],double beta,double C[m][m],double Cb[m][m])
 {
-  zeroout(m,m,Ab);
-  zeroout(m,m,Bb);
-  if (!transa)
-    dgemm(0,!transb,m,Cb,B,Ab);
-  else
-    dgemm(transb,1,m,B,Cb,Ab);
-  if (!transb)
-    dgemm(!transa,0,m,A,Cb,Bb);
-  else
-    dgemm(1,transa,m,Cb,A,Bb);
+  double zero = 0.;
+
+  if (!transa) {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&Cb[0][0],m,&B[0][0],m,zero,&Ab[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&Cb[0][0],m,zero,&Bb[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&Cb[0][0],m,&B[0][0],m,zero,&Ab[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&Cb[0][0],m,&A[0][0],m,zero,&Bb[0][0],m);
+    }
+  } else {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&B[0][0],m,&Cb[0][0],m,zero,&Ab[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&Cb[0][0],m,zero,&Bb[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&B[0][0],m,&Cb[0][0],m,zero,&Ab[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&Cb[0][0],m,&A[0][0],m,zero,&Bb[0][0],m);
+    }
+  }
+
+  // TODO: Rescale by beta
 }
 
 /*
   Reverse mode simple dgemm w.r.t. first matrix argument
 */
-void dgemm_A_bar(bool transa,bool transb,int m,double A[m][m],double Ab[m][m],double B[m][m],double C[m][m],double Cb[m][m])
+void dgemm_A_bar(bool transa,bool transb,int m,double alpha,double A[m][m],double Ab[m][m],double B[m][m],double beta,double C[m][m],double Cb[m][m])
 {
-  zeroout(m,m,Ab);
-  if (!transa)
-    dgemm(0,!transb,m,Cb,B,Ab);
-  else
-    dgemm(transb,1,m,B,Cb,Ab);
+  double zero = 0.;
+
+  if (!transa) {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&Cb[0][0],m,&B[0][0],m,zero,&Ab[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&Cb[0][0],m,&B[0][0],m,zero,&Ab[0][0],m);
+    }
+  } else {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&B[0][0],m,&Cb[0][0],m,zero,&Ab[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&B[0][0],m,&Cb[0][0],m,zero,&Ab[0][0],m);
+    }
+  }
+
+  // TODO: Rescale by beta
 }
 
 /*
   Reverse mode simple dgemm w.r.t. second matrix argument
 */
-void dgemm_B_bar(bool transa,bool transb,int m,double A[m][m],double B[m][m],double Bb[m][m],double C[m][m],double Cb[m][m])
+void dgemm_B_bar(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double Bb[m][m],double beta,double C[m][m],double Cb[m][m])
 {
-  zeroout(m,m,Bb);
-  if (!transb)
-    dgemm(!transa,0,m,A,Cb,Bb);
-  else
-    dgemm(1,transa,m,Cb,A,Bb);
+  double zero = 0.;
+
+  if (!transa) {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&Cb[0][0],m,zero,&Bb[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&Cb[0][0],m,&A[0][0],m,zero,&Bb[0][0],m);
+    }
+  } else {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&Cb[0][0],m,zero,&Bb[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&Cb[0][0],m,&A[0][0],m,zero,&Bb[0][0],m);
+    }
+  }
+
+  // TODO: Rescale by beta
 }

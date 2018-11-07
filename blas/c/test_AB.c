@@ -19,7 +19,7 @@ int main(int argc,char* args[])
 {
   clock_t t;
   int     m = 10,p = 10,n = 10,N = 1000,i;
-  double  A[m][p],B[p][n],C[m][n];
+  double  A[m][p],B[p][n],C[m][n],one = 1.,zero = 0.;
   double  Ad[m][p],Bd[p][n],Cd_byhand[m][n],Cd_tapenade[m][n];
   double  Ab_byhand[m][p],Ab_tapenade[m][p],Bb_byhand[p][n],Bb_tapenade[p][n],Cb[m][n];
 
@@ -29,9 +29,15 @@ int main(int argc,char* args[])
   t = clock();
   dgemm(0,0,m,A,B,C);
   t = clock() - t;
-  printf("\n%30s: %.4e seconds\n\n","Single dgemm call",((double) t)/CLOCKS_PER_SEC);
+  printf("\n%30s: %.4e seconds","Single naive dgemm call",((double) t)/CLOCKS_PER_SEC);
+  t = clock();
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&A[0][0],m,&B[0][0],m,zero,&C[0][0],m);
+  t = clock() - t;
+  printf("\n%30s: %.4e seconds\n\n","Single lapack dgemm call",((double) t)/CLOCKS_PER_SEC);
 
-  printf("***** EXPERIMENT 1: differentiation w.r.t. both matrix inputs *****\n\n");
+  printf("*******************************************************************\n");
+  printf("***** EXPERIMENT 1: differentiation w.r.t. both matrix inputs *****\n");
+  printf("*******************************************************************\n\n");
 
   /* Forward mode with Tapenade */
   inittest(m,p,n,A,B);
@@ -49,7 +55,7 @@ int main(int argc,char* args[])
   zeroout(m,n,C);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_dot(m,p,n,A,Ad,B,Bd,C,Cd_byhand);
+    dgemm_dot(m,p,n,one,A,Ad,B,Bd,one,C,Cd_byhand);
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Forward mode with dgemms",((double) t)/CLOCKS_PER_SEC);
   checkforward(m,n,Cd_byhand,Cd_tapenade);
@@ -68,7 +74,7 @@ int main(int argc,char* args[])
   initreverse(m,n,Cb);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_bar(m,p,n,A,Ab_byhand,B,Bb_byhand,C,Cb);
+    dgemm_bar(m,p,n,one,A,Ab_byhand,B,Bb_byhand,one,C,Cb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Reverse mode with dgemms",((double) t)/CLOCKS_PER_SEC);
   checkreverse(m,p,n,Ab_byhand,Ab_tapenade,Bb_byhand,Bb_tapenade);

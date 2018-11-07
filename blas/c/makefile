@@ -1,7 +1,7 @@
 all: clean cleandiff dgemm test_AB
 
-CFLAGS	= -Wall -I${TAPENADE_HOME}/ADFirstAidKit
-CC	= gcc
+CFLAGS	= -Wall -I${TAPENADE_HOME}/ADFirstAidKit -I${LAPACK_HOME}/CBLAS
+LIB	= -L${LAPACK_HOME} -lcblas -lrefblas -ltmglib -llapack
 TFLAGS  = -O derivatives
 
 mpm:
@@ -35,15 +35,15 @@ cleandiff:
 	rm -rf derivatives/*_d.c derivatives/*_d.msg derivatives/*_b.c derivatives/*_b.msg
 
 test_AB.o: test_AB.c
-	$(CC) $(CFLAGS) -c -o $@ $^
+	gcc $(CFLAGS) -c -o $@ $^
 
 test_AB: test_AB.o
-	$(CC) -o $@ $^
+	gfortran -o $@ $^ $(LIB)
 	rm *.o
 
 test_A.o: test_A.c
-	$(CC) $(CFLAGS) -c -o $@ $^
+	gcc $(CFLAGS) -c -o $@ $^
 
 test_A: test_A.o
-	$(CC) -o $@ $^
+	gfortran -o $@ $^ $(LIB)
 	rm *.o
