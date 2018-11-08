@@ -35,16 +35,22 @@ clean:
 cleandiff:
 	rm -rf derivatives/*_d.c derivatives/*_d.msg derivatives/*_b.c derivatives/*_b.msg
 
+adBuffer.o: ${TAPENADE_HOME}/ADFirstAidKit/adBuffer.c
+	gcc $(CFLAGS) -c -o $@ $^
+
+adStack.o: ${TAPENADE_HOME}/ADFirstAidKit/adStack.c
+	gcc $(CFLAGS) -c -o $@ $^
+
 test_AB.o: test_AB.c
 	gcc $(CFLAGS) -c -o $@ $^
 
-test_AB: test_AB.o
+test_AB: test_AB.o adBuffer.o adStack.o
 	gfortran -o $@ $^ $(LIB)
 	rm *.o
 
 test_A.o: test_A.c
 	gcc $(CFLAGS) -c -o $@ $^
 
-test_A: test_A.o
+test_A: test_A.o adBuffer.o adStack.o
 	gfortran -o $@ $^ $(LIB)
 	rm *.o
