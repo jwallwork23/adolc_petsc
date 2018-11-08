@@ -31,7 +31,7 @@ void dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m]
       if (beta == 0.) {
         C[i][j] = 0.;
       } else if (beta == 1.) {
-        break; 
+        // Do nothing
       } else {
         C[i][j] = beta * C[i][j];
       }

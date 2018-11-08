@@ -13,6 +13,7 @@ void initforward(int m,int p,int n,double Ad[m][p],double Bd[p][n]);
 void initreverse(int m,int n,double Cb[m][n]);
 
 void checkval(double approx,double exact);
+void checkmxm(int m,int n,double C_mxm[m][n],double C_tapenade[m][n]);
 void checkforward(int m,int n,double Cd_mxm[m][n],double Cd_tapenade[m][n]);
 void checkreverse(int m,int p,int n,double Ab_mxm[m][p],double Ab_tapenade[m][p],double Bb_mxm[p][n],double Bb_tapenade[p][n]);
 
@@ -20,7 +21,7 @@ int main(int argc,char* args[])
 {
   clock_t t;
   int     m = 10,p = 10,n = 10,N = 1000,i;
-  double  A[m][p],B[p][n],C[m][n],one = 1.,zero = 0.;
+  double  A[m][p],B[p][n],C_byhand[m][n],C_tapenade[m][n],one = 1.,zero = 0.,alpha = 0.9,beta = 1.1;
   double  Ad[m][p],Bd[p][n],Cd_byhand[m][n],Cd_tapenade[m][n];
   double  Ab_byhand[m][p],Ab_tapenade[m][p],Bb_byhand[p][n],Bb_tapenade[p][n],Cb[m][n];
 
@@ -30,34 +31,36 @@ int main(int argc,char* args[])
   printf("*******************************************************************\n");
 
   inittest(m,p,n,A,B);
-  zeroout(m,n,C);
+  zeroout(m,n,C_tapenade);
+  zeroout(m,n,C_byhand);
   t = clock();
-  dgemm(0,0,m,one,A,B,one,C);
+  dgemm(0,0,m,alpha,A,B,beta,C_byhand);
   t = clock() - t;
   printf("\n%30s: %.4e seconds","Single naive dgemm call",((double) t)/CLOCKS_PER_SEC);
   t = clock();
-  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&A[0][0],m,&B[0][0],m,zero,&C[0][0],m);
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C_tapenade[0][0],m);
   t = clock() - t;
   printf("\n%30s: %.4e seconds\n\n","Single lapack dgemm call",((double) t)/CLOCKS_PER_SEC);
+  checkmxm(m,n,C_byhand,C_tapenade);
 
   /* Forward mode with Tapenade */
   inittest(m,p,n,A,B);
   initforward(m,p,n,Ad,Bd);
-  zeroout(m,n,C);
+  zeroout(m,n,C_tapenade);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_d(m,p,n,one,A,Ad,B,Bd,one,C,Cd_tapenade);
+    dgemm_d(0,0,m,alpha,A,Ad,B,Bd,beta,C_tapenade,Cd_tapenade);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Forward mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 
   /* Forward mode with dgemms */
   inittest(m,p,n,A,B);
   initforward(m,p,n,Ad,Bd);
-  zeroout(m,n,C);
+  zeroout(m,n,C_byhand);
   t = clock();
   for (i=0; i<N; i++) {
-    cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&A[0][0],m,&B[0][0],m,zero,&C[0][0],m);
-    dgemm_dot(m,p,n,one,A,Ad,B,Bd,one,C,Cd_byhand);
+    cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,beta,&A[0][0],m,&B[0][0],m,zero,&C_byhand[0][0],m);
+    dgemm_dot(0,0,m,alpha,A,Ad,B,Bd,one,C_byhand,Cd_byhand);
   }
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Forward mode with dgemms",((double) t)/CLOCKS_PER_SEC);
@@ -66,18 +69,22 @@ int main(int argc,char* args[])
   /* Reverse mode with Tapenade */
   inittest(m,p,n,A,B);
   initreverse(m,n,Cb);
+  zeroout(m,n,Ab_tapenade);
+  zeroout(m,n,Bb_tapenade);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_b(m,p,n,one,A,Ab_tapenade,B,Bb_tapenade,one,C,Cb);
+    dgemm_b(0,0,m,alpha,A,Ab_tapenade,B,Bb_tapenade,one,C_tapenade,Cb); // FIXME: beta
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Reverse mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 
   /* Reverse mode with dgemms */
   inittest(m,p,n,A,B);
   initreverse(m,n,Cb);
+  zeroout(m,n,Ab_byhand);
+  zeroout(m,n,Bb_byhand);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_bar(m,p,n,one,A,Ab_byhand,B,Bb_byhand,one,C,Cb);
+    dgemm_bar(0,0,m,alpha,A,Ab_byhand,B,Bb_byhand,one,C_byhand,Cb); 	// FIXME: beta
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Reverse mode with dgemms",((double) t)/CLOCKS_PER_SEC);
   checkreverse(m,p,n,Ab_byhand,Ab_tapenade,Bb_byhand,Bb_tapenade);
@@ -122,6 +129,17 @@ void initforward(int m,int p,int n,double Ad[m][p],double Bd[p][n])
   for (i=0; i<p; i++) {
     for (j=0; j<n; j++) {
       Bd[i][j] = 3*j;
+    }
+  }
+}
+
+void checkmxm(int m,int n,double C_mxm[m][n],double C_tapenade[m][n])
+{
+  int i,j;
+
+  for (i=0; i<m; i++) {
+    for (j=0; j<n; j++) {
+      checkval(C_mxm[i][j],C_tapenade[i][j]);
     }
   }
 }
