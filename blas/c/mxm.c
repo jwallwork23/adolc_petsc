@@ -25,14 +25,15 @@ void mxm(int m,int p,int n,double A[m][p],double B[p][n],double C[m][n])
 void dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double beta,double C[m][m])
 {
   int i,j,k;
+  bool stop = false;
 
   if (alpha == 0.) {
-    for (i=0; i<m; i++) {
-      for (j=0; j<m; j++) {
+    for (i=0; (i<m) && !stop; i++) {
+      for (j=0; (j<m) && !stop; j++) {
         if (beta == 0.) {
           C[i][j] = 0.;
         } else if (beta == 1.) {
-          break; 			// FIXME
+          stop = true; 
         } else {
           C[i][j] = beta * C[i][j];
         }

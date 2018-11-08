@@ -25,6 +25,10 @@ int main(int argc,char* args[])
   double  Ab_byhand[m][p],Ab_tapenade[m][p],Bb_byhand[p][n],Bb_tapenade[p][n],Cb[m][n];
 
 
+  printf("\n*******************************************************************\n");
+  printf("***** EXPERIMENT 1: differentiation w.r.t. both matrix inputs *****\n");
+  printf("*******************************************************************\n");
+
   inittest(m,p,n,A,B);
   zeroout(m,n,C);
   t = clock();
@@ -35,10 +39,6 @@ int main(int argc,char* args[])
   cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&A[0][0],m,&B[0][0],m,zero,&C[0][0],m);
   t = clock() - t;
   printf("\n%30s: %.4e seconds\n\n","Single lapack dgemm call",((double) t)/CLOCKS_PER_SEC);
-
-  printf("*******************************************************************\n");
-  printf("***** EXPERIMENT 1: differentiation w.r.t. both matrix inputs *****\n");
-  printf("*******************************************************************\n\n");
 
   /* Forward mode with Tapenade */
   inittest(m,p,n,A,B);

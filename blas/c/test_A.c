@@ -16,6 +16,7 @@ void initforward(int m,int p,int n,double Ad[m][p]);
 void initreverse(int m,int n,double Cb[m][n]);
 
 void checkval(double approx,double exact);
+void checkmxm(int m,int n,double C_mxm[m][n],double C_tapenade[m][n]);
 void checkforward(int m,int n,double Cd_mxm[m][n],double Cd_tapenade[m][n]);
 void checkreverse(int m,int p,int n,double Ab_mxm[m][p],double Ab_tapenade[m][p]);
 
@@ -23,44 +24,46 @@ int main(int argc,char* args[])
 {
   clock_t t;
   int     m = 10,p = 10,n = 10,N = 1000,i;
-  double  A[m][p],B[p][n],C[m][n],one = 1.,zero = 0.;
+  double  A[m][p],B[p][n],C_mxm[m][n],C_tapenade[m][n],one = 1.,zero = 0.,alpha = 1.,beta=1.; // TODO: Test with alpha,beta!=1
   double  Ad[m][p],Cd_byhand[m][n],Cd_tapenade[m][n];
   double  Ab_byhand[m][p],Ab_tapenade[m][p],Cb[m][n];
 
 
+  printf("\n*******************************************************************\n");
+  printf("***** EXPERIMENT 2: differentiation w.r.t. first matrix input *****\n");
+  printf("*******************************************************************\n");
+
   inittest(m,p,n,A,B);
-  zeroout(m,n,C);
+  zeroout(m,n,C_tapenade);
+  zeroout(m,n,C_mxm);
   t = clock();
-  dgemm(0,0,one,m,A,B,one,C);
+  dgemm(0,0,alpha,m,A,B,beta,C_mxm);
   t = clock() - t;
   printf("\n%30s: %.4e seconds","Single naive dgemm call",((double) t)/CLOCKS_PER_SEC);
   t = clock();
-  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&A[0][0],m,&B[0][0],m,zero,&C[0][0],m);
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C_tapenade[0][0],m);
   t = clock() - t;
   printf("\n%30s: %.4e seconds\n\n","Single lapack dgemm call",((double) t)/CLOCKS_PER_SEC);
-
-  printf("*******************************************************************\n");
-  printf("***** EXPERIMENT 2: differentiation w.r.t. first matrix input *****\n");
-  printf("*******************************************************************\n\n");
+  //checkmxm(m,n,C_mxm,C_tapenade);  // FIXME
 
   /* Forward mode with Tapenade */
   inittest(m,p,n,A,B);
   initforward(m,p,n,Ad);
-  zeroout(m,n,C);
+  zeroout(m,n,C_tapenade);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_A_d(m,p,n,one,A,Ad,B,one,C,Cd_tapenade);
+    dgemm_A_d(m,p,n,one,A,Ad,B,one,C_tapenade,Cd_tapenade);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Forward mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 
   /* Forward mode with dgemms */
   inittest(m,p,n,A,B);
   initforward(m,p,n,Ad);
-  zeroout(m,n,C);
+  zeroout(m,n,C_mxm);
   t = clock();
   for (i=0; i<N; i++) {
-    cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&A[0][0],m,&B[0][0],m,zero,&C[0][0],m);
-    dgemm_A_dot(m,p,n,one,A,Ad,B,one,C,Cd_byhand);
+    cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&A[0][0],m,&B[0][0],m,one,&C_mxm[0][0],m);
+    dgemm_A_dot(m,p,n,one,A,Ad,B,one,C_mxm,Cd_byhand);
   }
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Forward mode with dgemms",((double) t)/CLOCKS_PER_SEC);
@@ -71,7 +74,7 @@ int main(int argc,char* args[])
   initreverse(m,n,Cb);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_A_b(m,p,n,one,A,Ab_tapenade,B,one,C,Cb);
+    dgemm_A_b(m,p,n,one,A,Ab_tapenade,B,one,C_tapenade,Cb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Reverse mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 
@@ -80,7 +83,7 @@ int main(int argc,char* args[])
   initreverse(m,n,Cb);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_A_bar(m,p,n,one,A,Ab_byhand,B,one,C,Cb);
+    dgemm_A_bar(m,p,n,one,A,Ab_byhand,B,one,C_mxm,Cb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Reverse mode with dgemms",((double) t)/CLOCKS_PER_SEC);
   checkreverse(m,p,n,Ab_byhand,Ab_tapenade);
@@ -119,6 +122,17 @@ void initforward(int m,int p,int n,double Ad[m][p])
   for (i=0; i<m; i++) {
     for (j=0; j<p; j++) {
       Ad[i][j] = i-j*j;
+    }
+  }
+}
+
+void checkmxm(int m,int n,double C_mxm[m][n],double C_tapenade[m][n])
+{
+  int i,j;
+
+  for (i=0; i<m; i++) {
+    for (j=0; j<n; j++) {
+      checkval(C_mxm[i][j],C_tapenade[i][j]);
     }
   }
 }
