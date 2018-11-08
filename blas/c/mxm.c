@@ -26,40 +26,138 @@ void dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m]
 {
   int i,j,k;
 
-  // TODO: Quick exits
-
-  if (!transa) {
-    if (!transb) {
-      for (i=0; i<m; i++) {
-        for (j=0; j<m; j++) {
-          for (k=0; k<m; k++) {
-            C[i][j] = alpha * A[i][k] * B[k][j] + beta * C[i][j];
+  if (alpha == 0.) {
+    for (i=0; i<m; i++) {
+      for (j=0; j<m; j++) {
+        if (beta == 0.) {
+          C[i][j] = 0.;
+        } else if (beta == 1.) {
+          break; 			// FIXME
+        } else {
+          C[i][j] = beta * C[i][j];
+        }
+      }
+    }
+  } else if (alpha == 1.) {
+    if (!transa) {
+      if (!transb) {
+        for (i=0; i<m; i++) {
+          for (j=0; j<m; j++) {
+            for (k=0; k<m; k++) {
+              if (beta == 0.) {
+                C[i][j] = A[i][k] * B[k][j];
+              } else if (beta == 1.) {
+                C[i][j] = A[i][k] * B[k][j] + C[i][j];
+              } else {
+                C[i][j] = A[i][k] * B[k][j] + beta * C[i][j];
+              }
+            }
+          }
+        }
+      } else {
+        for (i=0; i<m; i++) {
+          for (j=0; j<m; j++) {
+            for (k=0; k<m; k++) {
+              if (beta == 0.) {
+                C[i][j] = A[i][k] * B[j][k];
+              } else if (beta == 1.) {
+                C[i][j] = A[i][k] * B[j][k] + C[i][j];
+              } else {
+                C[i][j] = A[i][k] * B[j][k] + beta * C[i][j];
+              }
+            }
           }
         }
       }
     } else {
-      for (i=0; i<m; i++) {
-        for (j=0; j<m; j++) {
-          for (k=0; k<m; k++) {
-            C[i][j] = alpha * A[i][k] * B[j][k] + beta * C[i][j];
+      if (!transb) {
+        for (i=0; i<m; i++) {
+          for (j=0; j<m; j++) {
+            for (k=0; k<m; k++) {
+              if (beta == 0.) {
+                C[i][j] = A[k][i] * B[k][j];
+              } else if (beta == 1.) {
+                C[i][j] = A[k][i] * B[k][j] + C[i][j];
+              } else {
+                C[i][j] = A[k][i] * B[k][j] + beta * C[i][j];
+              }
+            }
+          }
+        }
+      } else {
+        for (i=0; i<m; i++) {
+          for (j=0; j<m; j++) {
+            for (k=0; k<m; k++) {
+              if (beta == 0.) {
+                C[i][j] = A[k][i] * B[j][k];
+              } else if (beta == 1.) {
+                C[i][j] = A[k][i] * B[j][k] + C[i][j];
+              } else {
+                C[i][j] = A[k][i] * B[j][k] + beta * C[i][j];
+              }
+            }
           }
         }
       }
     }
   } else {
-    if (!transb) {
-      for (i=0; i<m; i++) {
-        for (j=0; j<m; j++) {
-          for (k=0; k<m; k++) {
-            C[i][j] = alpha * A[k][i] * B[k][j] + beta * C[i][j];
+    if (!transa) {
+      if (!transb) {
+        for (i=0; i<m; i++) {
+          for (j=0; j<m; j++) {
+            for (k=0; k<m; k++) {
+              if (beta == 0.) {
+                C[i][j] = alpha * A[i][k] * B[k][j];
+              } else if (beta == 1.) {
+                C[i][j] = alpha * A[i][k] * B[k][j] + C[i][j];
+              } else {
+                C[i][j] = alpha * A[i][k] * B[k][j] + beta * C[i][j];
+              }
+            }
+          }
+        }
+      } else {
+        for (i=0; i<m; i++) {
+          for (j=0; j<m; j++) {
+            for (k=0; k<m; k++) {
+              if (beta == 0.) {
+                C[i][j] = alpha * A[i][k] * B[j][k];
+              } else if (beta == 1.) {
+                C[i][j] = alpha * A[i][k] * B[j][k] + C[i][j];
+              } else {
+                C[i][j] = alpha * A[i][k] * B[j][k] + beta * C[i][j];
+              }
+            }
           }
         }
       }
     } else {
-      for (i=0; i<m; i++) {
-        for (j=0; j<m; j++) {
-          for (k=0; k<m; k++) {
-            C[i][j] = alpha * A[k][i] * B[j][k] + beta * C[i][j];
+      if (!transb) {
+        for (i=0; i<m; i++) {
+          for (j=0; j<m; j++) {
+            for (k=0; k<m; k++) {
+              if (beta == 0.) {
+                C[i][j] = alpha * A[k][i] * B[k][j];
+              } else if (beta == 1.) {
+                C[i][j] = alpha * A[k][i] * B[k][j] + C[i][j];
+              } else {
+                C[i][j] = alpha * A[k][i] * B[k][j] + beta * C[i][j];
+              }
+            }
+          }
+        }
+      } else {
+        for (i=0; i<m; i++) {
+          for (j=0; j<m; j++) {
+            for (k=0; k<m; k++) {
+              if (beta == 0.) {
+                C[i][j] = alpha * A[k][i] * B[j][k];
+              } else if (beta == 1.) {
+                C[i][j] = alpha * A[k][i] * B[j][k] + C[i][j];
+              } else {
+                C[i][j] = alpha * A[k][i] * B[j][k] + beta * C[i][j];
+              }
+            }
           }
         }
       }

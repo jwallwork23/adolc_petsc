@@ -4,7 +4,7 @@
 
 #include "derivatives/byhand.c"
 #include "derivatives/dgemm_d.c"
-#include "derivatives/dgemm_b.c"
+//#include "derivatives/dgemm_b.c"
 
 // TODO: Use random matrices
 
@@ -64,6 +64,7 @@ int main(int argc,char* args[])
   checkforward(m,n,Cd_byhand,Cd_tapenade);
 
   /* Reverse mode with Tapenade */
+/*
   inittest(m,p,n,A,B);
   initreverse(m,n,Cb);
   t = clock();
@@ -71,8 +72,9 @@ int main(int argc,char* args[])
     dgemm_b(m,p,n,one,A,Ab_tapenade,B,Bb_tapenade,one,C,Cb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Reverse mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
-
+*/
   /* Reverse mode with dgemms */
+/*
   inittest(m,p,n,A,B);
   initreverse(m,n,Cb);
   t = clock();
@@ -81,7 +83,7 @@ int main(int argc,char* args[])
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Reverse mode with dgemms",((double) t)/CLOCKS_PER_SEC);
   checkreverse(m,p,n,Ab_byhand,Ab_tapenade,Bb_byhand,Bb_tapenade);
-
+*/
   printf("All tests passed.\n");
 
   return 0;
