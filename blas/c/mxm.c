@@ -25,94 +25,30 @@ void mxm(int m,int p,int n,double A[m][p],double B[p][n],double C[m][n])
 void dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double beta,double C[m][m])
 {
   int i,j,k;
-  bool stop = false;
 
+  for (i=0; (i<m); i++) {
+    for (j=0; (j<m); j++) {
+      if (beta == 0.) {
+        C[i][j] = 0.;
+      } else if (beta == 1.) {
+        break; 
+      } else {
+        C[i][j] = beta * C[i][j];
+      }
+    }
+  }
   if (alpha == 0.) {
-    for (i=0; (i<m) && !stop; i++) {
-      for (j=0; (j<m) && !stop; j++) {
-        if (beta == 0.) {
-          C[i][j] = 0.;
-        } else if (beta == 1.) {
-          stop = true; 
-        } else {
-          C[i][j] = beta * C[i][j];
-        }
-      }
-    }
-  } else if (alpha == 1.) {
-    if (!transa) {
-      if (!transb) {
-        for (i=0; i<m; i++) {
-          for (j=0; j<m; j++) {
-            for (k=0; k<m; k++) {
-              if (beta == 0.) {
-                C[i][j] = A[i][k] * B[k][j];
-              } else if (beta == 1.) {
-                C[i][j] = A[i][k] * B[k][j] + C[i][j];
-              } else {
-                C[i][j] = A[i][k] * B[k][j] + beta * C[i][j];
-              }
-            }
-          }
-        }
-      } else {
-        for (i=0; i<m; i++) {
-          for (j=0; j<m; j++) {
-            for (k=0; k<m; k++) {
-              if (beta == 0.) {
-                C[i][j] = A[i][k] * B[j][k];
-              } else if (beta == 1.) {
-                C[i][j] = A[i][k] * B[j][k] + C[i][j];
-              } else {
-                C[i][j] = A[i][k] * B[j][k] + beta * C[i][j];
-              }
-            }
-          }
-        }
-      }
-    } else {
-      if (!transb) {
-        for (i=0; i<m; i++) {
-          for (j=0; j<m; j++) {
-            for (k=0; k<m; k++) {
-              if (beta == 0.) {
-                C[i][j] = A[k][i] * B[k][j];
-              } else if (beta == 1.) {
-                C[i][j] = A[k][i] * B[k][j] + C[i][j];
-              } else {
-                C[i][j] = A[k][i] * B[k][j] + beta * C[i][j];
-              }
-            }
-          }
-        }
-      } else {
-        for (i=0; i<m; i++) {
-          for (j=0; j<m; j++) {
-            for (k=0; k<m; k++) {
-              if (beta == 0.) {
-                C[i][j] = A[k][i] * B[j][k];
-              } else if (beta == 1.) {
-                C[i][j] = A[k][i] * B[j][k] + C[i][j];
-              } else {
-                C[i][j] = A[k][i] * B[j][k] + beta * C[i][j];
-              }
-            }
-          }
-        }
-      }
-    }
+    // Do nothing
   } else {
     if (!transa) {
       if (!transb) {
         for (i=0; i<m; i++) {
           for (j=0; j<m; j++) {
             for (k=0; k<m; k++) {
-              if (beta == 0.) {
-                C[i][j] = alpha * A[i][k] * B[k][j];
-              } else if (beta == 1.) {
-                C[i][j] = alpha * A[i][k] * B[k][j] + C[i][j];
+              if (alpha == 1.) {
+                C[i][j] += A[i][k] * B[k][j];
               } else {
-                C[i][j] = alpha * A[i][k] * B[k][j] + beta * C[i][j];
+                C[i][j] += alpha * A[i][k] * B[k][j];
               }
             }
           }
@@ -121,12 +57,10 @@ void dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m]
         for (i=0; i<m; i++) {
           for (j=0; j<m; j++) {
             for (k=0; k<m; k++) {
-              if (beta == 0.) {
-                C[i][j] = alpha * A[i][k] * B[j][k];
-              } else if (beta == 1.) {
-                C[i][j] = alpha * A[i][k] * B[j][k] + C[i][j];
+              if (alpha == 1.) {
+                C[i][j] += A[i][k] * B[j][k];
               } else {
-                C[i][j] = alpha * A[i][k] * B[j][k] + beta * C[i][j];
+                C[i][j] += alpha * A[i][k] * B[j][k];
               }
             }
           }
@@ -137,12 +71,10 @@ void dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m]
         for (i=0; i<m; i++) {
           for (j=0; j<m; j++) {
             for (k=0; k<m; k++) {
-              if (beta == 0.) {
-                C[i][j] = alpha * A[k][i] * B[k][j];
-              } else if (beta == 1.) {
-                C[i][j] = alpha * A[k][i] * B[k][j] + C[i][j];
+              if (alpha == 1.) {
+                C[i][j] += A[k][i] * B[k][j];
               } else {
-                C[i][j] = alpha * A[k][i] * B[k][j] + beta * C[i][j];
+                C[i][j] += alpha * A[k][i] * B[k][j];
               }
             }
           }
@@ -151,12 +83,10 @@ void dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m]
         for (i=0; i<m; i++) {
           for (j=0; j<m; j++) {
             for (k=0; k<m; k++) {
-              if (beta == 0.) {
-                C[i][j] = alpha * A[k][i] * B[j][k];
-              } else if (beta == 1.) {
-                C[i][j] = alpha * A[k][i] * B[j][k] + C[i][j];
+              if (alpha == 1.) {
+                C[i][j] += A[k][i] * B[j][k];
               } else {
-                C[i][j] = alpha * A[k][i] * B[j][k] + beta * C[i][j];
+                C[i][j] += alpha * A[k][i] * B[j][k];
               }
             }
           }
