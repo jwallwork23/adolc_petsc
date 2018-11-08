@@ -49,7 +49,7 @@ int main(int argc,char* args[])
   for (i=0; i<N; i++)
     cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C_byhand[0][0],m);
   t = clock() - t;
-  printf("\n%30s: %.4e seconds\n\n","Single lapack dgemm call",((double) t)/(N*CLOCKS_PER_SEC));
+  printf("\n%30s: %.4e seconds\n\n","Single LAPACK dgemm call",((double) t)/(N*CLOCKS_PER_SEC));
   checkvals(m,n,C_byhand,C_tapenade);
 
   /* Forward mode with Tapenade */
@@ -77,7 +77,7 @@ int main(int argc,char* args[])
   zeroout(m,n,Ab_tapenade);
   t = clock();
   for (i=0; i<N; i++)
-    naive_dgemm_A_b(0,0,m,alpha,A,Ab_tapenade,B,one,C_tapenade,Cb);	// FIXME: beta
+    naive_dgemm_A_b(0,0,m,alpha,A,Ab_tapenade,B,beta,C_tapenade,Cb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Reverse mode with Tapenade",((double) t)/(N*CLOCKS_PER_SEC));
 
@@ -85,7 +85,7 @@ int main(int argc,char* args[])
   zeroout(m,n,Ab_byhand);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_A_bar(0,0,m,alpha,A,Ab_byhand,B,one,C_byhand,Cb);	// FIXME: beta
+    dgemm_A_bar(0,0,m,alpha,A,Ab_byhand,B,beta,C_byhand,Cb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Reverse mode with dgemms",((double) t)/(N*CLOCKS_PER_SEC));
   checkvals(m,p,Ab_byhand,Ab_tapenade);
