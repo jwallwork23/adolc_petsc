@@ -1,50 +1,54 @@
 #include <assert.h>
 #include <math.h>
 #include <time.h>
+#include <stdlib.h>
 
 #include "derivatives/byhand.c"
 #include "derivatives/dgemm_d.c"
 #include "derivatives/dgemm_b.c"
 
-// TODO: Use random matrices
 
 void inittest(int m,int p,int n,double A[m][p],double B[p][n]);
 void initforward(int m,int p,int n,double Ad[m][p],double Bd[p][n]);
 void initreverse(int m,int n,double Cb[m][n]);
 
+double getrand();
 void checkval(double approx,double exact);
-void checkmxm(int m,int n,double C_mxm[m][n],double C_tapenade[m][n]);
-void checkforward(int m,int n,double Cd_mxm[m][n],double Cd_tapenade[m][n]);
-void checkreverse(int m,int p,int n,double Ab_mxm[m][p],double Ab_tapenade[m][p],double Bb_mxm[p][n],double Bb_tapenade[p][n]);
+void checkvals(int m,int n,double C_byhand[m][n],double C_tapenade[m][n]);
 
 int main(int argc,char* args[])
 {
   clock_t t;
   int     m = 10,p = 10,n = 10,N = 1000,i;
-  double  A[m][p],B[p][n],C_byhand[m][n],C_tapenade[m][n],one = 1.,zero = 0.,alpha = 0.9,beta = 1.1;
+  double  A[m][p],B[p][n],C_byhand[m][n],C_tapenade[m][n],one = 1.,zero = 0.,alpha,beta;
   double  Ad[m][p],Bd[p][n],Cd_byhand[m][n],Cd_tapenade[m][n];
   double  Ab_byhand[m][p],Ab_tapenade[m][p],Bb_byhand[p][n],Bb_tapenade[p][n],Cb[m][n];
 
-
   printf("\n*******************************************************************\n");
-  printf("***** EXPERIMENT 1: differentiation w.r.t. both matrix inputs *****\n");
+  printf("***** EXPERIMENT 2: differentiation w.r.t. both matrix inputs *****\n");
   printf("*******************************************************************\n");
 
+  /* Assign (psuedo)random coefficients */
+  alpha = getrand();
+  beta = getrand();
+
+  /* 'Naive' dgemm */
   inittest(m,p,n,A,B);
   zeroout(m,n,C_tapenade);
-  zeroout(m,n,C_byhand);
   t = clock();
-  dgemm(0,0,m,alpha,A,B,beta,C_byhand);
+  dgemm(0,0,m,alpha,A,B,beta,C_tapenade);
   t = clock() - t;
   printf("\n%30s: %.4e seconds","Single naive dgemm call",((double) t)/CLOCKS_PER_SEC);
+
+  /* LAPACK dgemm */
+  zeroout(m,n,C_byhand);
   t = clock();
-  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C_tapenade[0][0],m);
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C_byhand[0][0],m);
   t = clock() - t;
   printf("\n%30s: %.4e seconds\n\n","Single lapack dgemm call",((double) t)/CLOCKS_PER_SEC);
-  checkmxm(m,n,C_byhand,C_tapenade);
+  checkvals(m,n,C_byhand,C_tapenade);
 
   /* Forward mode with Tapenade */
-  inittest(m,p,n,A,B);
   initforward(m,p,n,Ad,Bd);
   zeroout(m,n,C_tapenade);
   t = clock();
@@ -54,8 +58,6 @@ int main(int argc,char* args[])
   printf("%30s: %.4e seconds\n","Forward mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 
   /* Forward mode with dgemms */
-  inittest(m,p,n,A,B);
-  initforward(m,p,n,Ad,Bd);
   zeroout(m,n,C_byhand);
   t = clock();
   for (i=0; i<N; i++) {
@@ -64,10 +66,9 @@ int main(int argc,char* args[])
   }
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Forward mode with dgemms",((double) t)/CLOCKS_PER_SEC);
-  checkforward(m,n,Cd_byhand,Cd_tapenade);
+  checkvals(m,n,Cd_byhand,Cd_tapenade);
 
   /* Reverse mode with Tapenade */
-  inittest(m,p,n,A,B);
   initreverse(m,n,Cb);
   zeroout(m,n,Ab_tapenade);
   zeroout(m,n,Bb_tapenade);
@@ -78,8 +79,6 @@ int main(int argc,char* args[])
   printf("%30s: %.4e seconds\n","Reverse mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 
   /* Reverse mode with dgemms */
-  inittest(m,p,n,A,B);
-  initreverse(m,n,Cb);
   zeroout(m,n,Ab_byhand);
   zeroout(m,n,Bb_byhand);
   t = clock();
@@ -87,7 +86,8 @@ int main(int argc,char* args[])
     dgemm_bar(0,0,m,alpha,A,Ab_byhand,B,Bb_byhand,one,C_byhand,Cb); 	// FIXME: beta
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Reverse mode with dgemms",((double) t)/CLOCKS_PER_SEC);
-  checkreverse(m,p,n,Ab_byhand,Ab_tapenade,Bb_byhand,Bb_tapenade);
+  checkvals(m,p,Ab_byhand,Ab_tapenade);
+  checkvals(p,n,Bb_byhand,Bb_tapenade);
 
   printf("All tests passed.\n");
 
@@ -99,19 +99,24 @@ void checkval(double approx,double exact)
   assert(fabs(approx-exact)<1e-8);
 }
 
+double getrand()
+{
+  return ((double) rand()) / 1.e9 - 1.;
+}
+
 void inittest(int m,int p,int n,double A[m][p],double B[p][n])
 {
   int i,j;
 
   for (i=0; i<m; i++) {
     for (j=0; j<p; j++) {
-      A[i][j] = i+j;
+      A[i][j] = getrand();
     }
   }
 
   for (i=0; i<m; i++) {
     for (j=0; j<p; j++) {
-      B[i][j] = -i;
+      B[i][j] = getrand();
     }
   }
 }
@@ -122,35 +127,13 @@ void initforward(int m,int p,int n,double Ad[m][p],double Bd[p][n])
 
   for (i=0; i<m; i++) {
     for (j=0; j<p; j++) {
-      Ad[i][j] = i-j*j;
+      Ad[i][j] = getrand();
     }
   }
 
   for (i=0; i<p; i++) {
     for (j=0; j<n; j++) {
-      Bd[i][j] = 3*j;
-    }
-  }
-}
-
-void checkmxm(int m,int n,double C_mxm[m][n],double C_tapenade[m][n])
-{
-  int i,j;
-
-  for (i=0; i<m; i++) {
-    for (j=0; j<n; j++) {
-      checkval(C_mxm[i][j],C_tapenade[i][j]);
-    }
-  }
-}
-
-void checkforward(int m,int n,double Cd_mxm[m][n],double Cd_tapenade[m][n])
-{
-  int i,j;
-
-  for (i=0; i<m; i++) {
-    for (j=0; j<n; j++) {
-      checkval(Cd_mxm[i][j],Cd_tapenade[i][j]);
+      Bd[i][j] = getrand();
     }
   }
 }
@@ -161,23 +144,18 @@ void initreverse(int m,int n,double Cb[m][n])
 
   for (i=0; i<m; i++) {
     for (j=0; j<n; j++) {
-      Cb[i][j] = i*i;
+      Cb[i][j] = getrand();
     }
   }
 }
 
-void checkreverse(int m,int p,int n,double Ab_mxm[m][p],double Ab_tapenade[m][p],double Bb_mxm[p][n],double Bb_tapenade[p][n])
+void checkvals(int m,int n,double C_byhand[m][n],double C_tapenade[m][n])
 {
   int i,j;
 
   for (i=0; i<m; i++) {
-    for (j=0; j<p; j++) {
-      checkval(Ab_mxm[i][j],Ab_tapenade[i][j]);
-    }
-  }
-  for (i=0; i<p; i++) {
     for (j=0; j<n; j++) {
-      checkval(Bb_mxm[i][j],Bb_tapenade[i][j]);
+      checkval(C_byhand[i][j],C_tapenade[i][j]);
     }
   }
 }
