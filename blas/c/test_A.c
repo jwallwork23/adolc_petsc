@@ -4,8 +4,8 @@
 #include <stdlib.h>
 
 #include "derivatives/byhand.c"
-#include "derivatives/dgemm_A_d.c"
-#include "derivatives/dgemm_A_b.c"
+#include "derivatives/naive_dgemm_A_d.c"
+#include "derivatives/naive_dgemm_A_b.c"
 
 
 void inittest(int m,int p,int n,double A[m][p],double B[p][n]);
@@ -36,7 +36,7 @@ int main(int argc,char* args[])
   inittest(m,p,n,A,B);
   zeroout(m,n,C_tapenade);
   t = clock();
-  dgemm(0,0,m,alpha,A,B,beta,C_tapenade);
+  naive_dgemm(0,0,m,alpha,A,B,beta,C_tapenade);
   t = clock() - t;
   printf("\n%30s: %.4e seconds","Single naive dgemm call",((double) t)/CLOCKS_PER_SEC);
 
@@ -53,7 +53,7 @@ int main(int argc,char* args[])
   zeroout(m,n,C_tapenade);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_A_d(0,0,m,alpha,A,Ad,B,beta,C_tapenade,Cd_tapenade);
+    naive_dgemm_A_d(0,0,m,alpha,A,Ad,B,beta,C_tapenade,Cd_tapenade);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Forward mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 
@@ -73,7 +73,7 @@ int main(int argc,char* args[])
   zeroout(m,n,Ab_tapenade);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_A_b(0,0,m,alpha,A,Ab_tapenade,B,one,C_tapenade,Cb);	// FIXME: beta
+    naive_dgemm_A_b(0,0,m,alpha,A,Ab_tapenade,B,one,C_tapenade,Cb);	// FIXME: beta
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Reverse mode with Tapenade",((double) t)/CLOCKS_PER_SEC);
 

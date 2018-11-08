@@ -22,7 +22,7 @@ void mxm(int m,int p,int n,double A[m][p],double B[p][n],double C[m][n])
 /*
   Basic implementation of dgemm for square matrices
 */
-void dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double beta,double C[m][m])
+void naive_dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double beta,double C[m][m])
 {
   int i,j,k;
 
@@ -121,8 +121,8 @@ void mtmv(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double
 {
   double tmp[m][m],one = 1.;
 
-  dgemm(0,0,m,one,B,U,beta,tmp);
-  dgemm(0,1,m,alpha,tmp,A,one,V); // FIXME ?
+  naive_dgemm(0,0,m,one,B,U,beta,tmp);
+  naive_dgemm(0,1,m,alpha,tmp,A,one,V); // FIXME ?
 }
 
 /*
