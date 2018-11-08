@@ -7,19 +7,19 @@ CLEANFILES	= test_AB test_A *.o *~
 
 mpm:
 	tapenade -tangent -head "mpm (A B)\(C)" -o mpm $(TFLAGS) mxm.c
-	tapenade -tangent -head "mpm (A)\(C)" -o mpm_A $(TFLAGS) mxm.c
-	#tapenade -tangent -head "mpm (B)\(C)" -o mpm_B $(TFLAGS) mxm.c
+	tapenade -tangent -head "mpm (A)\(C)" -o mpm_A $(TFLAGS) -tgtfuncname _A_d mxm.c
+	#tapenade -tangent -head "mpm (B)\(C)" -o mpm_B $(TFLAGS) -tgtfuncname _B_d mxm.c
 	tapenade -reverse -head "mpm (A B)\(C)" -o mpm $(TFLAGS) mxm.c
-	tapenade -reverse -head "mpm (A)\(C)" -o mpm_A $(TFLAGS) mxm.c
-	#tapenade -reverse -head "mpm (B)\(C)" -o mpm_B $(TFLAGS) mxm.c
+	tapenade -reverse -head "mpm (A)\(C)" -o mpm_A $(TFLAGS) -tgtfuncname _A_b mxm.c
+	#tapenade -reverse -head "mpm (B)\(C)" -o mpm_B $(TFLAGS) -tgtfuncname _B_b mxm.c
 
 mxm:
 	tapenade -tangent -head "mxm (A B)\(C)" -o mxm.c $(TFLAGS) mxm.c
-	tapenade -tangent -head "mxm (A)\(C)" -o mxm_A.c $(TFLAGS) mxm.c
-	#tapenade -tangent -head "mxm (B)\(C)" -o mxm_B.c $(TFLAGS) mxm.c
+	tapenade -tangent -head "mxm (A)\(C)" -o mxm_A.c $(TFLAGS) -tgtfuncname _A_d mxm.c
+	#tapenade -tangent -head "mxm (B)\(C)" -o mxm_B.c $(TFLAGS) -tgtfuncname _B_d mxm.c
 	tapenade -reverse -head "mxm (A,B)\(C)" -o mxm.c $(TFLAGS) mxm.c
-	tapenade -reverse -head "mxm (A)\(C)" -o mxm_A.c $(TFLAGS) mxm.c
-	#tapenade -reverse -head "mxm (B)\(C)" -o mxm_B.c $(TFLAGS) mxm.c
+	tapenade -reverse -head "mxm (A)\(C)" -o mxm_A.c $(TFLAGS) -tgtfuncname _A_b mxm.c
+	#tapenade -reverse -head "mxm (B)\(C)" -o mxm_B.c $(TFLAGS) -tgtfuncname _B_b mxm.c
 
 dgemm:
 	tapenade -tangent -head "naive_dgemm (A B)\(C)" $(TFLAGS) mxm.c
@@ -28,6 +28,14 @@ dgemm:
 	tapenade -reverse -head "naive_dgemm (A B)\(C)" $(TFLAGS) mxm.c
 	tapenade -reverse -head "naive_dgemm (A)\(C)" $(TFLAGS) -adjfuncname _A_b mxm.c
 	#tapenade -reverse -head "naive_dgemm (B)\(C)" $(TFLAGS) -adjfuncname _B_b mxm.c
+
+mtmv:
+	tapenade -tangent -head "mtmv (A B)\(C)" -o mtmv $(TFLAGS) mxm.c
+	tapenade -tangent -head "mtmv (A)\(C)" -o mtmv_A $(TFLAGS) -tgtfuncname _A_d mxm.c
+	#tapenade -tangent -head "mtmv (B)\(C)" -o mtmv_B $(TFLAGS) -tgtfuncname _B_d mxm.c
+	tapenade -reverse -head "mtmv (A B)\(C)" -o mtmv $(TFLAGS) mxm.c
+	tapenade -reverse -head "mtmv (A)\(C)" -o mtmv_A $(TFLAGS) -tgtfuncname _A_b mxm.c
+	#tapenade -reverse -head "mtmv (B)\(C)" -o mtmv_B $(TFLAGS) -tgtfuncname _B_b mxm.c
 
 clean:
 	rm -rf $(CLEANFILES)

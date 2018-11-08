@@ -105,9 +105,34 @@ void dgemm_B_dot(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 /*
   Forward mode double Kronecker product w.r.t. both matrix arguments
 */
-void mtmv_dot(int m,double A[m][m],double Ad[m][m],double B[m][m],double Bd[m][m],double U[m][m],double V[m][m],double Vd[m][m])
+void mtmv_dot(int m,double alpha,double A[m][m],double Ad[m][m],double B[m][m],double Bd[m][m],double U[m][m],double beta,double V[m][m],double Vd[m][m])
 {
-  // TODO
+  double tmp[m][m],tmpd[m][m],one = 1;
+
+  dgemm_A_dot(0,0,m,one,B,Bd,U,one,tmp,tmpd);
+  dgemm_dot(0,1,m,alpha,tmp,tmpd,A,Ad,beta,V,Vd);
+}
+
+/*
+  Forward mode double Kronecker product w.r.t. first matrix argument
+*/
+void mtmv_A_dot(int m,double alpha,double A[m][m],double Ad[m][m],double B[m][m],double U[m][m],double beta,double V[m][m],double Vd[m][m])
+{
+  double tmp[m][m],tmpd[m][m],one = 1;
+
+  dgemm_B_dot(0,1,m,one,U,A,Ad,one,tmp,tmpd);
+  dgemm_B_dot(0,0,m,alpha,B,tmp,tmpd,beta,V,Vd);
+}
+
+/*
+  Forward mode double Kronecker product w.r.t. second matrix argument
+*/
+void mtmv_B_dot(int m,double alpha,double A[m][m],double B[m][m],double Bd[m][m],double U[m][m],double beta,double V[m][m],double Vd[m][m])
+{
+  double tmp[m][m],tmpd[m][m],one = 1;
+
+  dgemm_A_dot(0,0,m,one,B,Bd,U,one,tmp,tmpd);
+  dgemm_A_dot(0,1,m,alpha,tmp,tmpd,A,beta,V,Vd);
 }
 
 /*-------------------------------

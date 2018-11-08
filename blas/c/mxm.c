@@ -121,8 +121,8 @@ void mtmv(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double
 {
   double tmp[m][m],one = 1.;
 
-  naive_dgemm(0,0,m,one,B,U,beta,tmp);
-  naive_dgemm(0,1,m,alpha,tmp,A,one,V); // FIXME ?
+  naive_dgemm(0,0,m,one,B,U,one,tmp);
+  naive_dgemm(0,1,m,alpha,tmp,A,beta,V);
 }
 
 /*
