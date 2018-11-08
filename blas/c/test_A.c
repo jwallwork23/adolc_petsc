@@ -77,7 +77,7 @@ int main(int argc,char* args[])
   zeroout(m,n,Ab_tapenade);
   t = clock();
   for (i=0; i<N; i++)
-    naive_dgemm_A_b(0,0,m,alpha,A,Ab_tapenade,B,beta,C_tapenade,Cb);
+    naive_dgemm_A_b(0,0,m,alpha,NULL,Ab_tapenade,B,beta,C_tapenade,Cb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Reverse mode with Tapenade",((double) t)/(N*CLOCKS_PER_SEC));
 
@@ -85,7 +85,7 @@ int main(int argc,char* args[])
   zeroout(m,n,Ab_byhand);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_A_bar(0,0,m,alpha,A,Ab_byhand,B,beta,C_byhand,Cb);
+    dgemm_A_bar(0,0,m,alpha,NULL,Ab_byhand,B,beta,C_byhand,Cb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Reverse mode with dgemms",((double) t)/(N*CLOCKS_PER_SEC));
   checkvals(m,p,Ab_byhand,Ab_tapenade);

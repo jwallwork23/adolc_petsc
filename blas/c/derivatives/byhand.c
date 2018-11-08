@@ -106,36 +106,14 @@ void dgemm_B_dot(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 }
 
 /*
-  Forward mode double Kronecker product w.r.t. both matrix arguments
+  Forward mode double Kronecker product TODO: test
 */
-void mtmv_dot(int m,double alpha,double A[m][m],double Ad[m][m],double B[m][m],double Bd[m][m],double U[m][m],double beta,double V[m][m],double Vd[m][m])
+void mtmv_dot(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double Ud[m][m],double beta,double V[m][m],double Vd[m][m])
 {
-  double tmp[m][m],tmpd[m][m],one = 1;
+  double tmp[m][m],tmpd[m][m],one = 1.,zero = 0.;
 
-  dgemm_A_dot(0,0,m,one,B,Bd,U,one,tmp,tmpd);
-  dgemm_dot(0,1,m,alpha,tmp,tmpd,A,Ad,beta,V,Vd);
-}
-
-/*
-  Forward mode double Kronecker product w.r.t. first matrix argument
-*/
-void mtmv_A_dot(int m,double alpha,double A[m][m],double Ad[m][m],double B[m][m],double U[m][m],double beta,double V[m][m],double Vd[m][m])
-{
-  double tmp[m][m],one = 1,zero = 0.;
-
-  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&B[0][0],m,&U[0][0],m,zero,&tmp[0][0],m);
-  dgemm_B_dot(0,1,m,alpha,tmp,A,Ad,one,V,Vd);
-}
-
-/*
-  Forward mode double Kronecker product w.r.t. second matrix argument
-*/
-void mtmv_B_dot(int m,double alpha,double A[m][m],double B[m][m],double Bd[m][m],double U[m][m],double beta,double V[m][m],double Vd[m][m])
-{
-  double tmp[m][m],one = 1,zero = 0.;
-
-  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,one,&U[0][0],m,&A[0][0],m,zero,&tmp[0][0],m);
-  dgemm_A_dot(0,0,m,alpha,B,Bd,tmp,beta,V,Vd);
+  dgemm_B_dot(0,0,m,one,B,U,Ud,zero,tmp,tmpd);
+  dgemm_B_dot(0,1,m,alpha,tmp,tmpd,A,beta,V,Vd);
 }
 
 /*-------------------------------
@@ -244,43 +222,15 @@ void dgemm_B_bar(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 }
 
 /*
-  Reverse mode double Kronecker product w.r.t. first two matrix arguments
+  Reverse mode double Kronecker product TODO: test
 */
-void mtmv_bar(int m,double alpha,double A[m][m],double Ab[m][m],double B[m][m],double Bb[m][m],double U[m][m],double beta,double V[m][m],double Vb[m][m])
+void mtmv_bar(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double Ub[m][m],double beta,double V[m][m],double Vb[m][m])
 {
   double tmp[m][m],tmpb[m][m],one = 1;
-  //double Ub[m][m];
 
   cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&B[0][0],m,&U[0][0],m,one,&tmp[0][0],m);
-  zeroout(m,m,tmpb);
-  dgemm_bar(0,1,m,alpha,tmp,tmpb,A,Ab,beta,V,Vb);
-  //zeroout(m,m,Ub);
-  //dgemm_bar(0,0,m,1,B,Bb,U,Ub,1,tmp,tmpb);
-  dgemm_A_bar(0,0,m,1,B,Bb,U,1,tmp,tmpb);
+  dgemm_A_bar(0,1,m,alpha,NULL,tmpb,A,beta,V,Vb);
+  dgemm_B_bar(0,0,m,1,B,U,Ub,1,NULL,tmpb);
 }
 
-/*
-  Reverse mode double Kronecker product w.r.t. first matrix argument
-*/
-void mtmv_A_bar(int m,double alpha,double A[m][m],double Ab[m][m],double B[m][m],double U[m][m],double beta,double V[m][m],double Vb[m][m])
-{
-  double tmp[m][m],one = 1;
-  //double tmpb[m][m];
-
-  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&B[0][0],m,&U[0][0],m,one,&tmp[0][0],m);
-  //dgemm_bar(0,1,m,alpha,tmp,tmpb,A,Ab,beta,V,Vb);
-  dgemm_A_bar(0,1,m,alpha,tmp,A,Ab,beta,V,Vb);
-}
-
-/*
-  Reverse mode double Kronecker product w.r.t. second matrix argument
-*/
-void mtmv_B_bar(int m,double alpha,double A[m][m],double B[m][m],double Bb[m][m],double U[m][m],double beta,double V[m][m],double Vb[m][m])
-{
-  double tmp[m][m],one = 1,zero = 0.;
-
-  dgemm_A_bar(0,1,m,alpha,tmp,tmpb,A,beta,V,Vb);
-  dgemm_A_bar(0,0,m,1,B,Bb,U,1,tmp,tmpb);
-
-  // TODO: If you reorder these then you get more efficiency - interesting note for paper.
-}
+// TODO: Tapenade efficiency is dependent on ordering in mtmv  - interesting note for paper.
