@@ -118,10 +118,10 @@ void mtmv_dot(int m,double alpha,double A[m][m],double Ad[m][m],double B[m][m],d
 */
 void mtmv_A_dot(int m,double alpha,double A[m][m],double Ad[m][m],double B[m][m],double U[m][m],double beta,double V[m][m],double Vd[m][m])
 {
-  double tmp[m][m],tmpd[m][m],one = 1;
+  double tmp[m][m],one = 1,zero = 0.;
 
-  dgemm_B_dot(0,1,m,one,U,A,Ad,one,tmp,tmpd);
-  dgemm_B_dot(0,0,m,alpha,B,tmp,tmpd,beta,V,Vd);
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&B[0][0],m,&U[0][0],m,zero,&tmp[0][0],m);
+  dgemm_B_dot(0,1,m,alpha,tmp,A,Ad,one,V,Vd);
 }
 
 /*
@@ -129,10 +129,10 @@ void mtmv_A_dot(int m,double alpha,double A[m][m],double Ad[m][m],double B[m][m]
 */
 void mtmv_B_dot(int m,double alpha,double A[m][m],double B[m][m],double Bd[m][m],double U[m][m],double beta,double V[m][m],double Vd[m][m])
 {
-  double tmp[m][m],tmpd[m][m],one = 1;
+  double tmp[m][m],one = 1,zero = 0.;
 
-  dgemm_A_dot(0,0,m,one,B,Bd,U,one,tmp,tmpd);
-  dgemm_A_dot(0,1,m,alpha,tmp,tmpd,A,beta,V,Vd);
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,one,&U[0][0],m,&A[0][0],m,zero,&tmp[0][0],m);
+  dgemm_A_dot(0,0,m,alpha,B,Bd,tmp,beta,V,Vd);
 }
 
 /*-------------------------------
