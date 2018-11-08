@@ -1,6 +1,15 @@
 #include "../mxm.c"
 #include <cblas.h>
 
+
+void mtmv(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double beta,double V[m][m])
+{
+  double tmp[m][m],one = 1.;
+
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&B[0][0],m,&U[0][0],m,beta,&tmp[0][0],m);
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&tmp[0][0],m,&A[0][0],m,beta,&V[0][0],m);
+}
+
 /*-------------------------------
        FORWARD DERIVATIVES
   ------------------------------- */
@@ -13,12 +22,12 @@
 void mxm_dot(int m,int p,int n,double A[m][p],double Ad[m][p],double B[p][n],double Bd[p][n],double C[m][n],double Cd[m][n])
 {
   /* Undifferentiated function call */
-  mxm(m,p,n,A,B,C);
+  naive_mxm(m,p,n,A,B,C);
 
   /* Differentiated function call */
   zeroout(m,n,Cd);
-  mxm(m,p,n,Ad,B,Cd);
-  mxm(m,p,n,A,Bd,Cd);
+  naive_mxm(m,p,n,Ad,B,Cd);
+  naive_mxm(m,p,n,A,Bd,Cd);
 }
 
 /*
@@ -27,12 +36,12 @@ void mxm_dot(int m,int p,int n,double A[m][p],double Ad[m][p],double B[p][n],dou
 void mpm_dot(int m,int n,double A[m][n],double Ad[m][n],double B[m][n],double Bd[m][n],double C[m][n],double Cd[m][n])
 {
   /* Undifferentiated function call */
-  mpm(m,n,A,B,C);
+  naive_mpm(m,n,A,B,C);
 
   /* Differentiated function call */
   zeroout(m,n,Cd);
-  mpm(m,n,Ad,B,Cd);
-  mpm(m,n,A,Bd,Cd);
+  naive_mpm(m,n,Ad,B,Cd);
+  naive_mpm(m,n,A,Bd,Cd);
 }
 
 /*
@@ -133,8 +142,8 @@ void mxm_bar(int m,int p,int n,double A[m][p],double Ab[m][p],double B[p][n],dou
   zeroout(p,n,Bb);
   transpose(m,p,A,At);
   transpose(p,n,B,Bt);
-  mxm(m,n,p,Cb,Bt,Ab);
-  mxm(p,m,n,At,Cb,Bb);
+  naive_mxm(m,n,p,Cb,Bt,Ab);
+  naive_mxm(p,m,n,At,Cb,Bb);
 }
 
 /*
@@ -144,8 +153,8 @@ void mpm_bar(int m,int n,double A[m][n],double Ab[m][n],double B[m][n],double Bb
 {
   zeroout(m,n,Ab);
   zeroout(m,n,Bb);
-  mpm(m,n,Cb,B,Ab);
-  mpm(m,n,A,Cb,Bb);
+  naive_mpm(m,n,Cb,B,Ab);
+  naive_mpm(m,n,A,Cb,Bb);
 }
 
 /*

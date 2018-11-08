@@ -6,7 +6,7 @@
 
   C = C + A*B
 */
-void mxm(int m,int p,int n,double A[m][p],double B[p][n],double C[m][n])
+void naive_mxm(int m,int p,int n,double A[m][p],double B[p][n],double C[m][n])
 {
   int i,j,k;
 
@@ -97,7 +97,7 @@ void naive_dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 
   C = C + A.*B
 */
-void mpm(int m,int n,double A[m][n],double B[m][n],double C[m][n])
+void naive_mpm(int m,int n,double A[m][n],double B[m][n],double C[m][n])
 {
   int i,j;
 
@@ -106,19 +106,6 @@ void mpm(int m,int n,double A[m][n],double B[m][n],double C[m][n])
       C[i][j] += A[i][j] * B[i][j];
     }
   }
-}
-
-/*
-  Double Kronecker product (on square matrices)
-
-  vec(V) = (A \otimes B) vec(U)  <=>  V = B * U * A^T
-*/
-void mtmv(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double beta,double V[m][m])
-{
-  double tmp[m][m],one = 1.;
-
-  naive_dgemm(0,0,m,one,B,U,one,tmp);
-  naive_dgemm(0,1,m,alpha,tmp,A,beta,V);
 }
 
 /*
