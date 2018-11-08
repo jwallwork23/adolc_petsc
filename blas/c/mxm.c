@@ -30,16 +30,12 @@ void naive_dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
     for (j=0; (j<m); j++) {
       if (beta == 0.) {
         C[i][j] = 0.;
-      } else if (beta == 1.) {
-        // Do nothing
-      } else {
+      } else if (beta != 1.) {
         C[i][j] = beta * C[i][j];
       }
     }
   }
-  if (alpha == 0.) {
-    // Do nothing
-  } else {
+  if (alpha != 0.) {
     if (!transa) {
       if (!transb) {
         for (i=0; i<m; i++) {

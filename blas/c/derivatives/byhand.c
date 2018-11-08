@@ -36,7 +36,7 @@ void mpm_dot(int m,int n,double A[m][n],double Ad[m][n],double B[m][n],double Bd
 }
 
 /*
-  Forward mode simple dgemm w.r.t. both matrix arguments
+  Forward mode square dgemm w.r.t. both matrix arguments
 */
 void dgemm_dot(bool transa,bool transb,int m,double alpha,double A[m][m],double Ad[m][m],double B[m][m],double Bd[m][m],double beta,double C[m][m],double Cd[m][m])
 {
@@ -62,7 +62,7 @@ void dgemm_dot(bool transa,bool transb,int m,double alpha,double A[m][m],double 
 }
 
 /*
-  Forward mode simple dgemm w.r.t first matrix argument
+  Forward mode square dgemm w.r.t first matrix argument
 */
 void dgemm_A_dot(bool transa,bool transb,int m,double alpha,double A[m][m],double Ad[m][m],double B[m][m],double beta,double C[m][m],double Cd[m][m])
 {
@@ -83,6 +83,9 @@ void dgemm_A_dot(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
   }
 }
 
+/*
+  Forward mode square dgemm w.r.t second matrix argument
+*/
 void dgemm_B_dot(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double Bd[m][m],double beta,double C[m][m],double Cd[m][m])
 {
   double zero = 0.;
@@ -168,7 +171,7 @@ void mpm_bar(int m,int n,double A[m][n],double Ab[m][n],double B[m][n],double Bb
 }
 
 /*
-  Reverse mode simple dgemm w.r.t. both matrix arguments
+  Reverse mode square dgemm w.r.t. both matrix arguments
 */
 void dgemm_bar(bool transa,bool transb,int m,double alpha,double A[m][m],double Ab[m][m],double B[m][m],double Bb[m][m],double beta,double C[m][m],double Cb[m][m])
 {
@@ -195,7 +198,7 @@ void dgemm_bar(bool transa,bool transb,int m,double alpha,double A[m][m],double 
 }
 
 /*
-  Reverse mode simple dgemm w.r.t. first matrix argument
+  Reverse mode square dgemm w.r.t. first matrix argument
 */
 void dgemm_A_bar(bool transa,bool transb,int m,double alpha,double A[m][m],double Ab[m][m],double B[m][m],double beta,double C[m][m],double Cb[m][m])
 {
@@ -218,7 +221,7 @@ void dgemm_A_bar(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 }
 
 /*
-  Reverse mode simple dgemm w.r.t. second matrix argument
+  Reverse mode square dgemm w.r.t. second matrix argument
 */
 void dgemm_B_bar(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double Bb[m][m],double beta,double C[m][m],double Cb[m][m])
 {
@@ -238,4 +241,46 @@ void dgemm_B_bar(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
     }
   }
   cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,zero,&A[0][0],m,&B[0][0],m,beta,&Cb[0][0],m);
+}
+
+/*
+  Reverse mode double Kronecker product w.r.t. first two matrix arguments
+*/
+void mtmv_bar(int m,double alpha,double A[m][m],double Ab[m][m],double B[m][m],double Bb[m][m],double U[m][m],double beta,double V[m][m],double Vb[m][m])
+{
+  double tmp[m][m],tmpb[m][m],one = 1;
+  //double Ub[m][m];
+
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&B[0][0],m,&U[0][0],m,one,&tmp[0][0],m);
+  zeroout(m,m,tmpb);
+  dgemm_bar(0,1,m,alpha,tmp,tmpb,A,Ab,beta,V,Vb);
+  //zeroout(m,m,Ub);
+  //dgemm_bar(0,0,m,1,B,Bb,U,Ub,1,tmp,tmpb);
+  dgemm_A_bar(0,0,m,1,B,Bb,U,1,tmp,tmpb);
+}
+
+/*
+  Reverse mode double Kronecker product w.r.t. first matrix argument
+*/
+void mtmv_A_bar(int m,double alpha,double A[m][m],double Ab[m][m],double B[m][m],double U[m][m],double beta,double V[m][m],double Vb[m][m])
+{
+  double tmp[m][m],one = 1;
+  //double tmpb[m][m];
+
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&B[0][0],m,&U[0][0],m,one,&tmp[0][0],m);
+  //dgemm_bar(0,1,m,alpha,tmp,tmpb,A,Ab,beta,V,Vb);
+  dgemm_A_bar(0,1,m,alpha,tmp,A,Ab,beta,V,Vb);
+}
+
+/*
+  Reverse mode double Kronecker product w.r.t. second matrix argument
+*/
+void mtmv_B_bar(int m,double alpha,double A[m][m],double B[m][m],double Bb[m][m],double U[m][m],double beta,double V[m][m],double Vb[m][m])
+{
+  double tmp[m][m],one = 1,zero = 0.;
+
+  dgemm_A_bar(0,1,m,alpha,tmp,tmpb,A,beta,V,Vb);
+  dgemm_A_bar(0,0,m,1,B,Bb,U,1,tmp,tmpb);
+
+  // TODO: If you reorder these then you get more efficiency - interesting note for paper.
 }
