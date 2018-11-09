@@ -164,19 +164,19 @@ PetscErrorCode GEMMBarB(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pe
 /*
   TODO: Rewrite using below
 */
-PetscErrorCode TripleTensor(PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscBLASInt *L,PetscScalar *ALPHA,Petscscalar *A,PetscScalar *B,PetscScalar *C,PetscScalar *BETA,PetscScalar *D)
+PetscErrorCode TripleTensor(PetscBLASInt *M,PetscScalar *ALPHA,Petscscalar *A,PetscScalar *B,PetscScalar *U,PetscScalar *BETA,PetscScalar *V)
 {
   PetscErrorCode ierr;
-  PetscInt       *m = (PetscInt*) M,*k = (PetscInt*) K;
+  PetscInt       *m = (PetscInt*) M;
   PetscScalar    one = 1.,zero = 0.,**tmp;
 
   PetscFunctionBegin;
 
   // TODO: Allocate memory for tmp
-  ierr = PetscMalloc1((*m)*(*k),&tmp[0]);CHKERRQ(ierr);
+  ierr = PetscMalloc1((*m)*(*m),&tmp[0]);CHKERRQ(ierr);
 
-  BLASgemm_("N","N",&M,&K,&N,&one,&A[0][0],&M,&B[0][0],&N,&zero,&tmp[0][0],&M);
-  BLASgemm_("N","T",&M,&L,&K,&ALPHA,&tmp[0][0],&M,&C[0][0],&K,&BETA,&D[0][0],&M);
+  BLASgemm_("N","N",&M,&M,&M,&one,&B[0][0],&M,&U[0][0],&M,&zero,&tmp[0][0],&M);
+  BLASgemm_("N","T",&M,&M,&M,&ALPHA,&tmp[0][0],&M,&A[0][0],&M,&BETA,&V[0][0],&M);
 
   //ierr = PetscFree((tmp)[0]);CHKERRQ(ierr);
   ierr = PetscFree(tmp);CHKERRQ(ierr);

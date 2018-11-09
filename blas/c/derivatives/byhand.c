@@ -1,7 +1,10 @@
 #include "../mxm.c"
 #include <cblas.h>
 
-
+/*
+  'Matrix-tensor-matrix-vector' product 
+    vec(V) = alpha * (A \otimes B) vec(U) + beta * vec(V)  <=>  V = alpha * B * U * A^T + beta * V
+*/
 void mtmv(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double beta,double V[m][m])
 {
   double tmp[m][m],one = 1.,zero = 0.;
@@ -127,7 +130,7 @@ void dgemm_B_dot(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 }
 
 /*
-  Forward mode double Kronecker product
+  Forward mode matrix-tensor-matrix-vector product
 */
 void mtmv_dot(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double Ud[m][m],double beta,double V[m][m],double Vd[m][m])
 {
@@ -244,7 +247,7 @@ void dgemm_B_bar(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 }
 
 /*
-  Reverse mode double Kronecker product TODO: test
+  Reverse mode matrix-tensor-matrix-vector product
 */
 void mtmv_bar(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double Ub[m][m],double beta,double V[m][m],double Vb[m][m])
 {
