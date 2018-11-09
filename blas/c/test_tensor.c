@@ -1,18 +1,9 @@
-#include <assert.h>
-#include <math.h>
 #include <time.h>
-#include <stdlib.h>
-
+#include "utils.c"
 #include "derivatives/byhand.c"
 #include "derivatives/naive_mtmv_d.c"
 #include "derivatives/naive_mtmv_b.c"
 
-
-void initrandom(int m,int n,double A[m][n]);
-
-double getrand();
-void checkval(double approx,double exact);
-void checkvals(int m,int n,double C_byhand[m][n],double C_tapenade[m][n]);
 
 int main(int argc,char* args[])
 {
@@ -92,36 +83,4 @@ int main(int argc,char* args[])
   printf("All tests passed.\n");
 
   return 0;
-}
-
-void checkval(double approx,double exact)
-{
-  assert(fabs(approx-exact)<1e-8);
-}
-
-double getrand()
-{
-  return ((double) rand()) / 1.e9 - 1.;
-}
-
-void initrandom(int m,int n,double A[m][n])
-{
-  int i,j;
-
-  for (i=0; i<m; i++) {
-    for (j=0; j<n; j++) {
-      A[i][j] = getrand();
-    }
-  }
-}
-
-void checkvals(int m,int n,double C_byhand[m][n],double C_tapenade[m][n])
-{
-  int i,j;
-
-  for (i=0; i<m; i++) {
-    for (j=0; j<n; j++) {
-      checkval(C_byhand[i][j],C_tapenade[i][j]);
-    }
-  }
 }
