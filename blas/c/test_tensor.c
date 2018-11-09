@@ -17,10 +17,10 @@ void checkvals(int m,int n,double C_byhand[m][n],double C_tapenade[m][n]);
 int main(int argc,char* args[])
 {
   clock_t t;
-  int     m = 10,p = 10,n = 10,N = 1000,i; // TODO: Square everything off
-  double  A[m][p],B[p][n],U[m][m],V_byhand[m][n],V_tapenade[m][n],one = 1.,zero = 0.,alpha,beta;
-  double  Ad[m][p],Vd_byhand[m][n],Vd_tapenade[m][n];
-  double  Ub_byhand[m][p],Ub_tapenade[m][p],Vb[m][n];
+  int     m = 10,N = 1000,i;
+  double  A[m][m],B[m][m],U[m][m],V_byhand[m][m],V_tapenade[m][m],one = 1.,zero = 0.,alpha,beta;
+  double  Ud[m][m],Vd_byhand[m][m],Vd_tapenade[m][m];
+  double  Ub_byhand[m][m],Ub_tapenade[m][m],Vb[m][m];
 
   printf("\n*******************************************************************\n");
   printf("***** EXPERIMENT 3: differentiation of tensor expression by U *****\n");
@@ -52,30 +52,25 @@ int main(int argc,char* args[])
   printf("\n%30s: %.4e seconds\n\n","Single mtmv call using dgemm",((double) t)/(N*CLOCKS_PER_SEC));
   checkvals(m,m,V_byhand,V_tapenade);
 
-// TODO below
-
   /* Forward mode with Tapenade */
-/*
-  initrandom(m,p,Ad);
-  zeroout(m,n,C_tapenade);
+  initrandom(m,m,Ud);
+  zeroout(m,m,V_tapenade);
   t = clock();
   for (i=0; i<N; i++)
-    naive_dgemm_A_d(0,0,m,alpha,A,Ad,B,beta,C_tapenade,Cd_tapenade);
+    naive_mtmv_d(m,alpha,A,B,U,Ud,beta,V_tapenade,Vd_tapenade);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Forward mode with Tapenade",((double) t)/(N*CLOCKS_PER_SEC));
-*/
+
   /* Forward mode with dgemms */
-/*
-  zeroout(m,n,C_byhand);
+  zeroout(m,m,V_byhand);
   t = clock();
   for (i=0; i<N; i++) {
-    cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C_byhand[0][0],m);
-    dgemm_A_dot(0,0,m,alpha,A,Ad,B,beta,C_byhand,Cd_byhand);
+    mtmv_dot(m,alpha,A,B,U,Ud,beta,V_byhand,Vd_byhand);
   }
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Forward mode with dgemms",((double) t)/(N*CLOCKS_PER_SEC));
-  checkvals(m,n,Cd_byhand,Cd_tapenade);
-*/
+  checkvals(m,m,Vd_byhand,Vd_tapenade);
+
   /* Reverse mode with Tapenade */
 /*
   initrandom(m,n,Cb);

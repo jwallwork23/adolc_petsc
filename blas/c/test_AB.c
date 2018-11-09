@@ -19,7 +19,7 @@ void checkvals(int m,int n,double C_byhand[m][n],double C_tapenade[m][n]);
 int main(int argc,char* args[])
 {
   clock_t t;
-  int     m = 10,p = 10,n = 10,N = 1000,i;
+  int     m = 10,p = 10,n = 10,N = 1000,i; // TODO: Square everything off
   double  A[m][p],B[p][n],C_byhand[m][n],C_tapenade[m][n],one = 1.,zero = 0.,alpha,beta;
   double  Ad[m][p],Bd[p][n],Cd_byhand[m][n],Cd_tapenade[m][n];
   double  Ab_byhand[m][p],Ab_tapenade[m][p],Bb_byhand[p][n],Bb_tapenade[p][n],Cb[m][n];
@@ -65,7 +65,6 @@ int main(int argc,char* args[])
   zeroout(m,n,C_byhand);
   t = clock();
   for (i=0; i<N; i++) {
-    cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,beta,&A[0][0],m,&B[0][0],m,zero,&C_byhand[0][0],m);
     dgemm_dot(0,0,m,alpha,A,Ad,B,Bd,one,C_byhand,Cd_byhand);
   }
   t = clock() - t;

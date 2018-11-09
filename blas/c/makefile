@@ -1,9 +1,9 @@
-all: clean cleandiff dgemm test_A
+all: clean cleandiff mtmv test_tensor
 
 CFLAGS		= -Wall -I${TAPENADE_HOME}/ADFirstAidKit -I${LAPACK_HOME}/CBLAS
 LIB		= -L${LAPACK_HOME} -lcblas -lrefblas -ltmglib -llapack
 TFLAGS  	= -O derivatives
-CLEANFILES	= test_AB test_A *.o *~
+CLEANFILES	= test_AB test_A test_tensor *.o *~
 
 mpm:
 	tapenade -tangent -head "naive_mpm (A B)\(C)" -o mpm $(TFLAGS) mxm.c

@@ -65,7 +65,6 @@ int main(int argc,char* args[])
   zeroout(m,n,C_byhand);
   t = clock();
   for (i=0; i<N; i++) {
-    cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C_byhand[0][0],m);
     dgemm_A_dot(0,0,m,alpha,A,Ad,B,beta,C_byhand,Cd_byhand);
   }
   t = clock() - t;
