@@ -72,25 +72,23 @@ int main(int argc,char* args[])
   checkvals(m,m,Vd_byhand,Vd_tapenade);
 
   /* Reverse mode with Tapenade */
-/*
-  initrandom(m,n,Cb);
-  zeroout(m,n,Ab_tapenade);
+  initrandom(m,m,Vb);
+  zeroout(m,m,Ub_tapenade);
   t = clock();
   for (i=0; i<N; i++)
-    naive_dgemm_A_b(0,0,m,alpha,NULL,Ab_tapenade,B,beta,C_tapenade,Cb);
+    naive_mtmv_b(m,alpha,A,B,U,Ub_tapenade,beta,V_tapenade,Vb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n","Reverse mode with Tapenade",((double) t)/(N*CLOCKS_PER_SEC));
-*/
+
   /* Reverse mode with dgemms */
-/*
-  zeroout(m,n,Ab_byhand);
+  zeroout(m,m,Ub_byhand);
   t = clock();
   for (i=0; i<N; i++)
-    dgemm_A_bar(0,0,m,alpha,NULL,Ab_byhand,B,beta,C_byhand,Cb);
+    mtmv_bar(m,alpha,A,B,U,Ub_byhand,beta,V_byhand,Vb);
   t = clock() - t;
   printf("%30s: %.4e seconds\n\n","Reverse mode with dgemms",((double) t)/(N*CLOCKS_PER_SEC));
-  checkvals(m,p,Ab_byhand,Ab_tapenade);
-*/
+  checkvals(m,m,Ub_byhand,Ub_tapenade);
+
   printf("All tests passed.\n");
 
   return 0;

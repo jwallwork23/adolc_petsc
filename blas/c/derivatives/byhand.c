@@ -127,7 +127,7 @@ void dgemm_B_dot(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 }
 
 /*
-  Forward mode double Kronecker product TODO: test
+  Forward mode double Kronecker product
 */
 void mtmv_dot(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double Ud[m][m],double beta,double V[m][m],double Vd[m][m])
 {
