@@ -251,9 +251,8 @@ void dgemm_B_bar(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 */
 void mtmv_bar(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double Ub[m][m],double beta,double V[m][m],double Vb[m][m])
 {
-  double tmp[m][m],tmpb[m][m],one = 1;
+  double tmpb[m][m],one = 1;
 
-  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&B[0][0],m,&U[0][0],m,one,&tmp[0][0],m);
   dgemm_A_bar(0,1,m,alpha,NULL,tmpb,A,beta,V,Vb);
   dgemm_B_bar(0,0,m,1,B,U,Ub,1,NULL,tmpb);
 }
