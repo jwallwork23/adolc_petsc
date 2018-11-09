@@ -30,7 +30,7 @@ PetscErrorCode GEMMDot(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pet
 */
 PetscErrorCode GEMMDotA(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscScalar *AD,PetscBLASInt *LDA,PetscScalar *B,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CD,PetscBLASInt *LDC)
 {
-  PetscScalar    one = 1.;
+  PetscScalar    zero = 0.;
   PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,i;
 
   PetscFunctionBegin;
@@ -40,7 +40,7 @@ PetscErrorCode GEMMDotA(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pe
 
   /* Differentiated call */
   for (i=0; i<(*m)*(*n); ++i) CD[i] = 0.;
-  BLASgemm_(TRANSA,TRANSB,M,N,K,ALPHA,AD,LDA,B,LDB,BETA,CD,LDC);
+  BLASgemm_(TRANSA,TRANSB,M,N,K,ALPHA,AD,LDA,B,LDB,&zero,CD,LDC);
   PetscFunctionReturn(0);
 }
 
@@ -49,7 +49,7 @@ PetscErrorCode GEMMDotA(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pe
 */
 PetscErrorCode GEMMDotB(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscBLASInt *LDA,PetscScalar *B,PetscScalar *BD,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CD,PetscBLASInt *LDC)
 {
-  PetscScalar    one = 1.;
+  PetscScalar    zero = 0.;
   PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,i;
 
   PetscFunctionBegin;
@@ -59,7 +59,7 @@ PetscErrorCode GEMMDotB(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pe
 
   /* Differentiated call */
   for (i=0; i<(*m)*(*n); ++i) CD[i] = 0.;
-  BLASgemm_(TRANSA,TRANSB,M,N,K,ALPHA,A,LDA,BD,LDB,&BETA,CD,LDC);
+  BLASgemm_(TRANSA,TRANSB,M,N,K,ALPHA,A,LDA,BD,LDB,&zero,CD,LDC);
   PetscFunctionReturn(0);
 }
 
@@ -72,7 +72,7 @@ PetscErrorCode GEMMDotB(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pe
 */
 PetscErrorCode GEMMBar(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscScalar *AB,PetscBLASInt *LDA,PetscScalar *B,PetscScalar *BB,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CB,PetscBLASInt *LDC)
 {
-  PetscScalar    one = 1.,zero = 0.;
+  PetscScalar    zero = 0.;
   PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,*k = (PetscInt*) K,i;
   char           leaveA,leaveB,trans[2] = "NT";
 
@@ -87,17 +87,17 @@ PetscErrorCode GEMMBar(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pet
   /* Reverse derivative for A */
   if (*TRANSA == trans[0]) {
     leaveA = trans[1];
-    BLASgemm_(&trans[0],&leaveB,M,K,N,ALPHA,CB,LDC,B,LDB,&one,AB,LDA);
+    BLASgemm_(&trans[0],&leaveB,M,K,N,ALPHA,CB,LDC,B,LDB,&zero,AB,LDA);
   } else {
     leaveA = trans[0];
-    BLASgemm_(TRANSB,&trans[1],K,M,N,ALPHA,B,LDB,CB,LDC,&one,AB,LDA);
+    BLASgemm_(TRANSB,&trans[1],K,M,N,ALPHA,B,LDB,CB,LDC,&zero,AB,LDA);
   }
 
   /* Reverse derivative for B */
   if (*TRANSB == trans[0])
-    BLASgemm_(&leaveA,&trans[0],M,N,K,ALPHA,A,LDA,CB,LDC,&one,BB,LDB);
+    BLASgemm_(&leaveA,&trans[0],M,N,K,ALPHA,A,LDA,CB,LDC,&zero,BB,LDB);
   else
-    BLASgemm_(&trans[1],TRANSA,N,M,K,ALPHA,CB,LDC,A,LDA,&one,BB,LDB);
+    BLASgemm_(&trans[1],TRANSA,N,M,K,ALPHA,CB,LDC,A,LDA,&zero,BB,LDB);
 
   /* Quick return scaled C */
   BLASgemm_(&trans[0],&trans[0],M,N,K,&zero,A,LDA,B,LDB,BETA,CB,LDC);
@@ -109,7 +109,7 @@ PetscErrorCode GEMMBar(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pet
 */
 PetscErrorCode GEMMBarA(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscScalar *AB,PetscBLASInt *LDA,PetscScalar *B,,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CB,PetscBLASInt *LDC)
 {
-  PetscScalar    one = 1.,zero = 0.;
+  PetscScalar    zero = 0.;
   PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,*k = (PetscInt*) K,i;
   char           leaveB,trans[2] = "NT";
 
@@ -123,10 +123,10 @@ PetscErrorCode GEMMBarA(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pe
   /* Reverse derivative for A */
   if (*TRANSA == trans[0]) {
     leaveA = trans[1];
-    BLASgemm_(&trans[0],&leaveB,M,K,N,ALPHA,CB,LDC,B,LDB,&one,AB,LDA);
+    BLASgemm_(&trans[0],&leaveB,M,K,N,ALPHA,CB,LDC,B,LDB,&zero,AB,LDA);
   } else {
     leaveA = trans[0];
-    BLASgemm_(TRANSB,&trans[1],K,M,N,ALPHA,B,LDB,CB,LDC,&one,AB,LDA);
+    BLASgemm_(TRANSB,&trans[1],K,M,N,ALPHA,B,LDB,CB,LDC,&zero,AB,LDA);
   }
 
   /* Quick return scaled C */
@@ -139,7 +139,7 @@ PetscErrorCode GEMMBarA(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pe
 */
 PetscErrorCode GEMMBarB(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,PetscBLASInt *N,PetscBLASInt *K,PetscScalar *ALPHA,PetscScalar *A,PetscBLASInt *LDA,PetscScalar *B,PetscScalar *BB,PetscBLASInt *LDB,PetscScalar *BETA,PetscScalar *C,PetscScalar *CB,PetscBLASInt *LDC)
 {
-  PetscScalar    one = 1.,zero = 0.;
+  PetscScalar    zero = 0.;
   PetscInt       *m = (PetscInt*) M,*n = (PetscInt*) N,*k = (PetscInt*) K,i;
   char           leaveA,trans[2] = "NT";
 
@@ -152,9 +152,9 @@ PetscErrorCode GEMMBarB(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pe
 
   /* Reverse derivative for B */
   if (*TRANSB == trans[0])
-    BLASgemm_(&leaveA,&trans[0],M,N,K,ALPHA,A,LDA,CB,LDC,&one,BB,LDB);
+    BLASgemm_(&leaveA,&trans[0],M,N,K,ALPHA,A,LDA,CB,LDC,&zero,BB,LDB);
   else
-    BLASgemm_(&trans[1],TRANSA,N,M,K,ALPHA,CB,LDC,A,LDA,&one,BB,LDB);
+    BLASgemm_(&trans[1],TRANSA,N,M,K,ALPHA,CB,LDC,A,LDA,&zero,BB,LDB);
 
   /* Quick return scaled C */
   BLASgemm_(&trans[0],&trans[0],M,N,K,&zero,A,LDA,B,LDB,BETA,CB,LDC);
