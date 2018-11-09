@@ -4,9 +4,9 @@
 
 void mtmv(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double beta,double V[m][m])
 {
-  double tmp[m][m],one = 1.;
+  double tmp[m][m],one = 1.,zero = 0.;
 
-  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&B[0][0],m,&U[0][0],m,beta,&tmp[0][0],m);
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,one,&B[0][0],m,&U[0][0],m,zero,&tmp[0][0],m);
   cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&tmp[0][0],m,&A[0][0],m,beta,&V[0][0],m);
 }
 

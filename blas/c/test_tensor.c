@@ -8,9 +8,7 @@
 #include "derivatives/naive_mtmv_b.c"
 
 
-void inittest(int m,int p,int n,double A[m][p],double B[p][n]);
-void initforward(int m,int p,int n,double Ad[m][p]);
-void initreverse(int m,int n,double Cb[m][n]);
+void initrandom(int m,int n,double A[m][n]);
 
 double getrand();
 void checkval(double approx,double exact);
@@ -35,28 +33,30 @@ int main(int argc,char* args[])
   beta = getrand();
 
   /* 'Naive' mtmv */
-  inittest(m,p,n,A,B);
-  zeroout(m,n,V_tapenade);
+  initrandom(m,m,A);
+  initrandom(m,m,B);
+  initrandom(m,m,U);
+  zeroout(m,m,V_tapenade);
   t = clock();
   for (i=0; i<N; i++)
     naive_mtmv(m,alpha,A,B,U,beta,V_tapenade);
   t = clock() - t;
-  printf("\n%30s: %.4e seconds","Single naive dgemm call",((double) t)/(N*CLOCKS_PER_SEC));
+  printf("\n%30s: %.4e seconds","Single naive mtmv call",((double) t)/(N*CLOCKS_PER_SEC));
 
-  /* LAPACK dgemm */
-  zeroout(m,n,V_byhand);
+  /* dgemm based mtmv */
+  zeroout(m,m,V_byhand);
   t = clock();
   for (i=0; i<N; i++)
-    mtmv(m,alpha,A,B,U,beta,V_tapenade);
+    mtmv(m,alpha,A,B,U,beta,V_byhand);
   t = clock() - t;
-  printf("\n%30s: %.4e seconds\n\n","Single LAPACK dgemm call",((double) t)/(N*CLOCKS_PER_SEC));
-  checkvals(m,n,V_byhand,V_tapenade);
+  printf("\n%30s: %.4e seconds\n\n","Single mtmv call using dgemm",((double) t)/(N*CLOCKS_PER_SEC));
+  checkvals(m,m,V_byhand,V_tapenade);
 
 // TODO below
 
   /* Forward mode with Tapenade */
 /*
-  initforward(m,p,n,Ad);
+  initrandom(m,p,Ad);
   zeroout(m,n,C_tapenade);
   t = clock();
   for (i=0; i<N; i++)
@@ -78,7 +78,7 @@ int main(int argc,char* args[])
 */
   /* Reverse mode with Tapenade */
 /*
-  initreverse(m,n,Cb);
+  initrandom(m,n,Cb);
   zeroout(m,n,Ab_tapenade);
   t = clock();
   for (i=0; i<N; i++)
@@ -111,41 +111,13 @@ double getrand()
   return ((double) rand()) / 1.e9 - 1.;
 }
 
-void inittest(int m,int p,int n,double A[m][p],double B[p][n])
-{
-  int i,j;
-
-  for (i=0; i<m; i++) {
-    for (j=0; j<p; j++) {
-      A[i][j] = getrand();
-    }
-  }
-
-  for (i=0; i<m; i++) {
-    for (j=0; j<p; j++) {
-      B[i][j] = getrand();
-    }
-  }
-}
-
-void initforward(int m,int p,int n,double Ad[m][p])
-{
-  int    i,j;
-
-  for (i=0; i<m; i++) {
-    for (j=0; j<p; j++) {
-      Ad[i][j] = getrand();
-    }
-  }
-}
-
-void initreverse(int m,int n,double Cb[m][n])
+void initrandom(int m,int n,double A[m][n])
 {
   int i,j;
 
   for (i=0; i<m; i++) {
     for (j=0; j<n; j++) {
-      Cb[i][j] = getrand();
+      A[i][j] = getrand();
     }
   }
 }

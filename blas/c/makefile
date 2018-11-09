@@ -30,8 +30,8 @@ dgemm:
 	tapenade -reverse -head "naive_dgemm (B)\(C)" $(TFLAGS) -adjfuncname _B_b mxm.c
 
 mtmv:
-	tapenade -tangent -head "naive_mtmv (U)\(V)" $(TFLAGS) tensor.c
-	tapenade -reverse -head "naive_mtmv (U)\(V)" $(TFLAGS) tensor.c
+	tapenade -tangent -head "naive_mtmv (U)\(V)" $(TFLAGS) mxm.c
+	tapenade -reverse -head "naive_mtmv (U)\(V)" $(TFLAGS) mxm.c
 
 clean:
 	rm -rf $(CLEANFILES)

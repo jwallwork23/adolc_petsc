@@ -20,6 +20,22 @@ void naive_mxm(int m,int p,int n,double A[m][p],double B[p][n],double C[m][n])
 }
 
 /*
+  Incremental pointwise matrix multiply (Hadamard product)
+
+  C = C + A.*B
+*/
+void naive_mpm(int m,int n,double A[m][n],double B[m][n],double C[m][n])
+{
+  int i,j;
+
+  for (i=0; i<m; i++) {
+    for (j=0; j<n; j++) {
+      C[i][j] += A[i][j] * B[i][j];
+    }
+  }
+}
+
+/*
   Basic implementation of dgemm for square matrices
 */
 void naive_dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double beta,double C[m][m])
@@ -93,17 +109,41 @@ void naive_dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 }
 
 /*
-  Incremental pointwise matrix multiply (Hadamard product)
+  Double Kronecker product (on square matrices)
 
-  C = C + A.*B
+  vec(V) = (A \otimes B) vec(U)  <=>  V = B * U * A^T
 */
-void naive_mpm(int m,int n,double A[m][n],double B[m][n],double C[m][n])
+void naive_mtmv(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double beta,double V[m][m])
 {
-  int i,j;
+  double tmp[m][m];
+  int    i,j,k;
 
+  for (i=0; (i<m); i++) {
+    for (j=0; (j<m); j++) {
+      tmp[i][j] = 0.;
+      if (beta == 0.) {
+        V[i][j] = 0.;
+      } else if (beta != 1.) {
+        V[i][j] = beta * V[i][j];
+      }
+    }
+  }
   for (i=0; i<m; i++) {
-    for (j=0; j<n; j++) {
-      C[i][j] += A[i][j] * B[i][j];
+    for (j=0; j<m; j++) {
+      for (k=0; k<m; k++) {
+        tmp[i][j] += B[i][k] * U[k][j];
+      }
+    }
+  }
+  for (i=0; i<m; i++) {
+    for (j=0; j<m; j++) {
+      for (k=0; k<m; k++) {
+        if (alpha == 1.) {
+          V[i][j] += tmp[i][k] * A[j][k];
+        } else {
+          V[i][j] += alpha * tmp[i][k] * A[j][k];
+        }
+      }
     }
   }
 }
