@@ -1,7 +1,10 @@
 function []=plot_results(N)
 % Plotting script for Gray-Scott problem
 %
-% Command line options:
+% To run, activate Octave and call plot_results(N), where N is the number of grid points used in
+% each direction.
+%
+% PETSc command line options used:
 % -da_grid_x N -da_grid_y N
 % -pc_type none
 % -ts_max_steps 100 -ts_trajectory_type memory
@@ -31,7 +34,7 @@ clf
 set(gca,'FontName',fontname)
 set(gca,'FontSize',fontsize_grid)
 set(gca,'FontSize',fontsize_labels)
-semilogx(ncores,byhand,'-+',ncores,sparse,'-o',ncores,matfree,'-*','Markersize',6,'LineWidth',2);
+loglog(ncores,byhand,'-+',ncores,sparse,'-o',ncores,matfree,'-*','Markersize',6,'LineWidth',2);
 hold on
 legend('Hand-coded','Sparse ADOL-C','Matrix-free ADOL-C','Location','NorthEast');
 xlabel('Number of cores');
