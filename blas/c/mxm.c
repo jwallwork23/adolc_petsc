@@ -36,6 +36,57 @@ void naive_mpm(int m,int n,double A[m][n],double B[m][n],double C[m][n])
 }
 
 /*
+  Simplest implementation of dgemm for square matrices
+*/
+void extra_naive_dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double beta,double C[m][m])
+{
+  int i,j,k;
+
+  for (i=0; (i<m); i++) {
+    for (j=0; (j<m); j++) {
+      C[i][j] = beta * C[i][j];
+    }
+  }
+  if (!transa) {
+    if (!transb) {
+      for (i=0; i<m; i++) {
+        for (j=0; j<m; j++) {
+          for (k=0; k<m; k++) {
+            C[i][j] += alpha * A[i][k] * B[k][j];
+          }
+        }
+      }
+    } else {
+      for (i=0; i<m; i++) {
+        for (j=0; j<m; j++) {
+          for (k=0; k<m; k++) {
+            C[i][j] += alpha * A[i][k] * B[j][k];
+          }
+        }
+      }
+    }
+  } else {
+    if (!transb) {
+      for (i=0; i<m; i++) {
+        for (j=0; j<m; j++) {
+          for (k=0; k<m; k++) {
+            C[i][j] += alpha * A[k][i] * B[k][j];
+          }
+        }
+      }
+    } else {
+      for (i=0; i<m; i++) {
+        for (j=0; j<m; j++) {
+          for (k=0; k<m; k++) {
+            C[i][j] += alpha * A[k][i] * B[j][k];
+          }
+        }
+      }
+    }
+  }
+}
+
+/*
   Basic implementation of dgemm for square matrices
 */
 void naive_dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double beta,double C[m][m])
