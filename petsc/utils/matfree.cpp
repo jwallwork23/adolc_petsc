@@ -49,6 +49,7 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
 
   /* dF/dx part */
+  ierr = PetscLogEventBegin(mctx->event1,0,0,0,0);CHKERRQ(ierr);
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
   fos_forward(1,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
   for (j=info.gys; j<info.gys+info.gym; j++) {
@@ -61,11 +62,13 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
       }
     }
   }
+  ierr = PetscLogEventEnd(mctx->event1,0,0,0,0);CHKERRQ(ierr);
   k = 0;
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr); /* Note: Need to assemble between separate calls */
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);   /*       to INSERT_VALUES and ADD_VALUES         */
 
   /* a * dF/d(xdot) part */
+  ierr = PetscLogEventBegin(mctx->event2,0,0,0,0);CHKERRQ(ierr);
   fos_forward(2,m,n,0,x0,x1,NULL,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
@@ -78,6 +81,7 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
       }
     }
   }
+  ierr = PetscLogEventEnd(mctx->event2,0,0,0,0);CHKERRQ(ierr);
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
   ierr = PetscFree(action);CHKERRQ(ierr);
@@ -129,6 +133,7 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = VecGetArray(localY,&y);CHKERRQ(ierr);
 
   /* dF/dx part */
+  ierr = PetscLogEventBegin(mctx->event3,0,0,0,0);CHKERRQ(ierr);
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
   if (!mctx->flg)
     zos_forward(1,m,n,1,x,NULL);
@@ -143,12 +148,14 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
       }
     }
   }
+  ierr = PetscLogEventEnd(mctx->event3,0,0,0,0);CHKERRQ(ierr);
   k = 0;
   ierr = VecAssemblyBegin(X);CHKERRQ(ierr); /* Note: Need to assemble between separate calls */
   ierr = VecAssemblyEnd(X);CHKERRQ(ierr);   /*       to INSERT_VALUES and ADD_VALUES         */
 
   /* a * dF/d(xdot) part */
   // TODO: Introduce a special case for identity mass matrix
+  ierr = PetscLogEventBegin(mctx->event4,0,0,0,0);CHKERRQ(ierr);
   if (!mctx->flg) {
     zos_forward(2,m,n,1,x,NULL);
     mctx->flg = PETSC_TRUE;
@@ -165,6 +172,7 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
       }
     }
   }
+  ierr = PetscLogEventEnd(mctx->event4,0,0,0,0);CHKERRQ(ierr);
   ierr = VecAssemblyBegin(X);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(X);CHKERRQ(ierr);
   ierr = PetscFree(action);CHKERRQ(ierr);
