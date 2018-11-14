@@ -5,6 +5,8 @@ LIB		= -L${LAPACK_HOME} -lcblas -lrefblas -llapack -llapacke -Wall
 DDIR		= derivatives
 TFLAGS  	= -O $(DDIR)
 CLEANFILES	= test_AB test_A test_tensor *.o *~
+TANGENT		= tapenade -tangent -head
+REVERSE		= tapenade -reverse -head
 
 clean:
 	rm -rf $(CLEANFILES)
@@ -16,41 +18,41 @@ cleandiff:
 
 # Differentiate (naive) Hadamard product C := A.*B
 mpm:
-	tapenade -tangent -head "naive_mpm (A B)\(C)" -o mpm $(TFLAGS) mxm.c
-	tapenade -tangent -head "naive_mpm (A)\(C)" -o mpm_A $(TFLAGS) -tgtfuncname _A_d mxm.c
-	tapenade -tangent -head "naive_mpm (B)\(C)" -o mpm_B $(TFLAGS) -tgtfuncname _B_d mxm.c
-	tapenade -reverse -head "naive_mpm (A B)\(C)" -o mpm $(TFLAGS) mxm.c
-	tapenade -reverse -head "naive_mpm (A)\(C)" -o mpm_A $(TFLAGS) -adjfuncname _A_b mxm.c
-	tapenade -reverse -head "naive_mpm (B)\(C)" -o mpm_B $(TFLAGS) -adjfuncname _B_b mxm.c
+	$(TANGENT) "naive_mpm (A B)\(C)" -o mpm $(TFLAGS) mxm.c
+	$(TANGENT) "naive_mpm (A)\(C)" -o mpm_A $(TFLAGS) -tgtfuncname _A_d mxm.c
+	$(TANGENT) "naive_mpm (B)\(C)" -o mpm_B $(TFLAGS) -tgtfuncname _B_d mxm.c
+	$(REVERSE) "naive_mpm (A B)\(C)" -o mpm $(TFLAGS) mxm.c
+	$(REVERSE) "naive_mpm (A)\(C)" -o mpm_A $(TFLAGS) -adjfuncname _A_b mxm.c
+	$(REVERSE) "naive_mpm (B)\(C)" -o mpm_B $(TFLAGS) -adjfuncname _B_b mxm.c
 
 # Differentiate (naive) matrix product C := A*B
 mxm:
-	tapenade -tangent -head "naive_mxm (A B)\(C)" -o mxm.c $(TFLAGS) mxm.c
-	tapenade -tangent -head "naive_mxm (A)\(C)" -o mxm_A.c $(TFLAGS) -tgtfuncname _A_d mxm.c
-	tapenade -tangent -head "naive_mxm (B)\(C)" -o mxm_B.c $(TFLAGS) -tgtfuncname _B_d mxm.c
-	tapenade -reverse -head "naive_mxm (A,B)\(C)" -o mxm.c $(TFLAGS) mxm.c
-	tapenade -reverse -head "naive_mxm (A)\(C)" -o mxm_A.c $(TFLAGS) -adjfuncname _A_b mxm.c
-	tapenade -reverse -head "naive_mxm (B)\(C)" -o mxm_B.c $(TFLAGS) -adjfuncname _B_b mxm.c
+	$(TANGENT) "naive_mxm (A B)\(C)" -o mxm.c $(TFLAGS) mxm.c
+	$(TANGENT) "naive_mxm (A)\(C)" -o mxm_A.c $(TFLAGS) -tgtfuncname _A_d mxm.c
+	$(TANGENT) "naive_mxm (B)\(C)" -o mxm_B.c $(TFLAGS) -tgtfuncname _B_d mxm.c
+	$(REVERSE) "naive_mxm (A,B)\(C)" -o mxm.c $(TFLAGS) mxm.c
+	$(REVERSE) "naive_mxm (A)\(C)" -o mxm_A.c $(TFLAGS) -adjfuncname _A_b mxm.c
+	$(REVERSE) "naive_mxm (B)\(C)" -o mxm_B.c $(TFLAGS) -adjfuncname _B_b mxm.c
 
 # Differentiate (naive) DGEMM implementation C := alpha*op(A)*op(B) + beta*C w.r.t. matrix arguments
 dgemm:
-	tapenade -tangent -head "naive_dgemm (A B)\(C)" $(TFLAGS) mxm.c
-	tapenade -tangent -head "naive_dgemm (A)\(C)" $(TFLAGS) -tgtfuncname _A_d mxm.c
-	tapenade -tangent -head "naive_dgemm (B)\(C)" $(TFLAGS) -tgtfuncname _B_d mxm.c
-	tapenade -reverse -head "naive_dgemm (A B)\(C)" $(TFLAGS) mxm.c
-	tapenade -reverse -head "naive_dgemm (A)\(C)" $(TFLAGS) -adjfuncname _A_b mxm.c
-	tapenade -reverse -head "naive_dgemm (B)\(C)" $(TFLAGS) -adjfuncname _B_b mxm.c
+	$(TANGENT) "naive_dgemm (A B)\(C)" $(TFLAGS) mxm.c
+	$(TANGENT) "naive_dgemm (A)\(C)" $(TFLAGS) -tgtfuncname _A_d mxm.c
+	$(TANGENT) "naive_dgemm (B)\(C)" $(TFLAGS) -tgtfuncname _B_d mxm.c
+	$(REVERSE) "naive_dgemm (A B)\(C)" $(TFLAGS) mxm.c
+	$(REVERSE) "naive_dgemm (A)\(C)" $(TFLAGS) -adjfuncname _A_b mxm.c
+	$(REVERSE) "naive_dgemm (B)\(C)" $(TFLAGS) -adjfuncname _B_b mxm.c
 
 # Differentiate (naive) DGEMM implementation C := alpha*op(A)*op(B) + beta*C w.r.t. scalar arguments
 dgemm_scalar:
-	tapenade -tangent -head "naive_dgemm (alpha beta)\(C)" $(TFLAGS) -tgtfuncname _s_d mxm.c
-	tapenade -reverse -head "naive_dgemm (alpha beta)\(C)" $(TFLAGS) -adjfuncname _s_b mxm.c
+	$(TANGENT) "naive_dgemm (alpha beta)\(C)" $(TFLAGS) -tgtfuncname _s_d mxm.c
+	$(REVERSE) "naive_dgemm (alpha beta)\(C)" $(TFLAGS) -adjfuncname _s_b mxm.c
 
 # Differentiate 'matrix-tensor-matrix-vector' product vec(V) = (A \otimes B) vec(U) <=> V = B*U*A^T
-#  w.r.t. matrix arguments
+#  w.r.t. matrix argument U
 mtmv:
-	tapenade -tangent -head "naive_mtmv (U)\(V)" $(TFLAGS) mxm.c
-	tapenade -reverse -head "naive_mtmv (U)\(V)" $(TFLAGS) mxm.c
+	$(TANGENT) "naive_mtmv (U)\(V)" $(TFLAGS) mxm.c
+	$(REVERSE) "naive_mtmv (U)\(V)" $(TFLAGS) mxm.c
 
 ### TAPENADE UTILS
 
