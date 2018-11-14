@@ -45,6 +45,8 @@ int main(int argc,char **argv)
   appctx.D2     = 4.0e-5;
   appctx.gamma = .024;
   appctx.kappa = .06;
+  ierr = PetscLogEventRegister("df/dx",MAT_CLASSID,&matctx.event1);CHKERRQ(ierr);
+  ierr = PetscLogEventRegister("df/d(xdot)",MAT_CLASSID,&matctx.event2);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors

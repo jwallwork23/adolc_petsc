@@ -34,5 +34,6 @@ typedef struct {
   PetscInt  m,n;
   TS        ts;
   PetscBool flg;
+  PetscLogEvent event1,event2;
 } MatCtx;
 #endif

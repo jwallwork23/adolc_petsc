@@ -53,6 +53,7 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
 
   /* dF/dx part */
+  ierr = PetscLogEventBegin(mctx->event1,0,0,0,0);
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
   fos_forward(1,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
   for (j=info.gys; j<info.gys+info.gym; j++) {
@@ -65,10 +66,12 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
       }
     }
   }
+  ierr = PetscLogEventEnd(mctx->event1,0,0,0,0);
   k = 0;
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr); /* Note: Need to assemble between separate calls */
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);   /*       to INSERT_VALUES and ADD_VALUES         */
 
+  ierr = PetscLogEventBegin(mctx->event2,0,0,0,0);
   /* a * dF/d(xdot) part */
   fos_forward(2,m,n,0,x0,x1,NULL,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
@@ -82,6 +85,7 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
       }
     }
   }
+  ierr = PetscLogEventEnd(mctx->event2,0,0,0,0);
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
   ierr = PetscFree(action);CHKERRQ(ierr);
