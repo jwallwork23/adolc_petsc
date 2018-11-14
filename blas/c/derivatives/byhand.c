@@ -1,3 +1,4 @@
+#include <string.h>
 #include "../mxm.c"
 #ifdef _CIVL
 #define CBLAS_ORDER int
@@ -12,8 +13,11 @@ void cblas_dgemm(CBLAS_ORDER Order, CBLAS_TRANSPOSE TransA,
                  const int K, const double alpha, const double *A,
                  const int lda, const double *B, const int ldb,
                  const double beta, double *C, const int ldc) {}
+int LAPACK_ROW_MAJOR = 0;
+int LAPACKE_dlacpy (int matrix_layout, char uplo, int m, int n, const double* a, int lda, double* b, int ldb) {}
 #else
 #include <cblas.h>
+#include <lapacke.h>
 #endif
 
 /*
@@ -34,8 +38,8 @@ void mtmv(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double
 
 /*
   Re-interpretation of Tapenade forward source transformation in terms of zeroout, transpose and mxm
-  functions alone. By the product rule
-    C = A * B  ==>  Cd = Ad * B + A * Bd 
+  functions alone. Differentiating w.r.t. both matrix arguments, the product rule gives
+    C = A * B  ==>  Cd = Ad * B + A * Bd
 */
 void mxm_dot(int m,int p,int n,double A[m][p],double Ad[m][p],double B[p][n],double Bd[p][n],double C[m][n],double Cd[m][n])
 {
@@ -49,7 +53,7 @@ void mxm_dot(int m,int p,int n,double A[m][p],double Ad[m][p],double B[p][n],dou
 }
 
 /*
-  Forward mode Hadamard product
+  Forward mode Hadamard product w.r.t. both matrix arguments
 */
 void mpm_dot(int m,int n,double A[m][n],double Ad[m][n],double B[m][n],double Bd[m][n],double C[m][n],double Cd[m][n])
 {
@@ -175,7 +179,69 @@ void dgemm_B_dot(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 }
 
 /*
-  Forward mode matrix-tensor-matrix-vector product
+  Forward mode square dgemm w.r.t. both scalar arguments using naive dgemm
+*/
+void naive_dgemm_scalar_dot(bool transa,bool transb,int m,double alpha,double alphad,double A[m][m],double B[m][m],double beta,double betad,double C[m][m],double Cd[m][m])
+{
+  double one = 1.,zero = 0.;
+  char   all[1] = "A";
+
+  if (!transa) {
+    if (!transb) {
+      naive_dgemm(CblasNoTrans,CblasNoTrans,m,alpha,A,B,beta,C);
+      memcpy(&Cd[0][0], &C[0][0], m*m*sizeof(double));
+      naive_dgemm(CblasNoTrans,CblasNoTrans,m,alphad,A,B,betad,Cd);
+    } else {
+      naive_dgemm(CblasNoTrans,CblasTrans,m,alpha,A,B,beta,C);
+      memcpy(&Cd[0][0], &C[0][0], m*m*sizeof(double));
+      naive_dgemm(CblasNoTrans,CblasTrans,m,alphad,A,B,betad,Cd);
+    }
+  } else {
+    if (!transb) {
+      naive_dgemm(CblasTrans,CblasNoTrans,m,alpha,A,B,beta,C);
+      memcpy(&Cd[0][0], &C[0][0], m*m*sizeof(double));
+      naive_dgemm(CblasTrans,CblasNoTrans,m,alphad,A,B,betad,Cd);
+    } else {
+      naive_dgemm(CblasTrans,CblasTrans,m,alpha,A,B,beta,C);
+      memcpy(&Cd[0][0], &C[0][0], m*m*sizeof(double));
+      naive_dgemm(CblasTrans,CblasTrans,m,alphad,A,B,betad,Cd);
+    }
+  }
+}
+
+/*
+  Forward mode square dgemm w.r.t. both scalar arguments
+*/
+void dgemm_scalar_dot(bool transa,bool transb,int m,double alpha,double alphad,double A[m][m],double B[m][m],double beta,double betad,double C[m][m],double Cd[m][m])
+{
+  double one = 1.,zero = 0.;
+  char   all[1] = "A";
+
+  if (!transa) {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      LAPACKE_dlacpy(LAPACK_ROW_MAJOR,all[0],m,m,&C[0][0],m,&Cd[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alphad,&A[0][0],m,&B[0][0],m,betad,&Cd[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      LAPACKE_dlacpy(LAPACK_ROW_MAJOR,all[0],m,m,&C[0][0],m,&Cd[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alphad,&A[0][0],m,&B[0][0],m,betad,&Cd[0][0],m);
+    }
+  } else {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      LAPACKE_dlacpy(LAPACK_ROW_MAJOR,all[0],m,m,&C[0][0],m,&Cd[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alphad,&A[0][0],m,&B[0][0],m,betad,&Cd[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      LAPACKE_dlacpy(LAPACK_ROW_MAJOR,all[0],m,m,&C[0][0],m,&Cd[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alphad,&A[0][0],m,&B[0][0],m,betad,&Cd[0][0],m);
+    }
+  }
+}
+
+/*
+  Forward mode matrix-tensor-matrix-vector product w.r.t. both matrix arguments
 */
 void mtmv_dot(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double Ud[m][m],double beta,double V[m][m],double Vd[m][m])
 {
@@ -192,7 +258,7 @@ void mtmv_dot(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],do
 
 /*
   Re-interpretation of Tapenade reverse source transformation in terms of zeroout, transpose and mxm
-  functions alone. By the product rule
+  functions alone. Differentiating w.r.t. both matrix arguments,
     C = A * B  ==>  Ab = Cb * B^T, Bb = A^T * Cb
 */
 void mxm_bar(int m,int p,int n,double A[m][p],double Ab[m][p],double B[p][n],double Bb[p][n],double C[m][n],double Cb[m][n])
@@ -208,7 +274,7 @@ void mxm_bar(int m,int p,int n,double A[m][p],double Ab[m][p],double B[p][n],dou
 }
 
 /*
-  Reverse mode Hadamard product
+  Reverse mode Hadamard product w.r.t. both matrix arguments
 */
 void mpm_bar(int m,int n,double A[m][n],double Ab[m][n],double B[m][n],double Bb[m][n],double C[m][n],double Cb[m][n])
 {
@@ -274,6 +340,8 @@ void naive_dgemm_bar(bool transa,bool transb,int m,double alpha,double A[m][m],d
 
 /*
   Reverse mode square dgemm w.r.t. first matrix argument
+
+  NOTE: A can be NULL
 */
 void dgemm_A_bar(bool transa,bool transb,int m,double alpha,double A[m][m],double Ab[m][m],double B[m][m],double beta,double C[m][m],double Cb[m][m])
 {
@@ -297,6 +365,8 @@ void dgemm_A_bar(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 
 /*
   Reverse mode square dgemm w.r.t. second matrix argument
+
+  NOTE: B can be NULL
 */
 void dgemm_B_bar(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double Bb[m][m],double beta,double C[m][m],double Cb[m][m])
 {
@@ -319,6 +389,34 @@ void dgemm_B_bar(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 }
 
 /*
+  Reverse mode square dgemm w.r.t. both scalar arguments
+
+  NOTE: C can be NULL
+*/
+void dgemm_s_bar(bool transa,bool transb,int m,double alpha,double alphab,double A[m][m],double B[m][m],double beta,double betab,double C[m][m],double Cb[m][m])
+{
+  double zero = 0.,tmp[m][m];
+
+  if (!transa) {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,zero,&tmp[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,zero,&tmp[0][0],m);
+    }
+  } else {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,zero,&tmp[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,zero,&tmp[0][0],m);
+    }
+  }
+  naive_fmpm(m,m,Cb,tmp,alphab);
+  naive_fmpm(m,m,Cb,C,betab);
+  cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,zero,&A[0][0],m,&B[0][0],m,beta,&Cb[0][0],m);
+}
+
+
+/*
   Reverse mode matrix-tensor-matrix-vector product
 */
 void mtmv_bar(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double Ub[m][m],double beta,double V[m][m],double Vb[m][m])
@@ -328,5 +426,3 @@ void mtmv_bar(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],do
   dgemm_A_bar(0,1,m,alpha,NULL,tmpb,A,beta,V,Vb);
   dgemm_B_bar(0,0,m,1,B,U,Ub,1,NULL,tmpb);
 }
-
-// TODO: Tapenade efficiency is dependent on ordering in mtmv  - interesting note for paper.

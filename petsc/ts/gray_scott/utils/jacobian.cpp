@@ -129,6 +129,7 @@ PetscErrorCode IJacobianMatFree(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
 {
   MatCtx            *mctx;
   PetscErrorCode    ierr;
+  DM                da;
 
   PetscFunctionBeginUser;
   ierr = MatShellGetContext(A_shell,(void **)&mctx);CHKERRQ(ierr);
@@ -138,6 +139,9 @@ PetscErrorCode IJacobianMatFree(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   if (mctx->ts != ts) mctx->ts = ts;
   ierr = VecCopy(X,mctx->X);CHKERRQ(ierr);
   ierr = VecCopy(Xdot,mctx->Xdot);CHKERRQ(ierr);
+  ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,mctx->localX0);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,mctx->localX0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 

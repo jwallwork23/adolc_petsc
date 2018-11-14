@@ -45,6 +45,10 @@ int main(int argc,char **argv)
   appctx.D2     = 4.0e-5;
   appctx.gamma = .024;
   appctx.kappa = .06;
+  ierr = PetscLogEventRegister("df/dx forward",MAT_CLASSID,&matctx.event1);CHKERRQ(ierr);
+  ierr = PetscLogEventRegister("df/d(xdot) forward",MAT_CLASSID,&matctx.event2);CHKERRQ(ierr);
+  ierr = PetscLogEventRegister("df/dx reverse",MAT_CLASSID,&matctx.event3);CHKERRQ(ierr);
+  ierr = PetscLogEventRegister("df/d(xdot) reverse",MAT_CLASSID,&matctx.event4);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
@@ -68,10 +72,11 @@ int main(int argc,char **argv)
   ierr = DMSetMatType(da,MATSHELL);CHKERRQ(ierr);
   ierr = DMCreateMatrix(da,&A);CHKERRQ(ierr);
   ierr = MatShellSetContext(A,&matctx);CHKERRQ(ierr);
-  ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))JacobianVectorProduct);CHKERRQ(ierr);
-  ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void (*)(void))JacobianTransposeVectorProduct);CHKERRQ(ierr);
+  ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))JacobianVectorProductIDMass);CHKERRQ(ierr);
+  ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void (*)(void))JacobianTransposeVectorProductIDMass);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.X);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.Xdot);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&matctx.localX0);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create timestepping solver context
@@ -174,6 +179,7 @@ int main(int argc,char **argv)
      Free work space.  All PETSc objects should be destroyed when they
      are no longer needed.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = DMRestoreLocalVector(da,&matctx.localX0);CHKERRQ(ierr);
   ierr = VecDestroy(&r);CHKERRQ(ierr);
   ierr = VecDestroy(&matctx.X);CHKERRQ(ierr);
   ierr = VecDestroy(&matctx.Xdot);CHKERRQ(ierr);
