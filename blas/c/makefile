@@ -1,18 +1,25 @@
-all: clean cleandiff mtmv test_tensor
+all: clean mtmv test_tensor
 
-CFLAGS		= -I${TAPENADE_HOME}/ADFirstAidKit -I${LAPACK_HOME}/CBLAS -I${LAPACK_HOME}/LAPACKE/include -Wall
+# Compiling
+CFLAGS		= -I. -I${TAPENADE_HOME}/ADFirstAidKit
+CFLAGS		+= -I${LAPACK_HOME}/CBLAS -I${LAPACK_HOME}/SRC -I${LAPACK_HOME}/LAPACKE/include -Wall
+
+# Linking
 LIB		= -L${LAPACK_HOME} -lcblas -lrefblas -llapack -llapacke -Wall
+
+# Notation
 DDIR		= derivatives
 TFLAGS  	= -O $(DDIR)
-CLEANFILES	= test_AB test_A test_tensor *.o *~
 TANGENT		= tapenade -tangent -head
 REVERSE		= tapenade -reverse -head
 
-clean:
-	rm -rf $(CLEANFILES)
+clean: cleandiff cleanobj
 
 cleandiff:
 	rm -rf $(DDIR)/*_d.c $(DDIR)/*_d.msg $(DDIR)/*_b.c $(DDIR)/*_b.msg $(DDIR)/*~
+
+cleanobj:
+	rm -rf test_AB test_A test_tensor *.o *~
 
 ### DIFFERENTIATION OF MATRIX / TENSOR SUBROUTINES USING TAPENADE
 
@@ -70,6 +77,7 @@ test_AB.o: test_AB.c
 test_AB: test_AB.o adBuffer.o adStack.o
 	gfortran -o $@ $^ $(LIB)
 	rm *.o
+	./$@
 
 test_A.o: test_A.c
 	gcc $(CFLAGS) -c -o $@ $^
@@ -77,6 +85,7 @@ test_A.o: test_A.c
 test_A: test_A.o adBuffer.o adStack.o
 	gfortran -o $@ $^ $(LIB)
 	rm *.o
+	./$@
 
 test_tensor.o: test_tensor.c
 	gcc $(CFLAGS) -c -o $@ $^
@@ -84,3 +93,4 @@ test_tensor.o: test_tensor.c
 test_tensor: test_tensor.o adBuffer.o adStack.o
 	gfortran -o $@ $^ $(LIB)
 	rm *.o
+	./$@

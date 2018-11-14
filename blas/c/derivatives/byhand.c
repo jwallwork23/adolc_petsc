@@ -141,21 +141,21 @@ void dgemm_scalar_dot(bool transa,bool transb,int m,double alpha,double alphad,d
   if (!transa) {
     if (!transb) {
       cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
-      LAPACKE_dlacpy(CblasRowMajor,all[0],m,m,&C[0][0],m,&Cd[0][0],m);
+      LAPACKE_dlacpy(LAPACK_ROW_MAJOR,all[0],m,m,&C[0][0],m,&Cd[0][0],m);
       cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alphad,&A[0][0],m,&B[0][0],m,betad,&Cd[0][0],m);
     } else {
       cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
-      LAPACKE_dlacpy(CblasRowMajor,all[0],m,m,&C[0][0],m,&Cd[0][0],m);
+      LAPACKE_dlacpy(LAPACK_ROW_MAJOR,all[0],m,m,&C[0][0],m,&Cd[0][0],m);
       cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alphad,&A[0][0],m,&B[0][0],m,betad,&Cd[0][0],m);
     }
   } else {
     if (!transb) {
       cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
-      LAPACKE_dlacpy(CblasRowMajor,all[0],m,m,&C[0][0],m,&Cd[0][0],m);
+      LAPACKE_dlacpy(LAPACK_ROW_MAJOR,all[0],m,m,&C[0][0],m,&Cd[0][0],m);
       cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alphad,&A[0][0],m,&B[0][0],m,betad,&Cd[0][0],m);
     } else {
       cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
-      LAPACKE_dlacpy(CblasRowMajor,all[0],m,m,&C[0][0],m,&Cd[0][0],m);
+      LAPACKE_dlacpy(LAPACK_ROW_MAJOR,all[0],m,m,&C[0][0],m,&Cd[0][0],m);
       cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alphad,&A[0][0],m,&B[0][0],m,betad,&Cd[0][0],m);
     }
   }
