@@ -73,7 +73,7 @@ int main(int argc,char **argv)
   ierr = DMCreateMatrix(da,&A);CHKERRQ(ierr);
   ierr = MatShellSetContext(A,&matctx);CHKERRQ(ierr);
   ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))JacobianVectorProductIDMass);CHKERRQ(ierr);
-  ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void (*)(void))JacobianTransposeVectorProduct);CHKERRQ(ierr);
+  ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void (*)(void))JacobianTransposeVectorProductIDMass);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.X);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.Xdot);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&matctx.localX0);CHKERRQ(ierr);
