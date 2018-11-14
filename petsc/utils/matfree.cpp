@@ -49,8 +49,8 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
 
   /* dF/dx part */
-  ierr = PetscLogEventBegin(mctx->event1,0,0,0,0);CHKERRQ(ierr);
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(mctx->event1,0,0,0,0);CHKERRQ(ierr);
   fos_forward(1,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
@@ -125,8 +125,8 @@ PetscErrorCode JacobianVectorProductIDMass(Mat A_shell,Vec X,Vec Y)
   ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
 
   /* dF/dx part */
-  ierr = PetscLogEventBegin(mctx->event1,0,0,0,0);CHKERRQ(ierr);
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(mctx->event1,0,0,0,0);CHKERRQ(ierr);
   fos_forward(1,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
@@ -196,8 +196,8 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = VecGetArray(localY,&y);CHKERRQ(ierr);
 
   /* dF/dx part */
-  ierr = PetscLogEventBegin(mctx->event3,0,0,0,0);CHKERRQ(ierr);
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(mctx->event3,0,0,0,0);CHKERRQ(ierr);
   if (!mctx->flg)
     zos_forward(1,m,n,1,x,NULL);
   fos_reverse(1,m,n,y,action);
@@ -277,8 +277,8 @@ PetscErrorCode JacobianTransposeVectorProductIDMass(Mat A_shell,Vec Y,Vec X)
   ierr = VecGetArray(localY,&y);CHKERRQ(ierr);
 
   /* dF/dx part */
-  ierr = PetscLogEventBegin(mctx->event3,0,0,0,0);CHKERRQ(ierr);
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(mctx->event3,0,0,0,0);CHKERRQ(ierr);
   if (!mctx->flg)
     zos_forward(1,m,n,1,x,NULL);
   fos_reverse(1,m,n,y,action);

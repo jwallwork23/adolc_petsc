@@ -178,6 +178,48 @@ PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *
 }
 
 /*
+  Special case of identity mass matrix
+*/
+PetscErrorCode AdolcComputeIJacobianIDMass(Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
+{
+  AdolcCtx       *adctx = (AdolcCtx*)ctx;
+  PetscErrorCode ierr;
+  PetscInt       i,j,m = adctx->m,n = adctx->n,p = adctx->p;
+  PetscScalar    **J;
+
+  PetscFunctionBegin;
+  ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
+
+  /* dF/dx part */
+  if (adctx->Seed)
+    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+  else
+    jacobian(1,m,n,u_vec,J);
+  ierr = MatZeroEntries(A);CHKERRQ(ierr);
+  if (adctx->sparse) {
+    if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
+      ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/dx:",m,p,J);CHKERRQ(ierr);
+    }
+    ierr = RecoverJacobian(A,INSERT_VALUES,m,p,adctx->Rec,J,NULL);CHKERRQ(ierr);
+  } else {
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          ierr = MatSetValues(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+  }
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = AdolcFree2(J);CHKERRQ(ierr);
+
+  /* a * dF/d(xdot) part */
+  ierr = MatShift(A,a);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
   Compute local portion of Jacobian for implicit TS in compressed format and recover from this, using
   precomputed seed and recovery matrices. If sparse mode is not used, full Jacobian is
   assembled (not recommended!).
@@ -247,6 +289,44 @@ PetscErrorCode AdolcComputeIJacobianLocal(Mat A,PetscScalar *u_vec,PetscReal a,v
   ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = AdolcFree2(J);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode AdolcComputeIJacobianLocalIDMass(Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
+{
+  AdolcCtx       *adctx = (AdolcCtx*)ctx;
+  PetscErrorCode ierr;
+  PetscInt       i,j,m = adctx->m,n = adctx->n,p = adctx->p;
+  PetscScalar    **J;
+
+  PetscFunctionBegin;
+  ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
+
+  /* dF/dx part */
+  if (adctx->Seed)
+    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+  else
+    jacobian(1,m,n,u_vec,J);
+  if (adctx->sparse) {
+    if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
+      ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/dx:",m,p,J);CHKERRQ(ierr);
+    }
+    ierr = RecoverJacobianLocal(A,INSERT_VALUES,m,p,adctx->Rec,J,NULL);CHKERRQ(ierr);
+  } else {
+    for (i=0; i<m; i++) {
+      for (j=0; j<n; j++) {
+        if (fabs(J[i][j]) > 1.e-16) {
+          ierr = MatSetValuesLocal(A,1,&i,1,&j,&J[i][j],INSERT_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+  }
+  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = AdolcFree2(J);CHKERRQ(ierr);
+
+  /* a * dF/d(xdot) part */
+  ierr = MatShift(A,a);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
