@@ -105,29 +105,29 @@ void extra_naive_dgemm(bool transa,bool transb,int m,double alpha,double A[m][m]
 /*
   Basic implementation of dgemm for square matrices
 */
-void naive_dgemm(bool transa,bool transb,int m,double alpha[1][1],double A[m][m],double B[m][m],double beta[1][1],double C[m][m])
+void naive_dgemm(bool transa,bool transb,int m,double alpha,double A[m][m],double B[m][m],double beta,double C[m][m])
 {
   int i,j,k;
 
   for (i=0; (i<m); i++) {
     for (j=0; (j<m); j++) {
-      if (beta[0][0] == 0.) {
+      if (beta == 0.) {
         C[i][j] = 0.;
-      } else if (beta[0][0] != 1.) {
-        C[i][j] = beta[0][0] * C[i][j];
+      } else if (beta != 1.) {
+        C[i][j] = beta * C[i][j];
       }
     }
   }
-  if (alpha[0][0] != 0.) {
+  if (alpha != 0.) {
     if (!transa) {
       if (!transb) {
         for (i=0; i<m; i++) {
           for (j=0; j<m; j++) {
             for (k=0; k<m; k++) {
-              if (alpha[0][0] == 1.) {
+              if (alpha == 1.) {
                 C[i][j] += A[i][k] * B[k][j];
               } else {
-                C[i][j] += alpha[0][0] * A[i][k] * B[k][j];
+                C[i][j] += alpha * A[i][k] * B[k][j];
               }
             }
           }
@@ -136,10 +136,10 @@ void naive_dgemm(bool transa,bool transb,int m,double alpha[1][1],double A[m][m]
         for (i=0; i<m; i++) {
           for (j=0; j<m; j++) {
             for (k=0; k<m; k++) {
-              if (alpha[0][0] == 1.) {
+              if (alpha == 1.) {
                 C[i][j] += A[i][k] * B[j][k];
               } else {
-                C[i][j] += alpha[0][0] * A[i][k] * B[j][k];
+                C[i][j] += alpha * A[i][k] * B[j][k];
               }
             }
           }
@@ -150,10 +150,10 @@ void naive_dgemm(bool transa,bool transb,int m,double alpha[1][1],double A[m][m]
         for (i=0; i<m; i++) {
           for (j=0; j<m; j++) {
             for (k=0; k<m; k++) {
-              if (alpha[0][0] == 1.) {
+              if (alpha == 1.) {
                 C[i][j] += A[k][i] * B[k][j];
               } else {
-                C[i][j] += alpha[0][0] * A[k][i] * B[k][j];
+                C[i][j] += alpha * A[k][i] * B[k][j];
               }
             }
           }
@@ -162,10 +162,10 @@ void naive_dgemm(bool transa,bool transb,int m,double alpha[1][1],double A[m][m]
         for (i=0; i<m; i++) {
           for (j=0; j<m; j++) {
             for (k=0; k<m; k++) {
-              if (alpha[0][0] == 1.) {
+              if (alpha == 1.) {
                 C[i][j] += A[k][i] * B[j][k];
               } else {
-                C[i][j] += alpha[0][0] * A[k][i] * B[j][k];
+                C[i][j] += alpha * A[k][i] * B[j][k];
               }
             }
           }

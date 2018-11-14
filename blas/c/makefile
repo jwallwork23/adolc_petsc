@@ -1,7 +1,7 @@
 all: clean cleandiff mtmv test_tensor
 
-CFLAGS		= -I${TAPENADE_HOME}/ADFirstAidKit -I${LAPACK_HOME}/CBLAS -I${LAPACK_HOME}/LAPACKE -Wall
-LIB		= -L${LAPACK_HOME} -lcblas -lrefblas -ltmglib -llapack -llapacke -Wall
+CFLAGS		= -I${TAPENADE_HOME}/ADFirstAidKit -I${LAPACK_HOME}/CBLAS -I${LAPACK_HOME}/LAPACKE/include -Wall
+LIB		= -L${LAPACK_HOME} -lcblas -lrefblas -llapack -llapacke -Wall
 DDIR		= derivatives
 TFLAGS  	= -O $(DDIR)
 CLEANFILES	= test_AB test_A test_tensor *.o *~
