@@ -5,33 +5,41 @@ LIB		= -L${LAPACK_HOME} -lcblas -lrefblas -ltmglib -llapack
 TFLAGS  	= -O derivatives
 CLEANFILES	= test_AB test_A test_tensor *.o *~
 
-mpm:
-	tapenade -tangent -head "naive_mpm (A B)\(C)" -o mpm $(TFLAGS) mxm.c
-	tapenade -tangent -head "naive_mpm (A)\(C)" -o mpm_A $(TFLAGS) -tgtfuncname _A_d mxm.c
-	tapenade -tangent -head "naive_mpm (B)\(C)" -o mpm_B $(TFLAGS) -tgtfuncname _B_d mxm.c
-	tapenade -reverse -head "naive_mpm (A B)\(C)" -o mpm $(TFLAGS) mxm.c
-	tapenade -reverse -head "naive_mpm (A)\(C)" -o mpm_A $(TFLAGS) -adjfuncname _A_b mxm.c
-	tapenade -reverse -head "naive_mpm (B)\(C)" -o mpm_B $(TFLAGS) -adjfuncname _B_b mxm.c
+derivatives/mxm_d.c: mxm.c
+	tapenade -d -head "naive_mxm[AB](A B)\(C)   \
+                           naive_mxm[A](A)\(C)      \
+                           naive_mxm[B](B)\(C)      \
+                           naive_mpm[AB](A B)\(C)   \
+                           naive_mpm[A](A)\(C)      \
+                           naive_mpm[B](B)\(C)      \
+                           naive_dgemm[AB](A B)\(C) \
+                           naive_dgemm[A](A)\(C)    \
+                           naive_dgemm[B](B)\(C)    \
+                           naive_mtmv(U)\(V)        \
+                           " mxm.c $(TFLAGS)
 
-mxm:
-	tapenade -tangent -head "naive_mxm (A B)\(C)" -o mxm.c $(TFLAGS) mxm.c
-	tapenade -tangent -head "naive_mxm (A)\(C)" -o mxm_A.c $(TFLAGS) -tgtfuncname _A_d mxm.c
-	tapenade -tangent -head "naive_mxm (B)\(C)" -o mxm_B.c $(TFLAGS) -tgtfuncname _B_d mxm.c
-	tapenade -reverse -head "naive_mxm (A,B)\(C)" -o mxm.c $(TFLAGS) mxm.c
-	tapenade -reverse -head "naive_mxm (A)\(C)" -o mxm_A.c $(TFLAGS) -adjfuncname _A_b mxm.c
-	tapenade -reverse -head "naive_mxm (B)\(C)" -o mxm_B.c $(TFLAGS) -adjfuncname _B_b mxm.c
+derivatives/mxm_b.c: mxm.c
+	tapenade -b -head "naive_mxm[AB](A B)\(C)   \
+                           naive_mxm[A](A)\(C)      \
+                           naive_mxm[B](B)\(C)      \
+                           naive_mpm[AB](A B)\(C)   \
+                           naive_mpm[A](A)\(C)      \
+                           naive_mpm[B](B)\(C)      \
+                           naive_dgemm[AB](A B)\(C) \
+                           naive_dgemm[A](A)\(C)    \
+                           naive_dgemm[B](B)\(C)    \
+                           naive_mtmv(U)\(V)        \
+                           " mxm.c $(TFLAGS)
 
-dgemm:
-	tapenade -tangent -head "naive_dgemm (A B)\(C)" $(TFLAGS) mxm.c
-	tapenade -tangent -head "naive_dgemm (A)\(C)" $(TFLAGS) -tgtfuncname _A_d mxm.c
-	tapenade -tangent -head "naive_dgemm (B)\(C)" $(TFLAGS) -tgtfuncname _B_d mxm.c
-	tapenade -reverse -head "naive_dgemm (A B)\(C)" $(TFLAGS) mxm.c
-	tapenade -reverse -head "naive_dgemm (A)\(C)" $(TFLAGS) -adjfuncname _A_b mxm.c
-	tapenade -reverse -head "naive_dgemm (B)\(C)" $(TFLAGS) -adjfuncname _B_b mxm.c
+verify_mxm:
+	civl compare -impl -DSIZELIMIT=5 verification_drivers/driver_mxm_dot.c -spec -DSIZELIMIT=5 verification_drivers/driver_mxm_dAB.c
 
-mtmv:
-	tapenade -tangent -head "naive_mtmv (U)\(V)" $(TFLAGS) mxm.c
-	tapenade -reverse -head "naive_mtmv (U)\(V)" $(TFLAGS) mxm.c
+verify_mpm:
+	civl compare -impl -DSIZELIMIT=5 verification_drivers/driver_mpm_dot.c -spec -DSIZELIMIT=5 verification_drivers/driver_mpm_dAB.c
+
+verify_dgemm:
+	civl compare -impl -DSIZELIMIT=5 verification_drivers/driver_dgemm_dot.c -spec -DSIZELIMIT=5 verification_drivers/driver_dgemm_dAB.c
+	civl compare -impl -DSIZELIMIT=5 verification_drivers/driver_dgemm_bar.c -spec -DSIZELIMIT=5 verification_drivers/driver_dgemm_bAB.c
 
 clean:
 	rm -rf $(CLEANFILES)

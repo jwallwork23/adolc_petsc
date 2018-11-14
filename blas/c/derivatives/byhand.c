@@ -1,5 +1,20 @@
 #include "../mxm.c"
+#ifdef _CIVL
+#define CBLAS_ORDER int
+int CblasRowMajor=101;
+int CblasColMajor=102;
+#define CBLAS_TRANSPOSE int
+int CblasNoTrans=0;
+int CblasTrans=1;
+int CblasConjTrans=2;
+void cblas_dgemm(CBLAS_ORDER Order, CBLAS_TRANSPOSE TransA,
+                 CBLAS_TRANSPOSE TransB, const int M, const int N,
+                 const int K, const double alpha, const double *A,
+                 const int lda, const double *B, const int ldb,
+                 const double beta, double *C, const int ldc) {}
+#else
 #include <cblas.h>
+#endif
 
 /*
   'Matrix-tensor-matrix-vector' product 
@@ -73,6 +88,36 @@ void dgemm_dot(bool transa,bool transb,int m,double alpha,double A[m][m],double 
       cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
       cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&Ad[0][0],m,&B[0][0],m,zero,&Cd[0][0],m);
       cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&Bd[0][0],m,one,&Cd[0][0],m);
+    }
+  }
+}
+
+/*
+  Forward mode square dgemm w.r.t. both matrix arguments using naive dgemm
+*/
+void naive_dgemm_dot(bool transa,bool transb,int m,double alpha,double A[m][m],double Ad[m][m],double B[m][m],double Bd[m][m],double beta,double C[m][m],double Cd[m][m])
+{
+  double one = 1.,zero = 0.;
+
+  if (!transa) {
+    if (!transb) {
+      naive_dgemm(CblasNoTrans,CblasNoTrans,m,alpha,A,B,beta,C);
+      naive_dgemm(CblasNoTrans,CblasNoTrans,m,alpha,Ad,B,zero,Cd);
+      naive_dgemm(CblasNoTrans,CblasNoTrans,m,alpha,A,Bd,one,Cd);
+    } else {
+      naive_dgemm(CblasNoTrans,CblasTrans,m,alpha,A,B,beta,C);
+      naive_dgemm(CblasNoTrans,CblasTrans,m,alpha,Ad,B,zero,Cd);
+      naive_dgemm(CblasNoTrans,CblasTrans,m,alpha,A,Bd,one,Cd);
+    }
+  } else {
+    if (!transb) {
+      naive_dgemm(CblasTrans,CblasNoTrans,m,alpha,A,B,beta,C);
+      naive_dgemm(CblasTrans,CblasNoTrans,m,alpha,Ad,B,zero,Cd);
+      naive_dgemm(CblasTrans,CblasNoTrans,m,alpha,A,Bd,one,Cd);
+    } else {
+      naive_dgemm(CblasTrans,CblasTrans,m,alpha,A,B,beta,C);
+      naive_dgemm(CblasTrans,CblasTrans,m,alpha,Ad,B,zero,Cd);
+      naive_dgemm(CblasTrans,CblasTrans,m,alpha,A,Bd,one,Cd);
     }
   }
 }
@@ -198,6 +243,33 @@ void dgemm_bar(bool transa,bool transb,int m,double alpha,double A[m][m],double 
     }
   }
   cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,zero,&A[0][0],m,&B[0][0],m,beta,&Cb[0][0],m);
+}
+
+/*
+  Reverse mode square dgemm w.r.t. both matrix arguments using naive dgemm
+*/
+void naive_dgemm_bar(bool transa,bool transb,int m,double alpha,double A[m][m],double Ab[m][m],double B[m][m],double Bb[m][m],double beta,double C[m][m],double Cb[m][m])
+{
+  double zero = 0.;
+
+  if (!transa) {
+    if (!transb) {
+      naive_dgemm(CblasNoTrans,CblasTrans,m,alpha,Cb,B,zero,Ab);
+      naive_dgemm(CblasTrans,CblasNoTrans,m,alpha,A,Cb,zero,Bb);
+    } else {
+      naive_dgemm(CblasNoTrans,CblasNoTrans,m,alpha,Cb,B,zero,Ab);
+      naive_dgemm(CblasTrans,CblasNoTrans,m,alpha,Cb,A,zero,Bb);
+    }
+  } else {
+    if (!transb) {
+      naive_dgemm(CblasNoTrans,CblasTrans,m,alpha,B,Cb,zero,Ab);
+      naive_dgemm(CblasNoTrans,CblasNoTrans,m,alpha,A,Cb,zero,Bb);
+    } else {
+      naive_dgemm(CblasTrans,CblasTrans,m,alpha,B,Cb,zero,Ab);
+      naive_dgemm(CblasTrans,CblasTrans,m,alpha,Cb,A,zero,Bb);
+    }
+  }
+  naive_dgemm(CblasNoTrans,CblasNoTrans,m,zero,A,B,beta,Cb);
 }
 
 /*
