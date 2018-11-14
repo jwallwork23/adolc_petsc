@@ -130,7 +130,33 @@ void dgemm_B_dot(bool transa,bool transb,int m,double alpha,double A[m][m],doubl
 }
 
 /*
-  Forward mode matrix-tensor-matrix-vector product
+  Forward mode square dgemm w.r.t. both scalar arguments
+*/
+void dgemm_scalar_dot(bool transa,bool transb,int m,double alpha,double alphad,double A[m][m],double B[m][m],double beta,double betad,double C[m][m],double Cd[m][m])
+{
+  double one = 1.,zero = 0.;
+
+  if (!transa) {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasNoTrans,m,m,m,alphad,&A[0][0],m,&B[0][0],m,betad,&C[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasNoTrans,CblasTrans,m,m,m,alphad,&A[0][0],m,&B[0][0],m,betad,&C[0][0],m);
+    }
+  } else {
+    if (!transb) {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasNoTrans,m,m,m,alphad,&A[0][0],m,&B[0][0],m,betad,&C[0][0],m);
+    } else {
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alpha,&A[0][0],m,&B[0][0],m,beta,&C[0][0],m);
+      cblas_dgemm(CblasRowMajor,CblasTrans,CblasTrans,m,m,m,alphad,&A[0][0],m,&B[0][0],m,betad,&C[0][0],m);
+    }
+  }
+}
+
+/*
+  Forward mode matrix-tensor-matrix-vector product w.r.t. both matrix arguments
 */
 void mtmv_dot(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double Ud[m][m],double beta,double V[m][m],double Vd[m][m])
 {
