@@ -27,7 +27,8 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   PetscInt          m,n,i,j,k = 0,d;
   const PetscScalar *x0;
   PetscScalar       *action,*x1;
-  Vec               localX0,localX1;
+  //Vec               localX0,localX1;
+  Vec               localX1;
   DM                da;
   DMDALocalInfo     info;
 
@@ -41,14 +42,14 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   /* Get local input vectors and extract data, x0 and x1*/
   ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
   ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
-  ierr = DMGetLocalVector(da,&localX0);CHKERRQ(ierr);
+  //ierr = DMGetLocalVector(da,&localX0);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localX1);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
+  //ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
+  //ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
 
-  ierr = VecGetArrayRead(localX0,&x0);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(mctx->localX0,&x0);CHKERRQ(ierr);
   ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
 
   /* dF/dx part */
@@ -87,9 +88,9 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
 
   /* Restore local vector */
   ierr = VecRestoreArray(localX1,&x1);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(localX0,&x0);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(mctx->localX0,&x0);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localX1);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localX0);CHKERRQ(ierr);
+  //ierr = DMRestoreLocalVector(da,&localX0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 

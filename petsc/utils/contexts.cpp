@@ -29,6 +29,7 @@ typedef struct {
   PetscReal time;
   Vec       X;
   Vec       Xdot;
+  Vec       localX0;
   PetscReal shift;
   PetscInt  m,n;
   TS        ts;
