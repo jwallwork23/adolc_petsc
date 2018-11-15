@@ -33,25 +33,28 @@ int main() {
     size_t tape_stats[STAT_SIZE];
 
     cout << "SPEELPENNINGS PRODUCT (ADOL-C Documented Example)\n\n";
-    cout << "number of independent variables = ?  \n";
+    cout << "number of independent variables = ? ";
     cin >> n;
+    cout << endl;
 
     double *xp = new double[n];
     double  yp = 0.0;
     adouble *x = new adouble[n];        
     adouble  y = 1;
 
-    for(i=0; i<n; i++)
+    cout << "x = [";
+    for(i=0; i<n; i++) {
         xp[i] = (i+1.0)/(2.0+i);         // some initialization
+	cout << xp[i] << ", ";
+    }
+    cout << "]" << endl;
 
     trace_on(1);                         // tag = 1, keep = 0 by default
-    cout << "x = [";
     for(i=0; i<n; i++) {
       // declare x as an _independent_ variable
       x[i] <<= xp[i];                  // or  x <<= xp outside the loop
       y *= x[i];
     } // end for
-    cout << "]" << endl;
     y >>= yp;                            // declare y as a _dependent_ variable
     delete[] x;                          // desirable to delete indep. variables after use
     trace_off(1);

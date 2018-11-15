@@ -1,3 +1,4 @@
+#include <adolc/adolc.h>
 #include "init.cpp"
 #include "conversion.cpp"
 
@@ -157,22 +158,20 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
      Thus imaginary current contribution goes in location 2*i, and
      real current contribution in 2*i+1
   */
-  ierr = MatMult(user->Ybus,Xnet,Fnet);CHKERRQ(ierr);
+  trace_on(1);
+
+  ierr = MatMult(user->Ybus,Xnet,Fnet);CHKERRQ(ierr); // FIXME: Currently differentiated by hand
 
   ierr = VecGetArray(Xgen,&xgen_p);CHKERRQ(ierr);
   ierr = VecGetArray(Xnet,&xnet_p);CHKERRQ(ierr);
   ierr = VecGetArray(Fgen,&fgen_p);CHKERRQ(ierr);
   ierr = VecGetArray(Fnet,&fnet_p);CHKERRQ(ierr);
 
-  trace_on(1);
-
   /* Mark independent variables */
-  for (i=0; i<user->neqs_gen; i++) {
+  for (i=0; i<user->neqs_gen; i++)
     xgen[i] <<= xgen_p[i];
-  }
-  for (i=0; i<user->neqs_net; i++) {
+  for (i=0; i<user->neqs_net; i++)
     xnet[i] <<= xnet_p[i];
-  }
 
   /* Generator subsystem */
   for (i=0; i < ngen; i++) {
@@ -191,7 +190,6 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
     fgen[idx+1] = (-Edp + (Xq[i] - Xqp[i])*Iq)/Tq0p[i];
     fgen[idx+2] = w - w_s;
     fgen[idx+3] = (TM[i] - Edp*Id - Eqp*Iq - (Xqp[i] - Xdp[i])*Id*Iq - D[i]*(w - w_s))/M[i];
-    // FIXME: Why are the nonlinear terms not tracing through??
 
     Vr = xnet[2*gbus[i]]; /* Real part of generator terminal voltage */
     Vi = xnet[2*gbus[i]+1]; /* Imaginary part of the generator terminal voltage */
@@ -215,11 +213,9 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
     fnet[2*gbus[i]]   -= IGi;
     fnet[2*gbus[i]+1] -= IGr;
 
-    //Vm = PetscSqrtScalar(Vd*Vd + Vq*Vq);
-    Vm = sqrt(Vd*Vd + Vq*Vq);
+    Vm = PetscSqrtScalar(Vd*Vd + Vq*Vq);
 
-    //SE = k1[i]*PetscExpScalar(k2[i]*Efd);
-    SE = k1[i]*exp(k2[i]*Efd);
+    SE = k1[i]*PetscExpScalar(k2[i]*Efd);
 
     /* Exciter differential equations */
     fgen[idx+6] = (-KE[i]*Efd - SE + VR)/TE[i];
@@ -235,15 +231,11 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
   for (i=0; i < nload; i++) {
     Vr  = xnet[2*lbus[i]]; /* Real part of load bus voltage */
     Vi  = xnet[2*lbus[i]+1]; /* Imaginary part of the load bus voltage */
-    //Vm  = PetscSqrtScalar(Vr*Vr + Vi*Vi); Vm2 = Vm*Vm;
-    Vm  = sqrt(Vr*Vr + Vi*Vi); Vm2 = Vm*Vm;
-    //Vm0 = PetscSqrtScalar(v0[2*lbus[i]]*v0[2*lbus[i]] + v0[2*lbus[i]+1]*v0[2*lbus[i]+1]);
-    Vm0 = sqrt(v0[2*lbus[i]]*v0[2*lbus[i]] + v0[2*lbus[i]+1]*v0[2*lbus[i]+1]);
+    Vm  = PetscSqrtScalar(Vr*Vr + Vi*Vi); Vm2 = Vm*Vm;
+    Vm0 = PetscSqrtScalar(v0[2*lbus[i]]*v0[2*lbus[i]] + v0[2*lbus[i]+1]*v0[2*lbus[i]+1]);
     PD  = QD = 0.0;
-    //for (k=0; k < ld_nsegsp[i]; k++) PD += ld_alphap[k]*PD0[i]*PetscPowScalar((Vm/Vm0),ld_betap[k]);
-    for (k=0; k < ld_nsegsp[i]; k++) PD += ld_alphap[k]*PD0[i]*pow((Vm/Vm0),ld_betap[k]);
-    //for (k=0; k < ld_nsegsq[i]; k++) QD += ld_alphaq[k]*QD0[i]*PetscPowScalar((Vm/Vm0),ld_betaq[k]);
-    for (k=0; k < ld_nsegsq[i]; k++) QD += ld_alphaq[k]*QD0[i]*pow((Vm/Vm0),ld_betaq[k]);
+    for (k=0; k < ld_nsegsp[i]; k++) PD += ld_alphap[k]*PD0[i]*PetscPowScalar((Vm/Vm0),ld_betap[k]);
+    for (k=0; k < ld_nsegsq[i]; k++) QD += ld_alphaq[k]*QD0[i]*PetscPowScalar((Vm/Vm0),ld_betaq[k]);
 
     /* Load currents */
     IDr = (PD*Vr + QD*Vi)/Vm2;
@@ -255,12 +247,10 @@ PetscErrorCode ResidualFunctionActive(Vec X,Vec F,Userctx *user)
   ierr = VecRestoreArray(user->V0,&v0);CHKERRQ(ierr);
 
   /* Mark dependent variables */
-  for (i=0; i<user->neqs_gen; i++) {
+  for (i=0; i<user->neqs_gen; i++)
     fgen[i] >>= fgen_p[i];
-  }
-  for (i=0; i<user->neqs_net; i++) {
+  for (i=0; i<user->neqs_net; i++)
     fnet[i] >>= fnet_p[i];
-  }
 
   trace_off();
 
@@ -338,7 +328,7 @@ PetscErrorCode IFunctionActive(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
 
   PetscFunctionBegin;
 
-  ierr = RHSFunctionActive(ts,t,X,F,ctx);CHKERRQ(ierr);
+  ierr = RHSFunctionActive(ts,t,X,F,ctx);CHKERRQ(ierr);  // Traces on tape 1
   ierr = VecGetArray(F,&f_p);CHKERRQ(ierr);
   ierr = VecGetArray(Xdot,&xdot_p);CHKERRQ(ierr);
 

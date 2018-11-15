@@ -85,7 +85,6 @@ int main(int argc,char **argv)
   adctx->p = user.neqs_pgrid;
 
   /* Create indices for differential and algebraic equations */
-
   ierr = PetscMalloc1(7*ngen,&idx2);CHKERRQ(ierr);
   for (i=0; i<ngen; i++) {
     idx2[7*i]   = 9*i;   idx2[7*i+1] = 9*i+1; idx2[7*i+2] = 9*i+2; idx2[7*i+3] = 9*i+3;
@@ -152,7 +151,6 @@ int main(int argc,char **argv)
   ierr = DMSetOptionsPrefix(user.dmpgrid,"pgrid_");CHKERRQ(ierr);
   ierr = DMCompositeAddDM(user.dmpgrid,user.dmgen);CHKERRQ(ierr);
   ierr = DMCompositeAddDM(user.dmpgrid,user.dmnet);CHKERRQ(ierr);
-
   ierr = DMCreateGlobalVector(user.dmpgrid,&X);CHKERRQ(ierr);
 
   ierr = MatCreate(PETSC_COMM_WORLD,&J);CHKERRQ(ierr);
@@ -169,6 +167,12 @@ int main(int argc,char **argv)
      Set initial conditions
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = SetInitialGuess(X,&user);CHKERRQ(ierr);
+
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Create timestepping solver context
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
+  ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
 
   ierr = VecDuplicate(X,&Xdot);CHKERRQ(ierr);
   if (!user.no_an) {
@@ -189,16 +193,17 @@ int main(int argc,char **argv)
        Trace just once
        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     ierr = VecDuplicate(X,&R);CHKERRQ(ierr);
-    ierr = IFunctionActive(ts,0.,X,Xdot,R,&user);CHKERRQ(ierr);
-    ierr = VecView(R,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);  // FIXME
+    if (user.semiexplicit) {
+      ierr = RHSFunctionActive(ts,0.,X,R,&user);CHKERRQ(ierr);
+    } else {
+      ierr = IFunctionActive(ts,0.,X,Xdot,R,&user);CHKERRQ(ierr);
+    }
     ierr = VecDestroy(&R);CHKERRQ(ierr);
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-     Create timestepping solver context
+     Set residual
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
-  ierr = TSSetProblemType(ts,TS_NONLINEAR);CHKERRQ(ierr);
   if (user.semiexplicit) {
     ierr = TSSetType(ts,TSRK);CHKERRQ(ierr);
     ierr = TSSetRHSFunction(ts,NULL,RHSFunctionPassive,&user);CHKERRQ(ierr);
@@ -222,13 +227,15 @@ int main(int argc,char **argv)
 
   /* Just to set up the Jacobian structure */
   if (byhand) {
-    ierr = IJacobianByHand(ts,0.0,X,Xdot,0.0,J,J,&user);CHKERRQ(ierr);
+    ierr = IJacobianByHand(ts,0.0,X,Xdot,1.0,J,J,&user);CHKERRQ(ierr);
   } else {
-   ierr = IJacobianAdolc(ts,0.0,X,Xdot,0.0,J,J,&user);CHKERRQ(ierr);
+    if (user.semiexplicit) {
+     ierr = RHSJacobianAdolc(ts,0.0,X,J,J,&user);CHKERRQ(ierr);
+    } else {
+     ierr = IJacobianAdolc(ts,0.0,X,Xdot,1.0,J,J,&user);CHKERRQ(ierr);
+    }
   }
   ierr = VecDestroy(&Xdot);CHKERRQ(ierr);
-
-  ierr = MatView(J,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
   /* Save initial solution */
 

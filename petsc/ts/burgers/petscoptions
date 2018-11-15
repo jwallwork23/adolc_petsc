@@ -1,0 +1,31 @@
+#-log_view
+
+# Mat options
+#-mat_view draw
+#-draw_pause -1
+
+# DMDA options
+#-da_grid_x 15
+#-da_grid_y 15
+
+# KSP and PC options
+-ksp_monitor
+-ksp_converged_reason
+-pc_type none
+
+# SNES options
+-snes_monitor
+#-snes_test_jacobian
+#-snes_test_jacobian_view
+
+# TS options
+-ts_monitor
+-ts_dt 0.25
+-ts_adjoint_monitor
+-ts_monitor_draw_solution
+-ts_adjoint_monitor_sensi draw
+-ts_trajectory_view
+-ts_trajectory_monitor
+-ts_trajectory_type memory
+#-ts_trajectory_solution_only 0
+-ts_max_steps 50

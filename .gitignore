@@ -1,7 +1,11 @@
 # Directories
 
 colpack/
+tapenade/luexam
+tapenade/powexam
+tapenade/odexam
 misc/
+.idea/
 
 # File types
 *.o
@@ -15,3 +19,5 @@ misc/
 *_b.c
 *_d.h
 *_b.h
+*_d.f
+*_b.f

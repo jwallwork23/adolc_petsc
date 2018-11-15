@@ -12,7 +12,8 @@
   Outpu parameter:
   A   - pointer to array for which memory is allocated
 
-  TODO: Account for integer arrays
+
+  Note: Only arrays of doubles are currently accounted for in ADOL-C's myalloc2 function.
 */
 template <class T>
 PetscErrorCode AdolcMalloc2(PetscInt m,PetscInt n,T **A[])
@@ -28,7 +29,7 @@ PetscErrorCode AdolcMalloc2(PetscInt m,PetscInt n,T **A[])
   Input parameter:
   A - array to free memory of
 
-  TODO: Account for integer arrays
+  Note: Only arrays of doubles are currently accounted for in ADOL-C's myalloc2 function.
 */
 template <class T>
 PetscErrorCode AdolcFree2(T **A)
@@ -50,8 +51,6 @@ PetscErrorCode AdolcFree2(T **A)
   Output parameter:
   array - contiguously allocated array of the appropriate dimension with
           ghost points, pointing to the 1-array
-
-  TODO: 3d version
 */
 template <class T>
 PetscErrorCode GiveGhostPoints(DM da,T *cgs,void *array)
@@ -66,7 +65,7 @@ PetscErrorCode GiveGhostPoints(DM da,T *cgs,void *array)
   } else if (dim == 2) {
     ierr = GiveGhostPoints2d(da,cgs,(T***)array);CHKERRQ(ierr);
   } else if (dim == 3) {
-    SETERRQ(PETSC_COMM_SELF,1,"GiveGhostPoints3d not yet implemented\n");
+    SETERRQ(PETSC_COMM_SELF,1,"GiveGhostPoints3d not yet implemented\n"); // TODO
   }
   PetscFunctionReturn(0);
 }
@@ -117,66 +116,6 @@ PetscErrorCode GiveGhostPoints2d(DM da,T *cgs,T **a2d[])
   for (j=0; j<gym; j++)
     (*a2d)[j] = cgs + j*gxm - gxs;
   *a2d -= gys;
-  PetscFunctionReturn(0);
-}
-
-/*
-  Shift indices in a 3-array of type T to endow it with ghost points.
-  (e.g. This works for arrays of adoubles or AFields.)
-
-  Input parameters:
-  da  - distributed array upon which variables are defined
-  cgs - contiguously allocated 1-array with as many entries as there are
-        interior and ghost points, in total
-
-  Output parameter:
-  a3d - contiguously allocated 3-array with ghost points, pointing to the
-        1-array
-*/
-template <class T>
-PetscErrorCode GiveGhostPoints3d(DM da,T *cgs,T ***a3d[])
-{
-  PetscFunctionBegin;
-  // TODO
-  PetscFunctionReturn(0);
-}
-
-/*
-  Convert a 2-array defined on a DMDA to a 1-array
-
-  Input parameters:
-  da    - distributed array upon which variables are defined
-  u     - 2-array to be converted
-
-  Output parameters:
-  u_vec - corresponding 1-array
-
-  TODO: Generalise... or just remove
-*/
-PetscErrorCode ConvertTo1Array2d(DM da,PetscScalar **u,PetscScalar *u_vec)
-{
-  PetscErrorCode ierr;
-  PetscInt       i,j,k = 0,gxs,gys,gxm,gym;
-
-  PetscFunctionBegin;
-  ierr = DMDAGetGhostCorners(da,&gxs,&gys,NULL,&gxm,&gym,NULL);CHKERRQ(ierr);
-  for (j=gys; j<gys+gym; j++) {
-    for (i=gxs; i<gxs+gxm; i++)
-      u_vec[k++] = u[j][i];
-  }
-  PetscFunctionReturn(0);
-}
-
-/*
-  TODO: Documentation
-  FIXME and generalise for dimensions and dofs
-*/
-PetscErrorCode ConvertTo1Array(DM da,void **u,PetscScalar *u_vec)
-{
-  PetscErrorCode ierr;
-
-  PetscFunctionBegin;
-  ierr = ConvertTo1Array2d(da,(PetscScalar**)u,u_vec);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 

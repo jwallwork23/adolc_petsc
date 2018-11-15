@@ -27,7 +27,7 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   PetscInt          m,n,i,j,k = 0,d;
   const PetscScalar *x0;
   PetscScalar       *action,*x1;
-  Vec               localX0,localX1;
+  Vec               localX1;
   DM                da;
   DMDALocalInfo     info;
 
@@ -41,18 +41,16 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   /* Get local input vectors and extract data, x0 and x1*/
   ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
   ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
-  ierr = DMGetLocalVector(da,&localX0);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localX1);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(localX0,&x0);CHKERRQ(ierr);
+
+  ierr = VecGetArrayRead(mctx->localX0,&x0);CHKERRQ(ierr);
   ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
 
   /* dF/dx part */
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
-  //printf("%d,%d\n",m,n);
+  ierr = PetscLogEventBegin(mctx->event1,0,0,0,0);CHKERRQ(ierr);
   fos_forward(1,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
@@ -64,11 +62,13 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
       }
     }
   }
+  ierr = PetscLogEventEnd(mctx->event1,0,0,0,0);CHKERRQ(ierr);
   k = 0;
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr); /* Note: Need to assemble between separate calls */
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);   /*       to INSERT_VALUES and ADD_VALUES         */
 
   /* a * dF/d(xdot) part */
+  ierr = PetscLogEventBegin(mctx->event2,0,0,0,0);CHKERRQ(ierr);
   fos_forward(2,m,n,0,x0,x1,NULL,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
@@ -81,15 +81,78 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
       }
     }
   }
+  ierr = PetscLogEventEnd(mctx->event2,0,0,0,0);CHKERRQ(ierr);
   ierr = VecAssemblyBegin(Y);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);
   ierr = PetscFree(action);CHKERRQ(ierr);
 
   /* Restore local vector */
   ierr = VecRestoreArray(localX1,&x1);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(localX0,&x0);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(mctx->localX0,&x0);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localX1);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localX0);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Special case where mass matrix is identity
+*/
+PetscErrorCode JacobianVectorProductIDMass(Mat A_shell,Vec X,Vec Y)
+{
+  MatCtx            *mctx;
+  PetscErrorCode    ierr;
+  PetscInt          m,n,i,j,k = 0,d;
+  const PetscScalar *x0;
+  PetscScalar       *action,*x1;
+  Vec               localX1;
+  DM                da;
+  DMDALocalInfo     info;
+
+  PetscFunctionBegin;
+
+  /* Get matrix-free context info */
+  ierr = MatShellGetContext(A_shell,(void**)&mctx);CHKERRQ(ierr);
+  m = mctx->m;
+  n = mctx->n;
+
+  /* Get local input vectors and extract data, x0 and x1*/
+  ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
+  ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localX1);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
+
+  ierr = VecGetArrayRead(mctx->localX0,&x0);CHKERRQ(ierr);
+  ierr = VecGetArray(localX1,&x1);CHKERRQ(ierr);
+
+  /* dF/dx part */
+  ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(mctx->event1,0,0,0,0);CHKERRQ(ierr);
+  fos_forward(1,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
+  for (j=info.gys; j<info.gys+info.gym; j++) {
+    for (i=info.gxs; i<info.gxs+info.gxm; i++) {
+      for (d=0; d<2; d++) {
+        if ((i >= info.xs) && (i < info.xs+info.xm) && (j >= info.ys) && (j < info.ys+info.ym)) {
+          ierr = VecSetValuesLocal(Y,1,&k,&action[k],INSERT_VALUES);CHKERRQ(ierr);
+        }
+        k++;
+      }
+    }
+  }
+  ierr = PetscLogEventEnd(mctx->event1,0,0,0,0);CHKERRQ(ierr);
+  k = 0;
+  ierr = VecAssemblyBegin(Y);CHKERRQ(ierr); /* Note: Need to assemble between separate calls */
+  ierr = VecAssemblyEnd(Y);CHKERRQ(ierr);   /*       to INSERT_VALUES and ADD_VALUES         */
+  ierr = PetscFree(action);CHKERRQ(ierr);
+
+  /* Restore local vector */
+  ierr = VecRestoreArray(localX1,&x1);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(mctx->localX0,&x0);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localX1);CHKERRQ(ierr);
+
+  /* a * dF/d(xdot) part */
+  ierr = PetscLogEventBegin(mctx->event2,0,0,0,0);CHKERRQ(ierr);
+  ierr = VecAXPY(Y,mctx->shift,X);
+  ierr = PetscLogEventEnd(mctx->event2,0,0,0,0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -112,7 +175,7 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   PetscInt          m,n,i,j,k = 0,d;
   const PetscScalar *x;
   PetscScalar       *action,*y;
-  Vec               localX,localY;
+  Vec               localY;
   DM                da;
   DMDALocalInfo     info;
 
@@ -126,18 +189,17 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   /* Get local input vectors and extract data, x0 and x1*/
   ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
   ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
-  ierr = DMGetLocalVector(da,&localX);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localY);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localX);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(localX,&x);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(mctx->localX0,&x);CHKERRQ(ierr);
   ierr = VecGetArray(localY,&y);CHKERRQ(ierr);
 
   /* dF/dx part */
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
-  zos_forward(1,m,n,1,x,NULL); // TODO: This should be optional
+  ierr = PetscLogEventBegin(mctx->event3,0,0,0,0);CHKERRQ(ierr);
+  if (!mctx->flg)
+    zos_forward(1,m,n,1,x,NULL);
   fos_reverse(1,m,n,y,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
@@ -149,12 +211,17 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
       }
     }
   }
+  ierr = PetscLogEventEnd(mctx->event3,0,0,0,0);CHKERRQ(ierr);
   k = 0;
   ierr = VecAssemblyBegin(X);CHKERRQ(ierr); /* Note: Need to assemble between separate calls */
   ierr = VecAssemblyEnd(X);CHKERRQ(ierr);   /*       to INSERT_VALUES and ADD_VALUES         */
 
   /* a * dF/d(xdot) part */
-  zos_forward(2,m,n,1,x,NULL); // TODO: This should be optional
+  ierr = PetscLogEventBegin(mctx->event4,0,0,0,0);CHKERRQ(ierr);
+  if (!mctx->flg) {
+    zos_forward(2,m,n,1,x,NULL);
+    mctx->flg = PETSC_TRUE;
+  }
   fos_reverse(2,m,n,y,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
@@ -167,19 +234,83 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
       }
     }
   }
+  ierr = PetscLogEventEnd(mctx->event4,0,0,0,0);CHKERRQ(ierr);
   ierr = VecAssemblyBegin(X);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(X);CHKERRQ(ierr);
   ierr = PetscFree(action);CHKERRQ(ierr);
 
   /* Restore local vector */
   ierr = VecRestoreArray(localY,&y);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(localX,&x);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(mctx->localX0,&x);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localY);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localX);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
-// TODO: Modify the below to use matrix-free AD
+/*
+  Special case where mass matrix is identity.
+*/
+PetscErrorCode JacobianTransposeVectorProductIDMass(Mat A_shell,Vec Y,Vec X)
+{
+  MatCtx            *mctx;
+  PetscErrorCode    ierr;
+  PetscInt          m,n,i,j,k = 0,d;
+  const PetscScalar *x;
+  PetscScalar       *action,*y;
+  Vec               localY;
+  DM                da;
+  DMDALocalInfo     info;
+
+  PetscFunctionBegin;
+
+  /* Get matrix-free context info */
+  ierr = MatShellGetContext(A_shell,(void**)&mctx);CHKERRQ(ierr);
+  m = mctx->m;
+  n = mctx->n;
+
+  /* Get local input vectors and extract data, x0 and x1*/
+  ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
+  ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&localY);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(mctx->localX0,&x);CHKERRQ(ierr);
+  ierr = VecGetArray(localY,&y);CHKERRQ(ierr);
+
+  /* dF/dx part */
+  ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(mctx->event3,0,0,0,0);CHKERRQ(ierr);
+  if (!mctx->flg)
+    zos_forward(1,m,n,1,x,NULL);
+  fos_reverse(1,m,n,y,action);
+  for (j=info.gys; j<info.gys+info.gym; j++) {
+    for (i=info.gxs; i<info.gxs+info.gxm; i++) {
+      for (d=0; d<2; d++) {
+        if ((i >= info.xs) && (i < info.xs+info.xm) && (j >= info.ys) && (j < info.ys+info.ym)) {
+          ierr = VecSetValuesLocal(X,1,&k,&action[k],INSERT_VALUES);CHKERRQ(ierr);
+        }
+        k++;
+      }
+    }
+  }
+  ierr = PetscLogEventEnd(mctx->event3,0,0,0,0);CHKERRQ(ierr);
+  k = 0;
+  ierr = VecAssemblyBegin(X);CHKERRQ(ierr); /* Note: Need to assemble between separate calls */
+  ierr = VecAssemblyEnd(X);CHKERRQ(ierr);   /*       to INSERT_VALUES and ADD_VALUES         */
+  ierr = PetscFree(action);CHKERRQ(ierr);
+
+  /* Restore local vector */
+  ierr = VecRestoreArray(localY,&y);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(mctx->localX0,&x);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(da,&localY);CHKERRQ(ierr);
+
+  /* a * dF/d(xdot) part */
+  ierr = PetscLogEventBegin(mctx->event4,0,0,0,0);CHKERRQ(ierr);
+  ierr = VecAXPY(X,mctx->shift,Y);CHKERRQ(ierr);
+  ierr = PetscLogEventEnd(mctx->event4,0,0,0,0);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+// TODO: Modify the below to use matrix-free preconditioning
 
 typedef struct {
   Vec diag;

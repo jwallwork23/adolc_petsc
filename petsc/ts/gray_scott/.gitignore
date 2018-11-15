@@ -1,0 +1,9 @@
+SA-data/
+results_100ts/
+draw/
+*.txt
+ex5
+ex5adj
+ex5imp
+ex5mf
+utils/octave-workspace

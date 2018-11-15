@@ -1,27 +1,19 @@
 ALL: clean ex13
 CFLAGS		=
 FFLAGS		=
-CXXFLAGS	= -std=c++11
+CXXFLAGS	= -std=c++11 -I${ADOLC_BUILDDIR}/include
 CPPFLAGS	=
 FPPFLAGS	=
-CLEANFILES	= ex13 ex13hong *.tap *.txt *.o
-CC		= g++
+CLEANFILES	= ex13 *.tap *.txt *.o
 
-INCLUDES	=
-LIB		= ${PETSC_TS_LIB} -L${ADOLC_BUILDDIR} -ladolc
+LIB		= ${PETSC_TS_LIB} -L${USER_LIB} -lboost_system
+LIB             += -L${ADOLC_BUILDDIR}/lib64 -ladolc -Wl,-rpath,${ADOLC_BUILDDIR}/lib64
 
 include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules
 
-%.o: ../../utils/%.cpp
-	$(CC) $(CXXFLAGS) -o $@ $^ $(LIB)
-
 ex13: ex13.o
-	$(CC) $(CXXFLAGS) -o $@ $^ $(LIB)
-	${RM} $^
-
-ex13hong: ex13hong.o
-	${CLINKER} -o $@ $^ ${PETSC_TS_LIB}
+	-${CLINKER} -o $@ $^ $(LIB)
 	${RM} $^
 
 include ${PETSC_DIR}/lib/petsc/conf/test

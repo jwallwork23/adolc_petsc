@@ -2,7 +2,9 @@
 #define c12 0
 #define c21 2.0
 #define c22 1.0
-static char help[] = "Performs adjoint sensitivity analysis for the van der Pol equation.\n";
+static char help[] = "Illustrates automatic Jacobian generation using ADOL-C for an adjoint sensitivity analysis of the van der Pol equation.\n";
+
+// FIXME: Adjoint run does not agree with hand-coded version!
 
 /*
    Concepts: TS^time-dependent nonlinear problems
@@ -11,47 +13,12 @@ static char help[] = "Performs adjoint sensitivity analysis for the van der Pol 
    Processors: 1
 */
 /* ------------------------------------------------------------------------
-
-   This program solves the van der Pol DAE ODE equivalent
-      [ u_1' ] = [      u_2              ]  (2)
-      [ u_2' ]   [ mu[(1-u_1^2)u_2-u_1]  ]
-   on the domain 0 <= x <= 1, with the boundary conditions
-       u_1(0) = 2, u_2(0) = -6.666665432100101e-01,
-   and
-       mu = 10^6,
-   and computes the sensitivities of the final solution w.r.t. initial conditions and parameter \mu with the implicit theta method and its discrete adjoint.
-
-   Notes:
-   This code demonstrates the TSAdjoint interface to a DAE system.
-
-   The user provides the implicit right-hand-side function
-   [ G(u',u,t) ] = [u' - f(u,t)] = [ u_1'] - [        u_2           ]
-                                   [ u_2']   [ mu[(1-u_1^2)u_2-u_1] ]
-
-   and the Jacobian of G (from the PETSc user manual)
-
-              dG   dG
-   J(G) = a * -- + --
-              du'  du
-
-   and the JacobianP of the explicit right-hand side of (2) f(u,t) ( which is equivalent to -G(0,u,t) ).
-   df   [       0         ]
-   -- = [                 ]
-   dp   [ (1 - u_1^2) u_2 ].
-
-   See ex20.c for more details on the Jacobian.
-
-   Many DAEs can be represented in a general form M u_t = f(u,t).
-   Thus both sides of (1) are multiplied by an artificial matrix
-   M = [ c11 c12 ]
-       [ c21 c22 ]
-   to turn (1) into the general form. This operation does not change the solution and it is intended for illustration only.
-
+   See ex20adj for description of DAE ODE equivalent.
   ------------------------------------------------------------------------- */
 #include <petscts.h>
 #include <petsctao.h>
-#include <adolc/adolc.h>	// Include ADOL-C
-#include "subjacobian.c"	// User-defined function to calculate a submatrix of Jacobian
+#include <adolc/adolc.h>
+#include "../../utils/drivers.cpp"
 
 typedef struct _n_User *User;
 struct _n_User {
@@ -63,13 +30,16 @@ struct _n_User {
   PetscReal ftime;
   Mat       A;                       /* Jacobian matrix */
   Mat       Jacp;                    /* JacobianP matrix */
-  Vec       x,lambda[2],mup[2];  /* adjoint variables */
+  Vec       x,lambda[2],mup[2];      /* adjoint variables */
+
+  /* Automatic differentiation support */
+  AdolcCtx  *adctx;
 };
 
 /*
-*  User-defined routines
+  'Passive' RHS function, used in residual evaluations during the time integration.
 */
-static PetscErrorCode IFunction(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
+static PetscErrorCode IFunctionPassive(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
@@ -77,20 +47,43 @@ static PetscErrorCode IFunction(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx
   const PetscScalar *x,*xdot;
   PetscScalar       *f;
 
-  adouble           f_a[2];				// adouble for dependent variables
-  adouble           x_a[2],mu_a;			// adouble for independent variables
+  PetscFunctionBeginUser;
+  ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(Xdot,&xdot);CHKERRQ(ierr);
+  ierr = VecGetArray(F,&f);CHKERRQ(ierr);
+  f[0] = xdot[0] - x[1];
+  f[1] = c21*(xdot[0]-x[1]) + xdot[1] - mu*((1.0-x[0]*x[0])*x[1] - x[0]);
+  ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(Xdot,&xdot);CHKERRQ(ierr);
+  ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Trace RHS to mark on tape 1 the dependence of f upon x. This tape is used in generating the
+  Jacobian transform.
+*/
+static PetscErrorCode IFunctionActive1(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
+{
+  PetscErrorCode    ierr;
+  User              user = (User)ctx;
+  const PetscScalar *x,*xdot;
+  PetscScalar       *f;
+
+  adouble           f_a[2];				/* adouble for dependent variables */
+  adouble           x_a[2];				/* adouble for independent variables */
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecGetArrayRead(Xdot,&xdot);CHKERRQ(ierr);
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);
 
-  trace_on(1);						// Start of active section
-  x_a[0] <<= x[0]; x_a[1] <<= x[1]; mu_a <<= mu;	// Declare independence
+  trace_on(1);						/* Start of active section */
+  x_a[0] <<= x[0]; x_a[1] <<= x[1];			/* Mark independence */
   f_a[0] = xdot[0] - x_a[1];
-  f_a[1] = c21*(xdot[0]-x_a[1]) + xdot[1] - mu_a*((1.0-x_a[0]*x_a[0])*x_a[1] - x_a[0]);
-  f_a[0] >>= f[0]; f_a[1] >>= f[1];			// Declare dependence
-  trace_off();						// End of active section
+  f_a[1] = c21*(xdot[0]-x_a[1]) + xdot[1] - user->mu*((1.0-x_a[0]*x_a[0])*x_a[1] - x_a[0]);
+  f_a[0] >>= f[0]; f_a[1] >>= f[1];			/* Mark dependence */
+  trace_off();						/* End of active section */
 
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(Xdot,&xdot);CHKERRQ(ierr);
@@ -98,85 +91,107 @@ static PetscErrorCode IFunction(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode SubJacobian(TS ts,PetscReal t,Vec X,Mat A,Mat B,PetscInt m,PetscInt row[],PetscInt n,PetscInt col[],PetscInt s,PetscInt indep_cols[],PetscBool rhs,void *ctx)
+/*
+  Trace RHS to mark on tape 2 the dependence of f upon xdot. This tape is used in generating the
+  Jacobian transform (under implicit TS).
+*/
+static PetscErrorCode IFunctionActive2(TS ts,PetscReal t,Vec X,Vec Xdot,Vec F,void *ctx)
 {
   PetscErrorCode    ierr;
   User              user = (User)ctx;
-  const PetscScalar mu   = user->mu;
-  PetscInt          i;
-  PetscScalar       **J;
-  const PetscScalar *x;
+  const PetscScalar *x,*xdot;
+  PetscScalar       *f;
+
+  adouble           f_a[2];				/* adouble for dependent variables */
+  adouble           xdot_a[2];				/* adouble for independent variables */
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(Xdot,&xdot);CHKERRQ(ierr);
+  ierr = VecGetArray(F,&f);CHKERRQ(ierr);
 
-  const PetscScalar indep_vars[] = {x[0],x[1],mu};  	// Concatenate independent vars
-  const PetscScalar *ptr_to_indep = indep_vars;         // TODO: how to do this more generally?
+  trace_on(2);						/* Start of active section */
+  xdot_a[0] <<= xdot[0]; xdot_a[1] <<= xdot[1];		/* Mark independence */
+  f_a[0] = xdot_a[0] - x[1];
+  f_a[1] = c21*(xdot_a[0]-x[1]) + xdot_a[1] - user->mu*((1.0-x[0]*x[0])*x[1] - x[0]);
+  f_a[0] >>= f[0]; f_a[1] >>= f[1];			/* Mark dependence */
+  trace_off();						/* End of active section */
 
-  J = myalloc2(m,s);                                    // Contiguous ADOL-C matrix memory allocation
-  subjacobian(1,m,n,s,indep_cols,ptr_to_indep,J);       // Calculate Jacobian using ADOL-C
-  for(i=0; i<s; i++)
-    indep_cols[i] = i;					// Shift column index subset
-  if (rhs == PETSC_TRUE){
-    ierr = MatSetValues(A,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
-  } else {
-    ierr = MatSetValues(B,m,row,s,indep_cols,&J[0][0],INSERT_VALUES);CHKERRQ(ierr);
-  }
-  myfree2(J);                                           // Free allocated memory
-
-  ierr = MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  if (A != B) {
-    ierr = MatAssemblyBegin(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-    ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  }
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(Xdot,&xdot);CHKERRQ(ierr);
+  ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
+/*
+  Trace RHS again to mark on tape 3 the dependence of f upon the parameter mu. This tape is used in
+  generating JacobianP.
+*/
+static PetscErrorCode RHSFunctionActiveP(TS ts,PetscReal t,Vec X,Vec F,void *ctx)
+{
+  PetscErrorCode    ierr;
+  User              user = (User)ctx;
+  PetscScalar       *f;
+  const PetscScalar *x;
+
+  adouble           f_a[2];                             /* adouble for dependent variables */
+  adouble           x_a[2],mu_a;                        /* adouble for independent variables */
+
+  PetscFunctionBeginUser;
+  ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
+  ierr = VecGetArray(F,&f);CHKERRQ(ierr);
+
+  trace_on(3);                                          /* Start of active section */
+  x_a[0] <<= x[0];x_a[1] <<= x[1];mu_a <<= user->mu;    /* Mark independence */
+  f_a[0] = x_a[1];
+  f_a[1] = mu_a*(1.-x_a[0]*x_a[0])*x_a[1]-x_a[0];
+  f_a[0] >>= f[0];f_a[1] >>= f[1];                      /* Mark dependence */
+  trace_off();                                          /* End of active section */
+
+  ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
+  ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Compute the Jacobian w.r.t. x using ADOL-C.
+*/
 static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A,Mat B,void *ctx)
 {
   PetscErrorCode    ierr;
-  PetscInt          row[]        = {0,1},m = 2;		// Dependent variables
-  PetscInt          col[]        = {0,1,2},n = 3;	// Independent variables
-  PetscInt          indep_cols[] = {0,1},s = 2;		// Relevant independent variables
-  PetscScalar       C[2][2];
-  Mat               M;					// Mass matrix
+  User              user = (User)ctx;
+  PetscScalar       *x;
+  Vec               Xcopy;
 
   PetscFunctionBeginUser;
-  ierr = SubJacobian(ts,t,X,A,B,m,row,n,col,s,indep_cols,PETSC_FALSE,ctx);CHKERRQ(ierr);
-/*
-  For an implicit Jacobian we may use the rule that
-     G = M*xdot - f(x)    ==>     dG/dx = a*M - df/dx,
-  where a = d(xdot)/dx is a constant.
-*/
-  ierr = MatCreate(PETSC_COMM_WORLD,&M);CHKERRQ(ierr);
-  ierr = MatSetSizes(M,PETSC_DECIDE,PETSC_DECIDE,2,2);CHKERRQ(ierr);
-  ierr = MatSetFromOptions(M);CHKERRQ(ierr);
-  ierr = MatSetUp(M);CHKERRQ(ierr);
-  C[0][0] = c11;C[0][1] = c12;C[1][0] = c21;C[1][1] = c22;
-  ierr = MatSetValues(M,m,row,s,indep_cols,&C[0][0],INSERT_VALUES);CHKERRQ(ierr);
-  ierr = MatAssemblyBegin(M,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(M,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAXPY(A,a,M,DIFFERENT_NONZERO_PATTERN);
-  ierr = MatDestroy(&M);
-
+  ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);	/* Needs duplicating, as X is read-only */
+  ierr = VecCopy(X,Xcopy);CHKERRQ(ierr);	/* This copies the values over */
+  ierr = VecGetArray(Xcopy,&x);CHKERRQ(ierr);
+  ierr = AdolcComputeIJacobian(A,x,a,user->adctx);CHKERRQ(ierr);
+  ierr = VecRestoreArray(Xcopy,&x);CHKERRQ(ierr);
+  ierr = VecDestroy(&Xcopy);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
+/*
+  Compute the Jacobian w.r.t. mu using ADOL-C.
+*/
 static PetscErrorCode RHSJacobianP(TS ts,PetscReal t,Vec X,Mat A,void *ctx)
 {
   PetscErrorCode    ierr;
-  PetscInt          row[] = {0,1},m = 2;
-  PetscInt          col[] = {0,1,2},n = 3;
-  PetscInt          indep_cols[]={2},s = 1;
+  User              user = (User)ctx;
+  PetscScalar       *x;
 
   PetscFunctionBeginUser;
-  ierr = SubJacobian(ts,t,X,A,A,m,row,n,col,s,indep_cols,PETSC_TRUE,ctx);CHKERRQ(ierr);
+  ierr = VecGetArray(X,&x);CHKERRQ(ierr);
+  ierr = AdolcComputeRHSJacobianP(A,x,&user->mu,3,user->adctx);CHKERRQ(ierr);
+  ierr = VecRestoreArray(X,&x);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
-/* Monitor timesteps and use interpolation to output at integer multiples of 0.1 */
+/*
+  Monitor timesteps and use interpolation to output at integer multiples of 0.1
+*/
 static PetscErrorCode Monitor(TS ts,PetscInt step,PetscReal t,Vec X,void *ctx)
 {
   PetscErrorCode    ierr;
@@ -210,22 +225,27 @@ int main(int argc,char **argv)
   PetscScalar    *x_ptr,*y_ptr;
   PetscMPIInt    size;
   struct _n_User user;
+  AdolcCtx       *adctx;
   PetscErrorCode ierr;
+  Vec            r;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Initialize program
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = PetscInitialize(&argc,&argv,NULL,help);if (ierr) return ierr;
+  ierr = PetscInitialize(&argc,&argv,"petscoptions",help);if (ierr) return ierr;
   ierr = MPI_Comm_size(PETSC_COMM_WORLD,&size);CHKERRQ(ierr);
   if (size != 1) SETERRQ(PETSC_COMM_SELF,1,"This is a uniprocessor example only!");
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    Set runtime options
+    Set runtime options and create AdolcCtx
     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = PetscNew(&adctx);CHKERRQ(ierr);
   user.next_output = 0.0;
   user.mu          = 1.0e6;
   user.steps       = 0;
   user.ftime       = 0.5;
+  adctx->m = 2;adctx->n = 2;adctx->p = 2;
+  user.adctx = adctx;
   ierr = PetscOptionsGetBool(NULL,NULL,"-monitor",&monitor,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetReal(NULL,NULL,"-mu",&user.mu,NULL);CHKERRQ(ierr);
 
@@ -248,13 +268,7 @@ int main(int argc,char **argv)
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSCreate(PETSC_COMM_WORLD,&ts);CHKERRQ(ierr);
   ierr = TSSetType(ts,TSCN);CHKERRQ(ierr);
-  ierr = TSSetIFunction(ts,NULL,IFunction,&user);CHKERRQ(ierr);
-  ierr = TSSetIJacobian(ts,user.A,user.A,IJacobian,&user);CHKERRQ(ierr);
-  ierr = TSSetMaxTime(ts,user.ftime);CHKERRQ(ierr);
-  ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_MATCHSTEP);CHKERRQ(ierr);
-  if (monitor) {
-    ierr = TSMonitorSet(ts,Monitor,&user,NULL);CHKERRQ(ierr);
-  }
+  ierr = TSSetIFunction(ts,NULL,IFunctionPassive,&user);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Set initial conditions
@@ -262,6 +276,27 @@ int main(int argc,char **argv)
   ierr = VecGetArray(user.x,&x_ptr);CHKERRQ(ierr);
   x_ptr[0] = 2.0;   x_ptr[1] = -0.66666654321;
   ierr = VecRestoreArray(user.x,&x_ptr);CHKERRQ(ierr);
+
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Trace just once on each tape and put zeros on Jacobian diagonal
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = VecDuplicate(user.x,&r);CHKERRQ(ierr);
+  ierr = IFunctionActive1(ts,0.,user.x,user.x,r,&user);CHKERRQ(ierr);
+  ierr = IFunctionActive2(ts,0.,user.x,user.x,r,&user);CHKERRQ(ierr);
+  ierr = RHSFunctionActiveP(ts,0.,user.x,r,&user);CHKERRQ(ierr);
+  ierr = VecSet(r,0);CHKERRQ(ierr);
+  ierr = MatDiagonalSet(user.A,r,INSERT_VALUES);CHKERRQ(ierr);
+  ierr = VecDestroy(&r);CHKERRQ(ierr);
+
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+     Set Jacobian for the adjoint integration
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = TSSetIJacobian(ts,user.A,user.A,IJacobian,&user);CHKERRQ(ierr);
+  ierr = TSSetMaxTime(ts,user.ftime);CHKERRQ(ierr);
+  ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_MATCHSTEP);CHKERRQ(ierr);
+  if (monitor) {
+    ierr = TSMonitorSet(ts,Monitor,&user,NULL);CHKERRQ(ierr);
+  }
   ierr = TSSetTimeStep(ts,.0001);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -328,7 +363,7 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&user.mup[0]);CHKERRQ(ierr);
   ierr = VecDestroy(&user.mup[1]);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
-
+  ierr = PetscFree(adctx);CHKERRQ(ierr);
   ierr = PetscFinalize();
   return(ierr);
 }

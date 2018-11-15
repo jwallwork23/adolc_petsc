@@ -1,0 +1,38 @@
+# To ensure consistent installation of PETSc, ColPack and ADOL-C:
+
+cd $HOME/software
+git clone -b maint https://bitbucket.org/petsc/petsc petsc
+export PETSC_DIR=$HOME/software/petsc
+export PETSC_ARCH=myarch
+cd petsc
+./configure --download-exodusii --download-hdf5 --download-netcdf --download-zlib --download-pnetcdf
+make all test
+
+cd $HOME/software
+git clone https://github.com/CSCsw/ColPack.git colpack
+export COLPACK_HOME=$HOME/software/colpack
+cd $COLPACK_HOME
+autoreconf -vif                                
+fullpath=$(pwd)
+./configure --prefix=${fullpath}  
+make -j 4              # Where "4" is the number of cores on your machine
+make install
+export LD_LIBRARY_PATH=${COLPACK_HOME}/lib:${LD_LIBRARY_PATH}
+
+cd $HOME/software
+svn checkout https://projects.coin-or.org/svn/ADOL-C/releases/2.6.0 adolc
+mkdir adolc/build
+export ADOLC_BUILDDIR=adolc/build
+cd $ADOLC_HOME
+./configure --prefix=/homes/jwallwork/software/adol-c/ADOL-C-2.6.0/build --enable-sparse --enable-docexa --enable-addexa --with-colpack=/homes/jwallwork/software/colpack
+#cd $ADOLC_BUILDDIR
+#../configure --prefix=${ADOLC_BUILDDIR} --enable-sparse --with-colpack=${COLPACK_HOME}
+make
+make install
+
+cd $HOME/software
+git clone https://github.com/Reference-LAPACK/lapack lapack
+export LAPACK_HOME=$HOME/software/lapack
+cd $LAPACK_HOME
+mv make.inc.example make.inc
+make

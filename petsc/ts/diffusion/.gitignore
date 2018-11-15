@@ -2,11 +2,5 @@ SA-data/
 test/
 *.txt
 ex13
-ex13hong.c
-ex16
-ex16adj
-ex16opt_p
-ex16opt_ic
-ex20
-ex20adj
+hong/
 draw/

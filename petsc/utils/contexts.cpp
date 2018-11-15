@@ -27,10 +27,13 @@ typedef struct {
 #define MATCTX
 typedef struct {
   PetscReal time;
-  Vec       X;
-  Vec       Xdot;
-  PetscReal shift;
-  PetscInt  m,n;
-  TS        ts;
+  Vec           X;
+  Vec           Xdot;
+  Vec           localX0;
+  PetscReal     shift;
+  PetscInt      m,n;
+  TS            ts;
+  PetscBool     flg;
+  PetscLogEvent event1,event2,event3,event4;
 } MatCtx;
 #endif

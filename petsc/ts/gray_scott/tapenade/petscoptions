@@ -1,0 +1,19 @@
+# DMDA options
+#-da_grid_x 12
+#-da_grid_y 12
+
+# KSP and PC options
+-ksp_monitor
+-ksp_converged_reason
+-pc_type none
+
+# SNES options
+-snes_monitor
+#-snes_test_jacobian
+#-snes_test_jacobian_view
+
+# TS options
+-ts_monitor
+-ts_adjoint_monitor
+-ts_monitor_draw_solution
+#-ts_max_steps 1
