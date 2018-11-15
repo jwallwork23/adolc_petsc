@@ -1,17 +1,17 @@
-all: clean mtmv test_tensor
+all: clean derivatives/mxm_d.c derivatives/mxm_b.c test_tensor
 
 # Compiling
-CFLAGS = -I. -I${TAPENADE_HOME}/ADFirstAidKit
-CFLAGS += -I${LAPACK_HOME}/CBLAS -I${LAPACK_HOME}/SRC -I${LAPACK_HOME}/LAPACKE/include -Wall
+CFLAGS = -O3 -Wall -I. -I${TAPENADE_HOME}/ADFirstAidKit
+CFLAGS += -I${LAPACK_HOME}/CBLAS -I${LAPACK_HOME}/SRC -I${LAPACK_HOME}/LAPACKE/include
 
 # Linking TODO: not if we are using CIVL
-LIB = -L${LAPACK_HOME} -lcblas -lrefblas -llapack -llapacke -Wall
+LIBRARIES = ${LAPACK_HOME}/liblapacke.a ${LAPACK_HOME}/liblapack.a ${LAPACK_HOME}/libcblas.a ${LAPACK_HOME}/librefblas.a
 
 DDIR = derivatives
 TFLAGS = -O $(DDIR)
 clean: cleandiff cleanobj
 cleandiff:
-	rm -rf $(DDIR)/*_d.c $(DDIR)/*_d.msg $(DDIR)/*_b.c $(DDIR)/*_b.msg $(DDIR)/*.c~
+	rm -rf $(DDIR)/*naive_* $(DDIR)/*.msg $(DDIR)/*~ $(DDIR)/Global*
 cleanobj:
 	rm -rf test_AB test_A test_tensor *.o *~
 
@@ -72,25 +72,25 @@ adStack.o: ${TAPENADE_HOME}/ADFirstAidKit/adStack.c
 ### SIMPLE TESTS USING PSEUDO-RANDOM NUMBERS
 
 test_A.o: test_A.c
-	gcc $(CFLAGS) -c -o $@ $^
+	gcc $(CFLAGS) -c -o $@ $<
 
-test_A: test_A.o adBuffer.o adStack.o
-	gfortran -o $@ $^ $(LIB)
+test_A: test_A.o adBuffer.o adStack.o $(LIBRARIES)
+	gfortran -o $@ $^
 	rm *.o
 	./$@ > results/experiment1.log
 
 test_AB.o: test_AB.c
-	gcc $(CFLAGS) -c -o $@ $^
+	gcc $(CFLAGS) -c -o $@ $<
 
-test_AB: test_AB.o adBuffer.o adStack.o
-	gfortran -o $@ $^ $(LIB)
+test_AB: test_AB.o adBuffer.o adStack.o $(LIBRARIES)
+	gfortran -o $@ $^
 	rm *.o
 	./$@ > results/experiment2.log
 
 test_tensor.o: test_tensor.c
-	gcc $(CFLAGS) -c -o $@ $^
+	gcc $(CFLAGS) -c -o $@ $<
 
-test_tensor: test_tensor.o adBuffer.o adStack.o
-	gfortran -o $@ $^ $(LIB)
+test_tensor: test_tensor.o adBuffer.o adStack.o $(LIBRARIES)
+	gfortran -o $@ $^
 	rm *.o
 	./$@ > results/experiment3.log
