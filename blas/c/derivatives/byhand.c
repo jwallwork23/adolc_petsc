@@ -188,22 +188,22 @@ void naive_dgemm_scalar_dot(bool transa,bool transb,int m,double alpha,double al
 
   if (!transa) {
     if (!transb) {
-      naive_dgemm(CblasNoTrans,CblasNoTrans,m,alpha,A,B,beta,C);
       memcpy(&Cd[0][0], &C[0][0], m*m*sizeof(double));
+      naive_dgemm(CblasNoTrans,CblasNoTrans,m,alpha,A,B,beta,C);
       naive_dgemm(CblasNoTrans,CblasNoTrans,m,alphad,A,B,betad,Cd);
     } else {
-      naive_dgemm(CblasNoTrans,CblasTrans,m,alpha,A,B,beta,C);
       memcpy(&Cd[0][0], &C[0][0], m*m*sizeof(double));
+      naive_dgemm(CblasNoTrans,CblasTrans,m,alpha,A,B,beta,C);
       naive_dgemm(CblasNoTrans,CblasTrans,m,alphad,A,B,betad,Cd);
     }
   } else {
     if (!transb) {
-      naive_dgemm(CblasTrans,CblasNoTrans,m,alpha,A,B,beta,C);
       memcpy(&Cd[0][0], &C[0][0], m*m*sizeof(double));
+      naive_dgemm(CblasTrans,CblasNoTrans,m,alpha,A,B,beta,C);
       naive_dgemm(CblasTrans,CblasNoTrans,m,alphad,A,B,betad,Cd);
     } else {
-      naive_dgemm(CblasTrans,CblasTrans,m,alpha,A,B,beta,C);
       memcpy(&Cd[0][0], &C[0][0], m*m*sizeof(double));
+      naive_dgemm(CblasTrans,CblasTrans,m,alpha,A,B,beta,C);
       naive_dgemm(CblasTrans,CblasTrans,m,alphad,A,B,betad,Cd);
     }
   }
