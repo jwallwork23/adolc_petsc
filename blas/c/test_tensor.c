@@ -9,7 +9,7 @@ int main(int argc,char* args[])
 {
   clock_t t;
   int     m = 10,N = 1000000,i;
-  double  A[m][m],B[m][m],U[m][m],V_byhand[m][m],V_tapenade[m][m],one = 1.,zero = 0.,alpha,beta;
+  double  A[m][m],B[m][m],U[m][m],V_byhand[m][m],V_tapenade[m][m],alpha,beta;
   double  Ud[m][m],Vd_byhand[m][m],Vd_tapenade[m][m],time,time_dgemm;
   double  Ub_byhand[m][m],Ub_tapenade[m][m],Vb[m][m];
 

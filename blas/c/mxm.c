@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #endif
 
-#include <stdbool.h>
+#include <stdbool.h> // FIXME
 
 /*
   Incremental matrix-matrix multiply

@@ -1,10 +1,21 @@
 all: clean mtmv test_tensor
 
 # Compiling
-CFLAGS		= -I. -I${TAPENADE_HOME}/ADFirstAidKit
-CFLAGS		+= -I${LAPACK_HOME}/CBLAS -I${LAPACK_HOME}/SRC -I${LAPACK_HOME}/LAPACKE/include -Wall
+CFLAGS = -I. -I${TAPENADE_HOME}/ADFirstAidKit
+CFLAGS += -I${LAPACK_HOME}/CBLAS -I${LAPACK_HOME}/SRC -I${LAPACK_HOME}/LAPACKE/include -Wall
 
-TFLAGS = -O derivatives
+# Linking TODO: not if we are using CIVL
+LIB = -L${LAPACK_HOME} -lcblas -lrefblas -llapack -llapacke -Wall
+
+DDIR = derivatives
+TFLAGS = -O $(DDIR)
+clean: cleandiff cleanobj
+cleandiff:
+	rm -rf $(DDIR)/*_d.c $(DDIR)/*_d.msg $(DDIR)/*_b.c $(DDIR)/*_b.msg $(DDIR)/*.c~
+cleanobj:
+	rm -rf test_AB test_A test_tensor *.o *~
+
+### DIFFERENTIATION OF MATRIX / TENSOR SUBROUTINES USING TAPENADE
 
 derivatives/mxm_d.c: mxm.c
 	tapenade -d -head "naive_mxm[AB](A B)\(C)                    \
@@ -36,6 +47,8 @@ derivatives/mxm_b.c: mxm.c
                            naive_mtmv(U)\(V)                         \
                            " mxm.c $(TFLAGS)
 
+### VERIFICATION
+
 verify_mxm: derivatives/mxm_d.c derivatives/mxm_b.c
 	civl compare -impl -DSIZELIMIT=5 verification_drivers/driver_mxm_dot.c -spec -DSIZELIMIT=5 verification_drivers/driver_mxm_dAB.c
 
@@ -56,15 +69,7 @@ adBuffer.o: ${TAPENADE_HOME}/ADFirstAidKit/adBuffer.c
 adStack.o: ${TAPENADE_HOME}/ADFirstAidKit/adStack.c
 	gcc $(CFLAGS) -c -o $@ $^
 
-### SIMPLE TESTS
-
-test_AB.o: test_AB.c
-	gcc $(CFLAGS) -c -o $@ $^
-
-test_AB: test_AB.o adBuffer.o adStack.o
-	gfortran -o $@ $^ $(LIB)
-	rm *.o
-	./$@
+### SIMPLE TESTS USING PSEUDO-RANDOM NUMBERS
 
 test_A.o: test_A.c
 	gcc $(CFLAGS) -c -o $@ $^
@@ -72,7 +77,15 @@ test_A.o: test_A.c
 test_A: test_A.o adBuffer.o adStack.o
 	gfortran -o $@ $^ $(LIB)
 	rm *.o
-	./$@
+	./$@ > results/experiment1.log
+
+test_AB.o: test_AB.c
+	gcc $(CFLAGS) -c -o $@ $^
+
+test_AB: test_AB.o adBuffer.o adStack.o
+	gfortran -o $@ $^ $(LIB)
+	rm *.o
+	./$@ > results/experiment2.log
 
 test_tensor.o: test_tensor.c
 	gcc $(CFLAGS) -c -o $@ $^
@@ -80,4 +93,4 @@ test_tensor.o: test_tensor.c
 test_tensor: test_tensor.o adBuffer.o adStack.o
 	gfortran -o $@ $^ $(LIB)
 	rm *.o
-	./$@
+	./$@ > results/experiment3.log

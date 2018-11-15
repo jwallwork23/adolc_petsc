@@ -1,15 +1,15 @@
 #include <time.h>
 #include "utils.c"
 #include "derivatives/byhand.c"
-#include "derivatives/naive_dgemm_A_d.c"
-#include "derivatives/naive_dgemm_A_b.c"
+#include "derivatives/naive_dgemm_dA.c"
+#include "derivatives/naive_dgemm_bA.c"
 
 
 int main(int argc,char* args[])
 {
   clock_t t;
   int     m = 10,N = 1000000,i;
-  double  A[m][m],B[m][m],C_byhand[m][m],C_tapenade[m][m],one = 1.,zero = 0.,alpha,beta;
+  double  A[m][m],B[m][m],C_byhand[m][m],C_tapenade[m][m],alpha,beta;
   double  Ad[m][m],Cd_byhand[m][m],Cd_tapenade[m][m],time,time_dgemm;
   double  Ab_byhand[m][m],Ab_tapenade[m][m],Cb[m][m];
 
@@ -54,7 +54,7 @@ int main(int argc,char* args[])
   zeroout(m,m,C_tapenade);
   t = clock();
   for (i=0; i<N; i++)
-    naive_dgemm_A_d(0,0,m,alpha,A,Ad,B,beta,C_tapenade,Cd_tapenade);
+    naive_dgemm_dA(0,0,m,alpha,A,Ad,B,beta,C_tapenade,Cd_tapenade);
   t = clock() - t;
   time = ((double) t)/(N*CLOCKS_PER_SEC);
   printf("%30s: %.4e seconds (%6.4f dgemms)\n","Forward mode with Tapenade",time,time/time_dgemm);
@@ -73,7 +73,7 @@ int main(int argc,char* args[])
   /* Reverse mode with Tapenade */
   t = clock();
   for (i=0; i<N; i++)
-    naive_dgemm_A_b(0,0,m,alpha,NULL,Ab_tapenade,B,beta,C_tapenade,Cb);
+    naive_dgemm_bA(0,0,m,alpha,NULL,Ab_tapenade,B,beta,C_tapenade,Cb);
   t = clock() - t;
   time = ((double) t)/(N*CLOCKS_PER_SEC);
   printf("%30s: %.4e seconds (%6.4f dgemms)\n","Reverse mode with Tapenade",time,time/time_dgemm);
