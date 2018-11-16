@@ -192,7 +192,7 @@ PetscErrorCode IJacobian(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A,Mat 
 
   PetscFunctionBegin;
   ierr = VecGetArray(U,&u);CHKERRQ(ierr);
-  ierr = AdolcComputeIJacobian(A,u,a,appctx->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeIJacobian(1,2,A,u,a,appctx->adctx);CHKERRQ(ierr);
   ierr = VecRestoreArray(U,&u);CHKERRQ(ierr);
   ierr = MatView(A,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   PetscFunctionReturn(0);

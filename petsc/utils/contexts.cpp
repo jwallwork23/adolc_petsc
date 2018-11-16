@@ -32,6 +32,7 @@ typedef struct {
   Vec           localX0;
   PetscReal     shift;
   PetscInt      m,n;
+  PetscInt      tag1,tag2;
   TS            ts;
   PetscBool     flg;
   PetscLogEvent event1,event2,event3,event4;

@@ -167,7 +167,7 @@ static PetscErrorCode IJacobian(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat
   ierr = VecDuplicate(X,&Xcopy);CHKERRQ(ierr);	/* Needs duplicating, as X is read-only */
   ierr = VecCopy(X,Xcopy);CHKERRQ(ierr);	/* This copies the values over */
   ierr = VecGetArray(Xcopy,&x);CHKERRQ(ierr);
-  ierr = AdolcComputeIJacobian(A,x,a,user->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeIJacobian(1,2,A,x,a,user->adctx);CHKERRQ(ierr);
   ierr = VecRestoreArray(Xcopy,&x);CHKERRQ(ierr);
   ierr = VecDestroy(&Xcopy);CHKERRQ(ierr);
   PetscFunctionReturn(0);

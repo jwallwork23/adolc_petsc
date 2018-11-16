@@ -51,7 +51,7 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
   /* dF/dx part */
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
   ierr = PetscLogEventBegin(mctx->event1,0,0,0,0);CHKERRQ(ierr);
-  fos_forward(1,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
+  fos_forward(mctx->tag1,m,n,0,x0,x1,NULL,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
       for (d=0; d<2; d++) {
@@ -69,7 +69,7 @@ PetscErrorCode JacobianVectorProduct(Mat A_shell,Vec X,Vec Y)
 
   /* a * dF/d(xdot) part */
   ierr = PetscLogEventBegin(mctx->event2,0,0,0,0);CHKERRQ(ierr);
-  fos_forward(2,m,n,0,x0,x1,NULL,action);
+  fos_forward(mctx->tag2,m,n,0,x0,x1,NULL,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
       for (d=0; d<2; d++) {
@@ -127,7 +127,7 @@ PetscErrorCode JacobianVectorProductIDMass(Mat A_shell,Vec X,Vec Y)
   /* dF/dx part */
   ierr = PetscMalloc1(m,&action);CHKERRQ(ierr);
   ierr = PetscLogEventBegin(mctx->event1,0,0,0,0);CHKERRQ(ierr);
-  fos_forward(1,m,n,0,x0,x1,NULL,action);     // TODO: Could replace NULL to implement ZOS test
+  fos_forward(mctx->tag1,m,n,0,x0,x1,NULL,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
       for (d=0; d<2; d++) {
@@ -199,8 +199,8 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
   ierr = PetscLogEventBegin(mctx->event3,0,0,0,0);CHKERRQ(ierr);
   if (!mctx->flg)
-    zos_forward(1,m,n,1,x,NULL);
-  fos_reverse(1,m,n,y,action);
+    zos_forward(mctx->tag1,m,n,1,x,NULL);
+  fos_reverse(mctx->tag1,m,n,y,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
       for (d=0; d<2; d++) {
@@ -219,10 +219,10 @@ PetscErrorCode JacobianTransposeVectorProduct(Mat A_shell,Vec Y,Vec X)
   /* a * dF/d(xdot) part */
   ierr = PetscLogEventBegin(mctx->event4,0,0,0,0);CHKERRQ(ierr);
   if (!mctx->flg) {
-    zos_forward(2,m,n,1,x,NULL);
+    zos_forward(mctx->tag2,m,n,1,x,NULL);
     mctx->flg = PETSC_TRUE;
   }
-  fos_reverse(2,m,n,y,action);
+  fos_reverse(mctx->tag2,m,n,y,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
       for (d=0; d<2; d++) {
@@ -280,8 +280,8 @@ PetscErrorCode JacobianTransposeVectorProductIDMass(Mat A_shell,Vec Y,Vec X)
   ierr = PetscMalloc1(n,&action);CHKERRQ(ierr);
   ierr = PetscLogEventBegin(mctx->event3,0,0,0,0);CHKERRQ(ierr);
   if (!mctx->flg)
-    zos_forward(1,m,n,1,x,NULL);
-  fos_reverse(1,m,n,y,action);
+    zos_forward(mctx->tag1,m,n,1,x,NULL);
+  fos_reverse(mctx->tag1,m,n,y,action);
   for (j=info.gys; j<info.gys+info.gym; j++) {
     for (i=info.gxs; i<info.gxs+info.gxm; i++) {
       for (d=0; d<2; d++) {
