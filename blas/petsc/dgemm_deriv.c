@@ -162,29 +162,28 @@ PetscErrorCode GEMMBarB(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pe
 }
 
 /*
-  TODO: Rewrite using below
+  Matrix-tensor-matrix-vector product vec(V) := (A \otimes B) * vec(U) <=> V = B*U*A^T
 */
 PetscErrorCode TripleTensor(PetscBLASInt *M,PetscScalar *ALPHA,Petscscalar *A,PetscScalar *B,PetscScalar *U,PetscScalar *BETA,PetscScalar *V)
 {
   PetscErrorCode ierr;
-  PetscInt       *m = (PetscInt*) M;
+  PetscInt       *m = (PetscInt*) M,i;
   PetscScalar    one = 1.,zero = 0.,**tmp;
 
   PetscFunctionBegin;
 
-  // TODO: Allocate memory for tmp
+  ierr = PetscMalloc1((*m),&tmp);CHKERRQ(ierr);
   ierr = PetscMalloc1((*m)*(*m),&tmp[0]);CHKERRQ(ierr);
+  for (i=1; i<(*m); i++) tmp[i] = tmp[i-1]+(*m);
 
   BLASgemm_("N","N",&M,&M,&M,&one,&B[0][0],&M,&U[0][0],&M,&zero,&tmp[0][0],&M);
   BLASgemm_("N","T",&M,&M,&M,&ALPHA,&tmp[0][0],&M,&A[0][0],&M,&BETA,&V[0][0],&M);
 
-  //ierr = PetscFree((tmp)[0]);CHKERRQ(ierr);
+  ierr = PetscFree(tmp[0]);CHKERRQ(ierr);
   ierr = PetscFree(tmp);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
-
-// Consider y = \alpha * (A \otimes B) u
 
 // TODO: TripleTensorDot:
 // yd = \alpha * (A \otimes B) ud  = \alpha * (B^T * ud * A)
