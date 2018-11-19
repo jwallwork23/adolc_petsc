@@ -1,4 +1,5 @@
 #include <petscblaslapack.h>
+#include <petscgll.h>		/* For PetscPointWiseMult */
 
 
 /*
@@ -214,5 +215,52 @@ PetscErrorCode MTMVBar(const PetscBLASInt M,PetscScalar alpha,PetscScalar **A,Pe
   PetscFunctionBegin;
   BLASgemm_("T","N",&M,&M,&M,&one,&B[0][0],&M,&Ubar[0][0],&M,&zero,&tmp[0][0],&M);
   BLASgemm_("N","N",&M,&M,&M,&alpha,&tmp[0][0],&M,&A[0][0],&M,&beta,&Vbar[0][0],&M);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Forward mode derivative of PetscPointWiseMult, given seed matrices Adot and Bdot:
+    Cdot = Adot \circ B + A \circ Bdot
+*/
+PetscErrorCode PetscPointWiseMultDot(PetscInt M,PetscScalar **A,PetscScalar **Adot,PetscScalar **B,PetscScalar **Bdot,PetscScalar **C,PetscScalar **Cdot)
+{
+  PetscErrorCode ierr;
+  PetscScalar    **tmp,one = 1.;
+  PetscInt       m,m2,M2 = M*M,inc = 1;
+
+  PetscFunctionBegin;
+  ierr = PetscBLASIntCast(M,&m);CHKERRQ(ierr);
+  ierr = PetscBLASIntCast(M2,&m2);CHKERRQ(ierr);
+  ierr = PetscMalloc(M2,&tmp);CHKERRQ(ierr);
+
+  /* Undifferentated part */
+  if ((A) && (B)) {
+    ierr = PetscPointWiseMult(M2,&A[0][0],&B[0][0],&C[0][0]);CHKERRQ(ierr);
+  }
+
+  /* Differentiated part */
+  ierr = PetscPointWiseMult(M2,&Adot[0][0],&B[0][0],&tmp[0][0]);CHKERRQ(ierr);
+  ierr = PetscPointWiseMult(M2,&A[0][0],&Bdot[0][0],&Cdot[0][0]);CHKERRQ(ierr);
+  BLASaxpy_(&m2,&one,&tmp[0][0],&inc,&Cdot[0][0],&inc);CHKERRQ(ierr);
+  /*
+    TODO: Generalise PetscPointWiseMult as C = alpha * A \circ B + beta * C (as with dgemm) in order
+          to avoid creating the tmp array and calling BLASaxpy?
+  */
+  ierr = PetscFree(tmp);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Reverse mode derivative of PetscPointWiseMult, given seed matrix Cbar:
+    Abar = B \circ Cbar, Bbar = A \circ Cbar
+*/
+PetscErrorCode PetscPointWiseMultBar(const PetscBLASInt M,PetscScalar **A,PetscScalar **Abar,PetscScalar **B,PetscScalar **Bbar,PetscScalar **C,PetscScalar **Cbar)
+{
+  PetscErrorCode ierr;
+  PetscInt       M2 = M*M;
+
+  PetscFunctionBegin;
+  ierr = PetscPointWiseMult(M2,&B[0][0],&Cbar[0][0],&Abar[0][0]);CHKERRQ(ierr);
+  ierr = PetscPointWiseMult(M2,&A[0][0],&Cbar[0][0],&Bbar[0][0]);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
