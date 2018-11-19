@@ -162,32 +162,57 @@ PetscErrorCode GEMMBarB(const char* TRANSA,const char* TRANSB,PetscBLASInt *M,Pe
 }
 
 /*
-  Matrix-tensor-matrix-vector product vec(V) := (A \otimes B) * vec(U) <=> V = B*U*A^T
+  Wrapper for pair of BLASgemm calls, representing matrix-tensor-matrix-vector product
+    vec(V) := alpha * (A \otimes B) * vec(U) + beta * vec(V)  <=> V = alpha * B*U*A^T + beta * V
+
+  NOTES:
+  - Block dimensions are assumed square and identical.
+  - Memory for the work array tmp should be preallocated.
 */
-PetscErrorCode TripleTensor(PetscBLASInt *M,PetscScalar *ALPHA,Petscscalar *A,PetscScalar *B,PetscScalar *U,PetscScalar *BETA,PetscScalar *V)
+PetscErrorCode MTMV(const PetscBLASInt M,PetscScalar alpha,PetscScalar **A,PetscScalar **B,PetscScalar **U,PetscScalar beta,PetscScalar **tmp,PetscScalar **V)
 {
-  PetscErrorCode ierr;
-  PetscInt       *m = (PetscInt*) M,i;
-  PetscScalar    one = 1.,zero = 0.,**tmp;
+  PetscScalar one = 1.,zero = 0.;
 
   PetscFunctionBegin;
-
-  ierr = PetscMalloc1((*m),&tmp);CHKERRQ(ierr);
-  ierr = PetscMalloc1((*m)*(*m),&tmp[0]);CHKERRQ(ierr);
-  for (i=1; i<(*m); i++) tmp[i] = tmp[i-1]+(*m);
-
   BLASgemm_("N","N",&M,&M,&M,&one,&B[0][0],&M,&U[0][0],&M,&zero,&tmp[0][0],&M);
-  BLASgemm_("N","T",&M,&M,&M,&ALPHA,&tmp[0][0],&M,&A[0][0],&M,&BETA,&V[0][0],&M);
-
-  ierr = PetscFree(tmp[0]);CHKERRQ(ierr);
-  ierr = PetscFree(tmp);CHKERRQ(ierr);
-
+  BLASgemm_("N","T",&M,&M,&M,&alpha,&tmp[0][0],&M,&A[0][0],&M,&beta,&V[0][0],&M);
   PetscFunctionReturn(0);
 }
 
-// TODO: TripleTensorDot:
-// yd = \alpha * (A \otimes B) ud  = \alpha * (B^T * ud * A)
+/*
+  Forward mode derivative of MTMV w.r.t. the matrix argument U, given seed matrix Udot:
+    vec(Vdot) = alpha * (A \otimes B) vec(Udot)  <=> Vdot = alpha * (B^T * Udot * A)
+*/
+PetscErrorCode MTMVDot(const PetscBLASInt M,PetscScalar alpha,PetscScalar **A,PetscScalar **B,PetscScalar **U,PetscScalar **Udot,PetscScalar beta,PetscScalar **tmp,PetscScalar **V,PetscScalar **Vdot)
+{
+  PetscScalar one = 1.,zero = 0.;
 
-// TODO: TripleTensorBar:
-// ub = \alpha * (A^T \otimes B^T) yb = \alpha * (A^T * yb * B)
-// ["N","N";"N","T"] -> ["T","N";"N","N"]
+  PetscFunctionBegin;
+
+  /* Undifferentiated code */
+  if ((U) && (V)) {
+    BLASgemm_("N","N",&M,&M,&M,&one,&B[0][0],&M,&U[0][0],&M,&zero,&tmp[0][0],&M);
+    BLASgemm_("N","T",&M,&M,&M,&alpha,&tmp[0][0],&M,&A[0][0],&M,&beta,&V[0][0],&M);
+  }
+
+  /* Differentiated code */
+  BLASgemm_("N","N",&M,&M,&M,&one,&B[0][0],&M,&Udot[0][0],&M,&zero,&tmp[0][0],&M);
+  BLASgemm_("N","T",&M,&M,&M,&alpha,&tmp[0][0],&M,&A[0][0],&M,&beta,&Vdot[0][0],&M);
+  PetscFunctionReturn(0);
+}
+
+/*
+  Reverse mode derivative of MTMV w.r.t. the matrix argument U, given a seed matrix Vdot:
+    vec(Ubar) = alpha * (A^T \otimes B^T) vec(Vbar)  <=>  alpha * (A^T * Vbar * B)
+
+  NOTE the transposition of A and B: ["N","N";"N","T"] -> ["T","N";"N","N"]
+*/
+PetscErrorCode MTMVBar(const PetscBLASInt M,PetscScalar alpha,PetscScalar **A,PetscScalar **B,PetscScalar **U,PetscScalar **Ubar,PetscScalar beta,PetscScalar **tmp,PetscScalar **V,PetscScalar **Vbar)
+{
+  PetscScalar one = 1.,zero = 0.;
+
+  PetscFunctionBegin;
+  BLASgemm_("T","N",&M,&M,&M,&one,&B[0][0],&M,&Ubar[0][0],&M,&zero,&tmp[0][0],&M);
+  BLASgemm_("N","N",&M,&M,&M,&alpha,&tmp[0][0],&M,&A[0][0],&M,&beta,&Vbar[0][0],&M);
+  PetscFunctionReturn(0);
+}
