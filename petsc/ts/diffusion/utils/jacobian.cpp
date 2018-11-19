@@ -96,7 +96,7 @@ PetscErrorCode RHSJacobianAdolc(TS ts,PetscReal t,Vec U,Mat J,Mat Jpre,void *ctx
   /*
     Calculate Jacobian using ADOL-C
   */
-  ierr = AdolcComputeRHSJacobian(J,u_vec,appctx->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeRHSJacobian(1,J,u_vec,appctx->adctx);CHKERRQ(ierr);
 
   /*
     Restore vectors

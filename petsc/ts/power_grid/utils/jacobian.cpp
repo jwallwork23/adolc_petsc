@@ -376,7 +376,7 @@ PetscErrorCode ResidualJacobianAdolc(Vec X,Mat J,Mat B,void *ctx)
   PetscFunctionBegin;
   ierr = MatSetOption(J,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr);
   ierr = VecGetArray(X,&x_vec);CHKERRQ(ierr);
-  ierr = AdolcComputeRHSJacobian(J,x_vec,user->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeRHSJacobian(1,J,x_vec,user->adctx);CHKERRQ(ierr);
 
   // Manual differentiation of MatMult:
 
@@ -435,7 +435,7 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Mat A
   ierr = VecCopy(X,Xcopy);CHKERRQ(ierr);        // Copy values over
   ierr = VecGetArray(Xcopy,&x_vec);CHKERRQ(ierr);
   ierr = MatSetOption(A,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRQ(ierr); // FIXME
-  ierr = AdolcComputeIJacobian(A,x_vec,a,user->adctx);CHKERRQ(ierr);
+  ierr = AdolcComputeIJacobian(1,2,A,x_vec,a,user->adctx);CHKERRQ(ierr);
 
   // Manual differentiation of MatMult
   // TODO: Trace with external and use that

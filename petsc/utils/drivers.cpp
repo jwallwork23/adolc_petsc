@@ -12,16 +12,15 @@
   precomputed seed and recovery matrices. If sparse mode is not used, full Jacobian is
   assembled (not recommended!).
 
-  TODO: Make tape tag selectable
-
   Input parameters:
+  tag   - tape identifier
   u_vec - vector at which to evaluate Jacobian
   ctx   - ADOL-C context, as defined above
 
   Output parameter:
   A     - Mat object corresponding to Jacobian
 */
-PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscScalar *u_vec,void *ctx)
+PetscErrorCode AdolcComputeRHSJacobian(PetscInt tag,Mat A,PetscScalar *u_vec,void *ctx)
 {
   AdolcCtx       *adctx = (AdolcCtx*)ctx;
   PetscErrorCode ierr;
@@ -31,9 +30,9 @@ PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscScalar *u_vec,void *ctx)
   PetscFunctionBegin;
   ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
   if (adctx->Seed)
-    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+    fov_forward(tag,m,n,p,u_vec,adctx->Seed,NULL,J);
   else
-    jacobian(1,m,n,u_vec,J);
+    jacobian(tag,m,n,u_vec,J);
   if (adctx->sparse) {
     if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
       ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian:",m,p,J);CHKERRQ(ierr);
@@ -60,16 +59,15 @@ PetscErrorCode AdolcComputeRHSJacobian(Mat A,PetscScalar *u_vec,void *ctx)
   precomputed seed and recovery matrices. If sparse mode is not used, full Jacobian is
   assembled (not recommended!).
 
-  TODO: Make tape tag selectable
-
   Input parameters:
+  tag   - tape identifier
   u_vec - vector at which to evaluate Jacobian
   ctx   - ADOL-C context, as defined above
 
   Output parameter:
   A     - Mat object corresponding to Jacobian
 */
-PetscErrorCode AdolcComputeRHSJacobianLocal(Mat A,PetscScalar *u_vec,void *ctx)
+PetscErrorCode AdolcComputeRHSJacobianLocal(PetscInt tag,Mat A,PetscScalar *u_vec,void *ctx)
 {
   AdolcCtx       *adctx = (AdolcCtx*)ctx;
   PetscErrorCode ierr;
@@ -79,9 +77,9 @@ PetscErrorCode AdolcComputeRHSJacobianLocal(Mat A,PetscScalar *u_vec,void *ctx)
   PetscFunctionBegin;
   ierr = AdolcMalloc2(m,p,&J);CHKERRQ(ierr);
   if (adctx->Seed)
-    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+    fov_forward(tag,m,n,p,u_vec,adctx->Seed,NULL,J);
   else
-    jacobian(1,m,n,u_vec,J);
+    jacobian(tag,m,n,u_vec,J);
   if (adctx->sparse) {
     if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
       ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian:",m,p,J);CHKERRQ(ierr);
@@ -108,16 +106,16 @@ PetscErrorCode AdolcComputeRHSJacobianLocal(Mat A,PetscScalar *u_vec,void *ctx)
   precomputed seed and recovery matrices. If sparse mode is not used, full Jacobian is
   assembled (not recommended!).
 
-  TODO: Make tape tags selectable
-
   Input parameters:
+  tag1   - tape identifier for df/dx part
+  tag2   - tape identifier for df/d(xdot) part
   u_vec - vector at which to evaluate Jacobian
   ctx   - ADOL-C context, as defined above
 
   Output parameter:
   A     - Mat object corresponding to Jacobian
 */
-PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
+PetscErrorCode AdolcComputeIJacobian(PetscInt tag1,PetscInt tag2,Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
 {
   AdolcCtx       *adctx = (AdolcCtx*)ctx;
   PetscErrorCode ierr;
@@ -129,9 +127,9 @@ PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *
 
   /* dF/dx part */
   if (adctx->Seed)
-    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+    fov_forward(tag1,m,n,p,u_vec,adctx->Seed,NULL,J);
   else
-    jacobian(1,m,n,u_vec,J);
+    jacobian(tag1,m,n,u_vec,J);
   ierr = MatZeroEntries(A);CHKERRQ(ierr);
   if (adctx->sparse) {
     if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
@@ -152,9 +150,9 @@ PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *
 
   /* a * dF/d(xdot) part */
   if (adctx->Seed)
-    fov_forward(2,m,n,p,u_vec,adctx->Seed,NULL,J);
+    fov_forward(tag2,m,n,p,u_vec,adctx->Seed,NULL,J);
   else
-    jacobian(2,m,n,u_vec,J);
+    jacobian(tag2,m,n,u_vec,J);
   if (adctx->sparse) {
     if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
       ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/d(xdot):",m,p,J);CHKERRQ(ierr);
@@ -178,9 +176,20 @@ PetscErrorCode AdolcComputeIJacobian(Mat A,PetscScalar *u_vec,PetscReal a,void *
 }
 
 /*
-  Special case of identity mass matrix
+  Compute Jacobian for implicit TS in the special case where it is
+  known that the mass matrix is simply the identity. i.e. We have
+  a problem of the form
+                        du/dt = F(u).
+
+  Input parameters:
+  tag   - tape identifier for df/dx part
+  u_vec - vector at which to evaluate Jacobian
+  ctx   - ADOL-C context, as defined above
+
+  Output parameter:
+  A     - Mat object corresponding to Jacobian
 */
-PetscErrorCode AdolcComputeIJacobianIDMass(Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
+PetscErrorCode AdolcComputeIJacobianIDMass(PetscInt tag,Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
 {
   AdolcCtx       *adctx = (AdolcCtx*)ctx;
   PetscErrorCode ierr;
@@ -192,9 +201,9 @@ PetscErrorCode AdolcComputeIJacobianIDMass(Mat A,PetscScalar *u_vec,PetscReal a,
 
   /* dF/dx part */
   if (adctx->Seed)
-    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+    fov_forward(tag,m,n,p,u_vec,adctx->Seed,NULL,J);
   else
-    jacobian(1,m,n,u_vec,J);
+    jacobian(tag,m,n,u_vec,J);
   ierr = MatZeroEntries(A);CHKERRQ(ierr);
   if (adctx->sparse) {
     if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
@@ -224,16 +233,16 @@ PetscErrorCode AdolcComputeIJacobianIDMass(Mat A,PetscScalar *u_vec,PetscReal a,
   precomputed seed and recovery matrices. If sparse mode is not used, full Jacobian is
   assembled (not recommended!).
 
-  TODO: Make tape tags selectable
-
   Input parameters:
+  tag1   - tape identifier for df/dx part
+  tag2   - tape identifier for df/d(xdot) part
   u_vec - vector at which to evaluate Jacobian
   ctx   - ADOL-C context, as defined above
 
   Output parameter:
   A     - Mat object corresponding to Jacobian
 */
-PetscErrorCode AdolcComputeIJacobianLocal(Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
+PetscErrorCode AdolcComputeIJacobianLocal(PetscInt tag1,PetscInt tag2,Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
 {
   AdolcCtx       *adctx = (AdolcCtx*)ctx;
   PetscErrorCode ierr;
@@ -245,9 +254,9 @@ PetscErrorCode AdolcComputeIJacobianLocal(Mat A,PetscScalar *u_vec,PetscReal a,v
 
   /* dF/dx part */
   if (adctx->Seed)
-    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+    fov_forward(tag1,m,n,p,u_vec,adctx->Seed,NULL,J);
   else
-    jacobian(1,m,n,u_vec,J);
+    jacobian(tag1,m,n,u_vec,J);
   if (adctx->sparse) {
     if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
       ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/dx:",m,p,J);CHKERRQ(ierr);
@@ -267,9 +276,9 @@ PetscErrorCode AdolcComputeIJacobianLocal(Mat A,PetscScalar *u_vec,PetscReal a,v
 
   /* a * dF/d(xdot) part */
   if (adctx->Seed)
-    fov_forward(2,m,n,p,u_vec,adctx->Seed,NULL,J);
+    fov_forward(tag2,m,n,p,u_vec,adctx->Seed,NULL,J);
   else
-    jacobian(2,m,n,u_vec,J);
+    jacobian(tag2,m,n,u_vec,J);
   if (adctx->sparse) {
     if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
       ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/d(xdot):",m,p,J);CHKERRQ(ierr);
@@ -292,7 +301,21 @@ PetscErrorCode AdolcComputeIJacobianLocal(Mat A,PetscScalar *u_vec,PetscReal a,v
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode AdolcComputeIJacobianLocalIDMass(Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
+/*
+  Compute local portion of Jacobian for implicit TS in the special case where it is
+  known that the mass matrix is simply the identity. i.e. We have
+  a problem of the form
+                        du/dt = F(u).
+
+  Input parameters:
+  tag   - tape identifier for df/dx part
+  u_vec - vector at which to evaluate Jacobian
+  ctx   - ADOL-C context, as defined above
+
+  Output parameter:
+  A     - Mat object corresponding to Jacobian
+*/
+PetscErrorCode AdolcComputeIJacobianLocalIDMass(PetscInt tag,Mat A,PetscScalar *u_vec,PetscReal a,void *ctx)
 {
   AdolcCtx       *adctx = (AdolcCtx*)ctx;
   PetscErrorCode ierr;
@@ -304,9 +327,9 @@ PetscErrorCode AdolcComputeIJacobianLocalIDMass(Mat A,PetscScalar *u_vec,PetscRe
 
   /* dF/dx part */
   if (adctx->Seed)
-    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+    fov_forward(tag,m,n,p,u_vec,adctx->Seed,NULL,J);
   else
-    jacobian(1,m,n,u_vec,J);
+    jacobian(tag,m,n,u_vec,J);
   if (adctx->sparse) {
     if ((adctx->sparse_view) && (!adctx->sparse_view_done)) {
       ierr = PrintMat(MPI_COMM_WORLD,"Compressed Jacobian dF/dx:",m,p,J);CHKERRQ(ierr);
@@ -429,16 +452,16 @@ PetscErrorCode AdolcComputeRHSJacobianPLocal(Mat A,PetscScalar *u_vec,PetscScala
   Compute local portion of Jacobian diagonal for implicit TS in compressed format and recover
   from this, using precomputed seed matrix and recovery vector.
 
-  TODO: Make tape tags selectable
-
   Input parameters:
+  tag1  - tape identifier for df/dx part
+  tag2  - tape identifier for df/d(xdot) part
   u_vec - vector at which to evaluate Jacobian
   ctx   - ADOL-C context, as defined above
 
   Output parameter:
   diag  - Vec object corresponding to Jacobian diagonal
 */
-PetscErrorCode AdolcComputeIJacobianAndDiagonalLocal(Vec diag,PetscScalar *u_vec,PetscReal a,void *ctx)
+PetscErrorCode AdolcComputeIJacobianAndDiagonalLocal(PetscInt tag1,PetscInt tag2,Vec diag,PetscScalar *u_vec,PetscReal a,void *ctx)
 {
   AdolcCtx       *adctx = (AdolcCtx*)ctx;
   PetscErrorCode ierr;
@@ -450,9 +473,9 @@ PetscErrorCode AdolcComputeIJacobianAndDiagonalLocal(Vec diag,PetscScalar *u_vec
 
   /* dF/dx part */
   if (adctx->Seed)
-    fov_forward(1,m,n,p,u_vec,adctx->Seed,NULL,J);
+    fov_forward(tag1,m,n,p,u_vec,adctx->Seed,NULL,J);
   else
-    jacobian(1,m,n,u_vec,J);
+    jacobian(tag1,m,n,u_vec,J);
   if (adctx->sparse) {
     ierr = RecoverDiagonalLocal(diag,INSERT_VALUES,m,adctx->rec,J,NULL);CHKERRQ(ierr);
   } else {
@@ -467,9 +490,9 @@ PetscErrorCode AdolcComputeIJacobianAndDiagonalLocal(Vec diag,PetscScalar *u_vec
 
   /* a * dF/d(xdot) part */
   if (adctx->Seed)
-    fov_forward(2,m,n,p,u_vec,adctx->Seed,NULL,J);
+    fov_forward(tag2,m,n,p,u_vec,adctx->Seed,NULL,J);
   else
-    jacobian(2,m,n,u_vec,J);
+    jacobian(tag2,m,n,u_vec,J);
   if (adctx->sparse) {
     ierr = RecoverDiagonalLocal(diag,ADD_VALUES,m,adctx->rec,J,NULL);CHKERRQ(ierr);
   } else {

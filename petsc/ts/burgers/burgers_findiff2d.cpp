@@ -68,8 +68,8 @@ int main(int argc,char **argv)
   ierr = DMSetMatType(da,MATSHELL);CHKERRQ(ierr);
   ierr = DMCreateMatrix(da,&A);CHKERRQ(ierr);
   ierr = MatShellSetContext(A,&matctx);CHKERRQ(ierr);
-  ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))JacobianVectorProduct);CHKERRQ(ierr);
-  ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void (*)(void))JacobianTransposeVectorProduct);CHKERRQ(ierr);
+  ierr = MatShellSetOperation(A,MATOP_MULT,(void (*)(void))JacobianVectorProductIDMass);CHKERRQ(ierr);
+  ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void (*)(void))JacobianTransposeVectorProductIDMass);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.X);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.Xdot);CHKERRQ(ierr);
 
@@ -97,6 +97,8 @@ int main(int argc,char **argv)
   matctx.m = 2*gxm*gym;
   matctx.n = 2*gxm*gym;
   matctx.flg = PETSC_FALSE;
+  matctx.tag1 = 1;
+  matctx.tag2 = 2;
 
   // Create contiguous 1-arrays of AFields
   u_c = new AField[gxm*gym];
