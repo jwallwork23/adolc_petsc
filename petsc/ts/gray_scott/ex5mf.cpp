@@ -103,7 +103,7 @@ int main(int argc,char **argv)
   matctx.n = 2*gxm*gym;
   matctx.flg = PETSC_FALSE;
   matctx.tag1 = 1;
-  matctx.tag1 = 2;
+  matctx.tag2 = 2;
 
   // Create contiguous 1-arrays of AFields
   u_c = new AField[gxm*gym];
