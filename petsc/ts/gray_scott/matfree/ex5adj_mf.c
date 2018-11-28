@@ -33,6 +33,7 @@ typedef struct {
   PetscReal shift;
   AppCtx    *actx;
   TS        ts;
+  Vec       localX0;
 } MatCtx;
 
 /*
@@ -126,6 +127,7 @@ int main(int argc,char **argv)
   }
   ierr = VecDuplicate(x,&matctx.X);CHKERRQ(ierr);
   ierr = VecDuplicate(x,&matctx.Xdot);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(da,&matctx.localX0);CHKERRQ(ierr);
 
   ierr = DMSetMatType(da,MATAIJ);CHKERRQ(ierr);
   ierr = DMCreateMatrix(da,&appctx.Jac);CHKERRQ(ierr);
@@ -184,6 +186,7 @@ int main(int argc,char **argv)
      Free work space.  All PETSc objects should be destroyed when they
      are no longer needed.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  ierr = DMRestoreLocalVector(da,&matctx.localX0);CHKERRQ(ierr);
   ierr = VecDestroy(&matctx.X);CHKERRQ(ierr);
   ierr = VecDestroy(&matctx.Xdot);CHKERRQ(ierr);
   ierr = MatDestroy(&appctx.Jac);CHKERRQ(ierr);
@@ -603,7 +606,7 @@ PetscErrorCode MyMultByHand(Mat A_shell,Vec X,Vec Y)
   const Field       **x0;
   Field             **x1;
   PetscScalar       val,uc,vc;
-  Vec               localX0,localX1;
+  Vec               localX1;
   DM                da;
   DMDALocalInfo     info;
 
@@ -616,13 +619,11 @@ PetscErrorCode MyMultByHand(Mat A_shell,Vec X,Vec Y)
   /* Get local input vectors and extract data, x0 and x1*/
   ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
   ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
-  ierr = DMGetLocalVector(da,&localX0);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localX1);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX0);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX1);CHKERRQ(ierr);
-  ierr = DMDAVecGetArrayRead(da,localX0,&x0);CHKERRQ(ierr);
+
+  ierr = DMDAVecGetArrayRead(da,mctx->localX0,&x0);CHKERRQ(ierr);
   ierr = DMDAVecGetArray(da,localX1,&x1);CHKERRQ(ierr);
 
   hx = 2.50/(PetscReal)(info.mx);sx = 1.0/(hx*hx);
@@ -638,16 +639,18 @@ PetscErrorCode MyMultByHand(Mat A_shell,Vec X,Vec Y)
         /* du/dt equation */
 
         val = (2*actx->D1*(sx+sy) + vc*vc + actx->gamma + mctx->shift) * x1[j][i].u;
+        val += -vc*vc * x1[j][i].v;
         val += -actx->D1*sx*x1[j][i-1].u;
         val += -actx->D1*sx*x1[j][i+1].u;
         val += -actx->D1*sy*x1[j-1][i].u;
         val += -actx->D1*sy*x1[j+1][i].u;
-
+        ierr = VecSetValuesLocal(Y,1,&k,&val,INSERT_VALUES);CHKERRQ(ierr);
         k++;
 
         /* dv/dt equation */
 
-        val += (2*actx->D2*(sx + sy) - 2*uc*vc + actx->gamma + actx->kappa + mctx->shift) * x1[j][i].v;
+        val = (2*actx->D2*(sx+sy) - 2*uc*vc + actx->gamma + actx->kappa + mctx->shift) * x1[j][i].v;
+        val += 2*uc*vc * x1[j][i].u;
         val += -actx->D2*sx*x1[j][i-1].v;
         val += -actx->D2*sx*x1[j][i+1].v;
         val += -actx->D2*sy*x1[j-1][i].v;
@@ -663,9 +666,8 @@ PetscErrorCode MyMultByHand(Mat A_shell,Vec X,Vec Y)
 
   /* Restore local vector */
   ierr = DMDAVecRestoreArray(da,localX1,&x1);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArrayRead(da,localX0,&x0);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,mctx->localX0,&x0);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localX1);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localX0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -683,7 +685,7 @@ PetscErrorCode MyMultTransposeByHand(Mat A_shell,Vec Y,Vec X)
   const Field       **y;
   Field             **x;
   PetscScalar       val,ucx,vcx,ucy,vcy;
-  Vec               localX,localY;
+  Vec               localY;
   DM                da;
   DMDALocalInfo     info;
 
@@ -699,13 +701,10 @@ PetscErrorCode MyMultTransposeByHand(Mat A_shell,Vec Y,Vec X)
   /* Get local input vectors and extract data, x0 and x1*/
   ierr = TSGetDM(mctx->ts,&da);CHKERRQ(ierr);
   ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
-  ierr = DMGetLocalVector(da,&localX);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localY);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalBegin(da,mctx->X,INSERT_VALUES,localX);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,mctx->X,INSERT_VALUES,localX);CHKERRQ(ierr);
   ierr = DMGlobalToLocalBegin(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(da,Y,INSERT_VALUES,localY);CHKERRQ(ierr);
-  ierr = DMDAVecGetArrayRead(da,localX,&x);CHKERRQ(ierr);
+  ierr = DMDAVecGetArrayRead(da,mctx->localX0,&x);CHKERRQ(ierr);
   ierr = DMDAVecGetArray(da,localY,&y);CHKERRQ(ierr);
 
   ierr = VecSet(X,0);CHKERRQ(ierr);
@@ -767,9 +766,8 @@ PetscErrorCode MyMultTransposeByHand(Mat A_shell,Vec Y,Vec X)
 
   /* Restore local vector */
   ierr = DMDAVecRestoreArray(da,localY,&y);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArrayRead(da,localX,&x);CHKERRQ(ierr);
+  ierr = DMDAVecRestoreArrayRead(da,mctx->localX0,&x);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localY);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localX);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
