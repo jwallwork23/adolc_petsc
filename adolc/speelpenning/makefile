@@ -15,8 +15,5 @@ speelpenning: speelpenning.o
 traceless: traceless.o
 	$(CC) $^ -o $@ $(LIB)
 
-exec: $(OBJ)
-	$(CC) -o $@ $^ $(LIB)
-
 clean:
 	rm -Rf $(CLEANFILES)

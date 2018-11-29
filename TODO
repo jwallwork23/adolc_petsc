@@ -1,0 +1,5 @@
+Things which would be nice if implemented properly:
+* Hand-coded matrix-free Jacobian vector product for Gray-Scott.
+* Zero order scalar (ZOS) test to check ADOL-C evaluates function correctly.
+* Register external functions in power grid example, so that MatMult is differentiated appropriately.
+* Demonstrate ADOL-C - Tapenade or ADOL-C - ADIC interface.

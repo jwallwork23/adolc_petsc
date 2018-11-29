@@ -1,9 +1,9 @@
 # Directories
 
-colpack/
 tapenade/luexam
 tapenade/powexam
 tapenade/odexam
+adolc/external
 misc/
 .idea/
 
