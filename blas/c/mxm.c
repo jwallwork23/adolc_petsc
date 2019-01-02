@@ -32,7 +32,35 @@ void naive_axpy(int n,double a,double x[n],double y[n])
 {
   int i;
 
-  for (i=0; i<n; i++) y[i] += a*x[i];
+  for (i=0; i<n; i++) {
+    if (a == 1.)
+      y[i] += x[i];
+    else if (a == 0.)
+      y[i] = 0.;
+    else
+      y[i] += a*x[i];
+  }
+}
+
+/*
+  Incremental matrix addition on square matrices with scaling
+
+  y = y + a*x
+*/
+void naive_matrix_axpy(int n,double a,double X[n][n],double Y[n][n])
+{
+  int i,j;
+
+  for (i=0; i<n; i++) {
+    for (j=0; j<n; j++) {
+      if (a == 1.)
+        Y[i][j] += X[i][j];
+      else if (a == 0.)
+        Y[i][j] = 0.;
+      else
+        Y[i][j] += a*X[i][j];
+    }
+  }
 }
 
 /*

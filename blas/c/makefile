@@ -11,7 +11,7 @@ DDIR = derivatives
 TFLAGS = -O $(DDIR)
 clean: cleandiff cleanobj
 cleandiff:
-	rm -rf $(DDIR)/*naive_* $(DDIR)/*.msg $(DDIR)/*~ $(DDIR)/Global*
+	rm -rf $(DDIR)/*naive_* $(DDIR)/*.msg $(DDIR)/*~ $(DDIR)/Global* $(DDIR)/RHS_*
 cleanobj:
 	rm -rf test_AB test_A test_tensor *.o *~
 
@@ -46,6 +46,14 @@ derivatives/mxm_b.c: mxm.c
                            naive_dgemm[scalar](alpha beta)\(C)       \
                            naive_mtmv(U)\(V)                         \
                            " mxm.c $(TFLAGS)
+
+### DIFFERENTIATION OF BURGERS' EQUATION RHS IN DGEMM FORMAT
+
+derivatives/rhs_d.c: mxm.c
+	tapenade -d -head "RHS(ul)\(outl)" rhs.c $(TFLAGS)
+
+derivatives/rhs_b.c: mxm.c
+	tapenade -b -head "RHS(ul)\(outl)" rhs.c $(TFLAGS)
 
 ### VERIFICATION
 
