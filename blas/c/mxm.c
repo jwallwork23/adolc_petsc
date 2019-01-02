@@ -1,9 +1,9 @@
 #ifdef _HEADERS
 #include <stdio.h>
-#include <stdbool.h>
+//#include <stdbool.h>
 #endif
 
-#include <stdbool.h> // FIXME
+#include <stdbool.h>
 
 /*
   Incremental matrix-matrix multiply
@@ -21,6 +21,18 @@ void naive_mxm(int m,int p,int n,double A[m][p],double B[p][n],double C[m][n])
       }
     }
   }
+}
+
+/*
+  Incremental vector addition with scaling
+
+  y = y + a*x
+*/
+void naive_axpy(int n,double a,double x[n],double y[n])
+{
+  int i;
+
+  for (i=0; i<n; i++) y[i] += a*x[i];
 }
 
 /*
@@ -217,6 +229,18 @@ void naive_mtmv(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],
       }
     }
   }
+}
+
+/*
+  Double Kronecker product (as above) using double applications of naive_dgemm
+*/
+void extra_naive_mtmv(int m,double alpha,double A[m][m],double B[m][m],double U[m][m],double beta,double V[m][m])
+{
+  double one = 1.,zero = 0.;
+  double tmp[m][m];
+
+  naive_dgemm(0,0,m,one,B,U,zero,tmp);
+  naive_dgemm(0,1,m,alpha,tmp,A,beta,V);
 }
 
 /*
