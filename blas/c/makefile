@@ -75,22 +75,25 @@ test_A.o: test_A.c
 	gcc $(CFLAGS) -c -o $@ $<
 
 test_A: test_A.o adBuffer.o adStack.o $(LIBRARIES)
+	if [ ! -d "results" ]; then mkdir results; fi
 	gfortran -o $@ $^
 	rm *.o
-	./$@ > results/experiment1.log
+	./$@ >> results/experiment1.log
 
 test_AB.o: test_AB.c
 	gcc $(CFLAGS) -c -o $@ $<
 
 test_AB: test_AB.o adBuffer.o adStack.o $(LIBRARIES)
+	if [ ! -d "results" ]; then mkdir results; fi
 	gfortran -o $@ $^
 	rm *.o
-	./$@ > results/experiment2.log
+	./$@ >> results/experiment2.log
 
 test_tensor.o: test_tensor.c
 	gcc $(CFLAGS) -c -o $@ $<
 
 test_tensor: test_tensor.o adBuffer.o adStack.o $(LIBRARIES)
+	if [ ! -d "results" ]; then mkdir results; fi
 	gfortran -o $@ $^
 	rm *.o
-	./$@ > results/experiment3.log
+	./$@ >> results/experiment3.log
