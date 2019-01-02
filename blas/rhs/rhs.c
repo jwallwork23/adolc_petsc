@@ -1,9 +1,5 @@
 #include "mxm.h"
 
-typedef struct {
-  double u,v;
-} Field;
-
 void RHS(int m,Field ul[m][m],double mass[m][m],double stiff[m][m],double grad[m][m],double Lex,double Ley,double mu,int ix,int iy,Field outl[m][m])
 {
   double ulb[m][m],vlb[m][m],wrk2[m][m],wrk3[m][m],wrk4[m][m],wrk5[m][m],wrk6[m][m],wrk7[m][m];

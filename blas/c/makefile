@@ -47,14 +47,6 @@ derivatives/mxm_b.c: mxm.c
                            naive_mtmv(U)\(V)                         \
                            " mxm.c $(TFLAGS)
 
-### DIFFERENTIATION OF BURGERS' EQUATION RHS IN DGEMM FORMAT
-
-derivatives/rhs_d.c: mxm.c
-	tapenade -d -head "RHS(ul)\(outl)" rhs.c $(TFLAGS)
-
-derivatives/rhs_b.c: mxm.c
-	tapenade -b -head "RHS(ul)\(outl)" rhs.c $(TFLAGS)
-
 ### VERIFICATION
 
 verify_mxm: derivatives/mxm_d.c derivatives/mxm_b.c
