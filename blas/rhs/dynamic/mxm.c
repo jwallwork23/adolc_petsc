@@ -1,8 +1,4 @@
-#ifdef _HEADERS
 #include <stdio.h>
-//#include <stdbool.h>
-#endif
-
 #include <stdbool.h>
 
 typedef struct {

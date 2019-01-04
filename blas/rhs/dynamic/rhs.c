@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "mxm.h"
 
 void RHS(int m,Field **ul,double **mass,double **stiff,double **grad,double Lex,double Ley,double mu,int ix,int iy,Field **outl)
@@ -41,7 +42,7 @@ void RHS(int m,Field **ul,double **mass,double **stiff,double **grad,double Lex,
   }
 
   alpha = Lex/Ley;
-  extra_naive_mtmv(m,alpha,stiff,&mass,ulb,beta,wrk2);
+  extra_naive_mtmv(m,alpha,stiff,mass,ulb,beta,wrk2);
 
   alpha = Lex/Ley;
   extra_naive_mtmv(m,alpha,mass,stiff,ulb,beta,wrk3);
