@@ -12,7 +12,7 @@ PetscErrorCode IJacobianLocalByHand(DMDALocalInfo *info,PetscReal t,Field**u,Fie
   PetscScalar    entries[6];
 
   PetscFunctionBegin;
-  ierr = PetscLogEventBegin(appctx->event1,0,0,0,0);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(appctx->adctx->event1,0,0,0,0);CHKERRQ(ierr);
   hx = 2.50/(PetscReal)(info->mx); sx = 1.0/(hx*hx);
   hy = 2.50/(PetscReal)(info->my); sy = 1.0/(hy*hy);
   xs = info->xs; xm = info->xm;
@@ -80,7 +80,7 @@ PetscErrorCode IJacobianLocalByHand(DMDALocalInfo *info,PetscReal t,Field**u,Fie
     ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
     ierr = MatSetOption(B,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
   }
-  ierr = PetscLogEventEnd(appctx->event1,0,0,0,0);CHKERRQ(ierr);
+  ierr = PetscLogEventEnd(appctx->adctx->event1,0,0,0,0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -98,7 +98,7 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   Vec            localU;
 
   PetscFunctionBegin;
-  ierr = PetscLogEventBegin(appctx->event1,0,0,0,0);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(appctx->adctx->event1,0,0,0,0);CHKERRQ(ierr);
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
 
@@ -124,7 +124,7 @@ PetscErrorCode IJacobianAdolc(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat A
   */
   ierr = VecRestoreArray(localU,&u_vec);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
-  ierr = PetscLogEventEnd(appctx->event1,0,0,0,0);CHKERRQ(ierr);
+  ierr = PetscLogEventEnd(appctx->adctx->event1,0,0,0,0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -163,7 +163,7 @@ PetscErrorCode IJacobianByHand(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat 
   PetscScalar    entries[6];
 
   PetscFunctionBegin;
-  ierr = PetscLogEventBegin(appctx->event1,0,0,0,0);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(appctx->adctx->event1,0,0,0,0);CHKERRQ(ierr);
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
   ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
@@ -262,7 +262,7 @@ PetscErrorCode IJacobianByHand(TS ts,PetscReal t,Vec U,Vec Udot,PetscReal a,Mat 
     ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
     ierr = MatSetOption(B,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
   }
-  ierr = PetscLogEventEnd(appctx->event1,0,0,0,0);CHKERRQ(ierr);
+  ierr = PetscLogEventEnd(appctx->adctx->event1,0,0,0,0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -280,7 +280,7 @@ PetscErrorCode RHSJacobianByHand(TS ts,PetscReal t,Vec U,Mat A,Mat B,void *ctx)
   PetscScalar    entries[6];
 
   PetscFunctionBegin;
-  ierr = PetscLogEventBegin(appctx->event1,0,0,0,0);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(appctx->adctx->event1,0,0,0,0);CHKERRQ(ierr);
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
   ierr = DMDAGetInfo(da,PETSC_IGNORE,&Mx,&My,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE,PETSC_IGNORE);CHKERRQ(ierr);
@@ -373,7 +373,7 @@ PetscErrorCode RHSJacobianByHand(TS ts,PetscReal t,Vec U,Mat A,Mat B,void *ctx)
     ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
     ierr = MatSetOption(B,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE);CHKERRQ(ierr);
   }
-  ierr = PetscLogEventEnd(appctx->event1,0,0,0,0);CHKERRQ(ierr);
+  ierr = PetscLogEventEnd(appctx->adctx->event1,0,0,0,0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -387,7 +387,7 @@ PetscErrorCode RHSJacobianAdolc(TS ts,PetscReal t,Vec U,Mat A,Mat B,void *ctx)
   Vec            localU;
 
   PetscFunctionBegin;
-  ierr = PetscLogEventBegin(appctx->event1,0,0,0,0);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(appctx->adctx->event1,0,0,0,0);CHKERRQ(ierr);
   ierr = TSGetDM(ts,&da);CHKERRQ(ierr);
   ierr = DMGetLocalVector(da,&localU);CHKERRQ(ierr);
 
@@ -413,6 +413,6 @@ PetscErrorCode RHSJacobianAdolc(TS ts,PetscReal t,Vec U,Mat A,Mat B,void *ctx)
   */
   ierr = VecRestoreArray(localU,&u_vec);CHKERRQ(ierr);
   ierr = DMRestoreLocalVector(da,&localU);CHKERRQ(ierr);
-  ierr = PetscLogEventEnd(appctx->event1,0,0,0,0);CHKERRQ(ierr);
+  ierr = PetscLogEventEnd(appctx->adctx->event1,0,0,0,0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }

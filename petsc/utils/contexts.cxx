@@ -19,6 +19,9 @@ typedef struct {
 
   /* Matrix dimensions */
   PetscInt    m,n;
+
+  /* Event logging */
+  PetscLogEvent event1,event2,event3,event4,event5;
 } AdolcCtx;
 #endif
 

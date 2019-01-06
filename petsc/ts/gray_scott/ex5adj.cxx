@@ -49,11 +49,15 @@ int main(int argc,char **argv)
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse_view",&adctx->sparse_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&adctx->no_an,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
-  ierr = PetscLogEventRegister("Jacobian overall",MAT_CLASSID,&appctx.event1);CHKERRQ(ierr);
-  ierr = PetscLogEventRegister("Sparsity pattern",MAT_CLASSID,&appctx.event2);CHKERRQ(ierr);
-  ierr = PetscLogEventRegister("Colouring",MAT_CLASSID,&appctx.event3);CHKERRQ(ierr);
-  ierr = PetscLogEventRegister("Compressed Jac",MAT_CLASSID,&appctx.event4);CHKERRQ(ierr);
-  ierr = PetscLogEventRegister("Recovery",MAT_CLASSID,&appctx.event5);CHKERRQ(ierr);
+
+  /* Log events for performance analysis */
+  ierr = PetscLogEventRegister("Jacobian overall",MAT_CLASSID,&adctx->event1);CHKERRQ(ierr);
+  ierr = PetscLogEventRegister("Propagation",MAT_CLASSID,&adctx->event4);CHKERRQ(ierr);
+  if (&adctx->sparse) {
+    ierr = PetscLogEventRegister("Sparsity pattern",MAT_CLASSID,&adctx->event2);CHKERRQ(ierr);
+    ierr = PetscLogEventRegister("Colouring",MAT_CLASSID,&adctx->event3);CHKERRQ(ierr);
+    ierr = PetscLogEventRegister("Recovery",MAT_CLASSID,&adctx->event5);CHKERRQ(ierr);
+  }
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
   appctx.gamma = .024;
@@ -150,14 +154,17 @@ int main(int argc,char **argv)
       // Generate sparsity pattern
       ierr = PetscMalloc1(adctx->n,&u_vec);CHKERRQ(ierr);
       JP = (unsigned int **) malloc(adctx->m*sizeof(unsigned int*));
+      ierr = PetscLogEventBegin(adctx->event2,0,0,0,0);CHKERRQ(ierr);
       jac_pat(1,adctx->m,adctx->n,u_vec,JP,ctrl);
+      ierr = PetscLogEventEnd(adctx->event2,0,0,0,0);CHKERRQ(ierr);
       if (adctx->sparse_view) {
         ierr = PrintSparsity(comm,adctx->m,JP);CHKERRQ(ierr);
       }
 
       // Extract coloring
-      ierr = GetColoring(da,&iscoloring);CHKERRQ(ierr);
-      ierr = CountColors(iscoloring,&adctx->p);CHKERRQ(ierr);
+      ierr = PetscLogEventBegin(adctx->event3,0,0,0,0);CHKERRQ(ierr);
+      ierr = DMCreateColoring(da,IS_COLORING_LOCAL,&iscoloring);CHKERRQ(ierr);
+      ierr = ISColoringGetIS(iscoloring,&adctx->p,NULL);CHKERRQ(ierr);
 
       // Generate seed matrix
       ierr = AdolcMalloc2(adctx->n,adctx->p,&Seed);CHKERRQ(ierr);
@@ -170,6 +177,7 @@ int main(int argc,char **argv)
       // Generate recovery matrix
       ierr = AdolcMalloc2(adctx->m,adctx->p,&Rec);CHKERRQ(ierr);
       ierr = GetRecoveryMatrix(Seed,JP,adctx->m,adctx->p,Rec);CHKERRQ(ierr);
+      ierr = PetscLogEventEnd(adctx->event3,0,0,0,0);CHKERRQ(ierr);
 
       // Store results and free workspace
       adctx->Rec = Rec;

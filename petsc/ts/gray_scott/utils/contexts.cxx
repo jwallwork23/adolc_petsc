@@ -27,6 +27,5 @@ typedef struct {
   AField        **u_a,**f_a,**udot_a;
   AdolcCtx      *adctx;
   PetscInt      m,n;  // Dependent/indpendent variables (#local nodes, inc. ghost points)
-  PetscLogEvent event1,event2,event3,event4,event5;
 } AppCtx;
 #endif
