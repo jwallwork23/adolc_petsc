@@ -49,6 +49,11 @@ int main(int argc,char **argv)
   ierr = PetscOptionsGetBool(NULL,NULL,"-adolc_sparse_view",&adctx->sparse_view,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-no_annotation",&adctx->no_an,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
+  ierr = PetscLogEventRegister("Jacobian overall",MAT_CLASSID,&appctx.event1);CHKERRQ(ierr);
+  ierr = PetscLogEventRegister("Sparsity pattern",MAT_CLASSID,&appctx.event2);CHKERRQ(ierr);
+  ierr = PetscLogEventRegister("Colouring",MAT_CLASSID,&appctx.event3);CHKERRQ(ierr);
+  ierr = PetscLogEventRegister("Compressed Jac",MAT_CLASSID,&appctx.event4);CHKERRQ(ierr);
+  ierr = PetscLogEventRegister("Recovery",MAT_CLASSID,&appctx.event5);CHKERRQ(ierr);
   appctx.D1    = 8.0e-5;
   appctx.D2    = 4.0e-5;
   appctx.gamma = .024;

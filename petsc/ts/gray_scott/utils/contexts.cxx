@@ -22,10 +22,11 @@ typedef struct {
 #ifndef APPCTX
 #define APPCTX
 typedef struct {
-  PetscReal D1,D2,gamma,kappa;
-  PetscBool no_an,aijpc;
-  AField    **u_a,**f_a,**udot_a;
-  AdolcCtx  *adctx;
-  PetscInt  m,n;                // Dependent/indpendent variables (#local nodes, inc. ghost points)
+  PetscReal     D1,D2,gamma,kappa;
+  PetscBool     no_an,aijpc;
+  AField        **u_a,**f_a,**udot_a;
+  AdolcCtx      *adctx;
+  PetscInt      m,n;  // Dependent/indpendent variables (#local nodes, inc. ghost points)
+  PetscLogEvent event1,event2,event3,event4,event5;
 } AppCtx;
 #endif
