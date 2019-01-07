@@ -51,10 +51,9 @@ int main(int argc,char **argv)
   ierr = PetscOptionsGetBool(NULL,NULL,"-jacobian_by_hand",&byhand,NULL);CHKERRQ(ierr);
 
   /* Log events for performance analysis */
-  ierr = PetscLogEventRegister("Jacobian overall",MAT_CLASSID,&adctx->event1);CHKERRQ(ierr);
   ierr = PetscLogEventRegister("Propagation",MAT_CLASSID,&adctx->event4);CHKERRQ(ierr);
   if (&adctx->sparse) {
-    ierr = PetscLogEventRegister("Sparsity pattern",MAT_CLASSID,&adctx->event2);CHKERRQ(ierr);
+    ierr = PetscLogEventRegister("Sparsitypattern",MAT_CLASSID,&adctx->event2);CHKERRQ(ierr);
     ierr = PetscLogEventRegister("Colouring",MAT_CLASSID,&adctx->event3);CHKERRQ(ierr);
     ierr = PetscLogEventRegister("Recovery",MAT_CLASSID,&adctx->event5);CHKERRQ(ierr);
   }
