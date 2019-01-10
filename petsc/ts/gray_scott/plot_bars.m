@@ -44,8 +44,8 @@ if n == 65
     mat3(2, :) = full2(8:11) / full2(4);
     mat3(3, :) = full3(8:11) / full3(4);
     mat3(4, :) = sparse3(8:11) / sparse3(4);
-    xtick1 = ['Hand / 1';'Hand / 2';'Hand / 4';'Full / 1';'Full / 2';'Full / 4';'Sparse / 4'];
-    xtick2 = ['Full / 1';'Full / 2';'Full / 4';'Sparse / 4'];
+    xtick1 = ['Hand / 1';'Hand / 2';'Hand / 4';'Dense / 1';'Dense / 2';'Dense / 4';'Sparse / 4'];
+    xtick2 = ['Dense / 1';'Dense / 2';'Dense / 4';'Sparse / 4'];
 else
     % Load data
     byhand1 = load(strcat('data/byhand_4_', N, '.txt'));
@@ -77,10 +77,13 @@ end
 
 % TSStep vs. TSAdjointStep
 b = bar(mat1, 'stacked');
-l = legend('TSStep', 'TSAdjointStep', 'Other');
-set(l, 'Position', [0.75 0.7 0.19 0.14]);
+l = legend('TSStep', 'TSAdjointStep');
+set(l, 'FontSize', 13);
+set(l, 'Position', [0.716 0.7 0.19 0.11]);
 xl = xlabel('Jacobian computation strategy / Number of processors');
 yl = ylabel('Proportion of runtime');
+set(xl, 'FontSize', 12);
+set(yl, 'FontSize', 12);
 set(gca, 'xticklabel', xtick1);
 pbaspect([3, 1]);
 saveas(gcf, outfile = strcat('plots/steps', N, '.pdf'));
@@ -90,21 +93,27 @@ hold off
 % Subcomponents
 b = bar(mat2, 'stacked');
 l = legend('TSFunctionEval', 'TSJacobianEval', 'TSTrajectorySet', 'TSTrajectoryGet');
-set(l, 'Position', [0.75 0.7 0.19 0.14]);
+set(l, 'FontSize', 13);
+set(l, 'Position', [0.685 0.7 0.22 0.19]);
 xl = xlabel('Jacobian computation strategy / Number of processors');
 yl = ylabel('Proportion of runtime');
+set(xl, 'FontSize', 12);
+set(yl, 'FontSize', 12);
 set(gca, 'xticklabel', xtick1);
 pbaspect([3, 1])
 saveas(gcf, outfile = strcat('plots/comps', N, '.pdf'));
 
 % ADOL-C parts
 b = bar(mat3, 'stacked');
-l = legend('SparsityPattern', 'Colouring', 'Propagation', 'Recovery', 'Other');
-set(l, 'Position', [0.75 0.7 0.19 0.14]);
+l = legend('SparsityPattern', 'Colouring', 'Propagation', 'Recovery');
+set(l, 'FontSize', 13);
+set(l, 'Position', [0.7 0.79 0.205 0.19]);
 xl = xlabel('Jacobian computation strategy / Number of processors');
 yl = ylabel('Proportion of TSJacobianEval');
+set(xl, 'FontSize', 12);
+set(yl, 'FontSize', 12);
 set(gca, 'xticklabel', xtick2);
-pbaspect([3, 1]);
+pbaspect([2, 1]);
 saveas(gcf, outfile = strcat('plots/adolc', N, '.pdf'));
 
 end
