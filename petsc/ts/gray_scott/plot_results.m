@@ -26,7 +26,9 @@ idx = ~isnan(byhand(:, 2));
 if n == 65
     full = load(strcat('data/full', N, '.txt'));
     idx = ~isnan(full(:, 2));
-    graph1 = loglog(ncores(idx,1),full(idx,2)./byhand(idx,2), 'b-^');
+    toplot = full(idx,2)./byhand(idx,2)
+    graph1 = loglog(ncores(idx,1),toplot, 'b-^');
+    text(ncores(idx,1), toplot, cellstr(int2str(full(idx,3))), 'VerticalAlignment','cap', 'Color', [0, 0.4470, 0.7410])
     set(graph1, 'LineWidth', 1.5);
 end
 
@@ -34,48 +36,51 @@ hold on
 
 sparse = load(strcat('data/sparse', N, '.txt'));
 idx = ~isnan(sparse(:, 2));
-graph2 = loglog(ncores(idx, 1), sparse(idx, 2)./byhand(idx,2), 'm-o');
+toplot = sparse(idx, 2)./byhand(idx,2)
+graph2 = loglog(ncores(idx, 1), toplot, 'm-o');
+text(ncores(idx,1), toplot, cellstr(int2str(sparse(idx,3))), 'VerticalAlignment','cap', 'Color', 	[0.75, 0, 0.75])
 set(graph2, 'LineWidth', 1.5);
 
 matfree = load(strcat('data/matfree', N, '.txt'));
 idx = ~isnan(matfree(:, 2));
-graph3 = loglog(ncores(idx, 1), matfree(idx, 2)./byhand(idx,2), 'r-*');
+toplot = matfree(idx, 2)./byhand(idx,2)
+graph3 = loglog(ncores(idx, 1), toplot, 'r-*');
+text(ncores(idx,1), toplot, cellstr(int2str(matfree(idx,3))), 'VerticalAlignment','cap', 'Color', [0.6350, 0.0780, 0.1840])
 set(graph3, 'LineWidth', 1.5);
 
 grid on
-pbaspect([4 1])
+pbaspect([1 2])
 
 if n == 65
     %l = legend('Hand-coded', 'Dense ADOL-C', 'Sparse ADOL-C', 'Matrix-free ADOL-C');
-    l = legend('Dense ADOL-C', 'Sparse ADOL-C', 'Matrix-free ADOL-C');
-    set(l, 'FontSize', 10);
-    set(l, 'Position', [0.69 0.5 0.2 0.14]);
-    xtick = [1 2 4];
-    set(gca, 'xtick', xtick);
-    xticklabel = ['1';'2';'4'];
-    set(gca, 'xticklabel', xticklabel);
+    l = legend('Dense', 'Sparse', 'Matrix-free');
+    set(l, 'Position', [0.465 0.8 0.2 0.11]);
+    xlim([1,8]);
+    xtick = [1 2 4 8];
+    xticklabel = ['1';'2';'4';'8'];
     ylim([0.5,500]);
     ytick = [1 10 100 1000 10000];
-    set(gca, 'ytick', ytick);
     yticklabel = ['10^0';'10^1';'10^2';'10^3';'10^4'];
-    set(gca, 'yticklabel', yticklabel);
 else
     %l = legend('Hand-coded', 'Sparse ADOL-C', 'Matrix-free ADOL-C');
-    l = legend('Sparse ADOL-C', 'Matrix-free ADOL-C');
-    set(l, 'FontSize', 10);
-    set(l, 'Position', [0.135 0.5 0.2 0.14]);
+    l = legend('Sparse', 'Matrix-free');
+    set(l, 'Position', [0.37 0.8 0.2 0.11]);
+    xlim([4,64]);
     xtick = [4 16 64];
-    set(gca, 'xtick', xtick);
     xticklabel = ['4';'16';'64'];
-    set(gca, 'xticklabel', xticklabel);
-    ylim([1,8]);
     ytick = [1 2 4 8];
-    set(gca, 'ytick', ytick);
     yticklabel = ['1';'2';'4';'8'];
-    set(gca, 'yticklabel', yticklabel);
+    ylim([1,4]);
 end
+%set(l, 'FontSize', 10);
+set(gca, 'xtick', xtick);
+set(gca, 'ytick', ytick);
+set(gca, 'xticklabel', xticklabel);
+set(gca, 'yticklabel', yticklabel);
 xl = xlabel('Number of cores');
+set(xl, 'FontSize', 14);
 yl = ylabel('Relative runtime');
+set(yl, 'FontSize', 14);
 %title(strcat('Gray-Scott problem solved on a ', {' '}, N, 'x', N, ' grid'))
 saveas(gcf, outfile = strcat('plots/res', N, '.pdf'));
 

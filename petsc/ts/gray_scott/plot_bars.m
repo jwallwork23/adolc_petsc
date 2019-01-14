@@ -44,7 +44,7 @@ if n == 65
     mat3(2, :) = full2(8:11) / full2(4);
     mat3(3, :) = full3(8:11) / full3(4);
     mat3(4, :) = sparse3(8:11) / sparse3(4);
-    xtick1 = ['Hand / 1';'Hand / 2';'Hand / 4';'Dense / 1';'Dense / 2';'Dense / 4';'Sparse / 4'];
+    xtick1 = ['Analytic / 1';'Analytic / 2';'Analytic / 4';'Dense / 1';'Dense / 2';'Dense / 4';'Sparse / 4'];
     xtick2 = ['Dense / 1';'Dense / 2';'Dense / 4';'Sparse / 4'];
 else
     % Load data
@@ -71,8 +71,8 @@ else
     mat3(1, :) = sparse1(8:11) / sparse1(4);
     mat3(2, :) = sparse2(8:11) / sparse2(4);
     mat3(3, :) = sparse3(8:11) / sparse3(4);
-    xtick1 = ['Hand / 4';'Hand / 16';'Hand / 64';'Sparse / 4';'Sparse / 16';'Sparse / 64'];
-    xtick2 = ['Sparse / 4';'Sparse / 16';'Sparse / 64'];
+    xtick1 = ['Analytic / 4';'Analytic / 16';'Analytic / 64';'Sparse / 4';'Sparse / 16';'Sparse / 64'];
+    xtick2 = ['4';'16';'64'];
 end
 
 % TSStep vs. TSAdjointStep
@@ -94,21 +94,26 @@ hold off
 b = bar(mat2, 'stacked');
 l = legend('TSFunctionEval', 'TSJacobianEval', 'TSTrajectorySet', 'TSTrajectoryGet');
 set(l, 'FontSize', 13);
-set(l, 'Position', [0.685 0.7 0.22 0.19]);
+set(l, 'Position', [0.15 0.7 0.22 0.19]);
+%set(l, 'Position', [0.22 0.78 0.21 0.19]);
 xl = xlabel('Jacobian computation strategy / Number of processors');
 yl = ylabel('Proportion of runtime');
 set(xl, 'FontSize', 12);
 set(yl, 'FontSize', 12);
 set(gca, 'xticklabel', xtick1);
-pbaspect([3, 1])
+pbaspect([2 ,1])
 saveas(gcf, outfile = strcat('plots/comps', N, '.pdf'));
 
 % ADOL-C parts
 b = bar(mat3, 'stacked');
 l = legend('SparsityPattern', 'Colouring', 'Propagation', 'Recovery');
 set(l, 'FontSize', 13);
-set(l, 'Position', [0.7 0.79 0.205 0.19]);
-xl = xlabel('Jacobian computation strategy / Number of processors');
+set(l, 'Position', [0.15 0.73 0.205 0.19]);
+if n == 65
+    xl = xlabel('Jacobian computation strategy / Number of processors');
+else
+    xl = xlabel('Number of processors');
+end
 yl = ylabel('Proportion of TSJacobianEval');
 set(xl, 'FontSize', 12);
 set(yl, 'FontSize', 12);
