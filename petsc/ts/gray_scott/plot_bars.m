@@ -36,16 +36,18 @@ if n == 65
     dat1(6, :) = full3 / full3(1);
     dat1(7, :) = sparse3 / sparse3(1);
     mat1 = dat1(:, [2, 5]);
-    mat2 = dat1(:, [3, 4, 6, 7]);
+    mat2 = [dat1(:, [3, 4]), ones(size(dat1(:, 1))) - dat1(:, 3) - dat1(:, 4)];
 
     % Data normalised by TSJacobianEval timing
     mat3 = zeros(4, 4);
-    mat3(1, :) = full1(8:11) / full1(4);
-    mat3(2, :) = full2(8:11) / full2(4);
-    mat3(3, :) = full3(8:11) / full3(4);
-    mat3(4, :) = sparse3(8:11) / sparse3(4);
-    xtick1 = ['Analytic / 1';'Analytic / 2';'Analytic / 4';'Dense / 1';'Dense / 2';'Dense / 4';'Sparse / 4'];
-    xtick2 = ['Dense / 1';'Dense / 2';'Dense / 4';'Sparse / 4'];
+    mat3(1, :) = full1(8:11) / sum(full1(8:11));
+    mat3(2, :) = full2(8:11) / sum(full2(8:11));
+    mat3(3, :) = full3(8:11) / sum(full3(8:11));
+    mat3(4, :) = sparse3(8:11) / sum(sparse3(8:11));
+    xtick0 = ['1';'2';'4';'1';'2';'4';'4'];
+    xtick1 = ['Analytic';'Analytic';'Analytic';'Dense';'Dense';'Dense';'Sparse'];
+    xtick2 = ['1';'2';'4';'4'];
+    xtick3 = ['Dense';'Dense';'Dense';'Sparse'];
 else
     % Load data
     byhand1 = load(strcat('data/byhand_4_', N, '.txt'));
@@ -64,15 +66,17 @@ else
     dat1(5, :) = sparse2 / sparse2(1);
     dat1(6, :) = sparse3 / sparse3(1);
     mat1 = dat1(:, [2, 5]);
-    mat2 = dat1(:, [3, 4, 6, 7]);
+    mat2 = [dat1(:, [3, 4]), ones(size(dat1(:, 1))) - dat1(:, 3) - dat1(:, 4)];
 
     % Data normalised by TSJacobianEval timing
     mat3 = zeros(3, 4);
-    mat3(1, :) = sparse1(8:11) / sparse1(4);
-    mat3(2, :) = sparse2(8:11) / sparse2(4);
-    mat3(3, :) = sparse3(8:11) / sparse3(4);
-    xtick1 = ['Analytic / 4';'Analytic / 16';'Analytic / 64';'Sparse / 4';'Sparse / 16';'Sparse / 64'];
+    mat3(1, :) = sparse1(8:11) / sum(sparse1(8:11));
+    mat3(2, :) = sparse2(8:11) / sum(sparse2(8:11));
+    mat3(3, :) = sparse3(8:11) / sum(sparse3(8:11));
+    xtick0 = ['4';'16';'64';'4';'16';'64'];
+    xtick1 = ['Analytic';'Analytic';'Analytic';'Sparse';'Sparse';'Sparse'];
     xtick2 = ['4';'16';'64'];
+    xtick3 = ['Sparse';'Sparse';'Sparse'];
 end
 
 % TSStep vs. TSAdjointStep
@@ -84,7 +88,7 @@ xl = xlabel('Jacobian computation strategy / Number of processors');
 yl = ylabel('Proportion of runtime');
 set(xl, 'FontSize', 12);
 set(yl, 'FontSize', 12);
-set(gca, 'xticklabel', xtick1);
+set(gca, 'xticklabel', xtick0);
 pbaspect([3, 1]);
 saveas(gcf, outfile = strcat('plots/steps', N, '.pdf'));
 
@@ -92,32 +96,32 @@ hold off
 
 % Subcomponents
 b = bar(mat2, 'stacked');
-l = legend('TSFunctionEval', 'TSJacobianEval', 'TSTrajectorySet', 'TSTrajectoryGet');
-set(l, 'FontSize', 13);
-set(l, 'Position', [0.15 0.7 0.22 0.19]);
-%set(l, 'Position', [0.22 0.78 0.21 0.19]);
-xl = xlabel('Jacobian computation strategy / Number of processors');
+set(b,{'FaceColor'},{[0.6350, 0.0780, 0.1840];[0.3010, 0.7450, 0.9330];[0.25, 0.25, 0.25]});
+%l = legend('TSFunctionEval', 'TSJacobianEval', 'Other');
+%set(l, 'FontSize', 12);
+%set(l, 'Position', [0.85 0.85 0.2 0.13]);
+xl = xlabel('Number of processors');
 yl = ylabel('Proportion of runtime');
 set(xl, 'FontSize', 12);
 set(yl, 'FontSize', 12);
-set(gca, 'xticklabel', xtick1);
-pbaspect([2 ,1])
+set(gca, 'xticklabel', xtick0);
+hText = text(1:size(mat2), ones(size(xtick1), 1) + 0.07, xtick1, 'rotation', 90);
+set(hText, 'VerticalAlignment','bottom', 'HorizontalAlignment', 'center','FontSize',12, 'Color','k');
+pbaspect([1 ,2])
 saveas(gcf, outfile = strcat('plots/comps', N, '.pdf'));
 
 % ADOL-C parts
 b = bar(mat3, 'stacked');
-l = legend('SparsityPattern', 'Colouring', 'Propagation', 'Recovery');
-set(l, 'FontSize', 13);
-set(l, 'Position', [0.15 0.73 0.205 0.19]);
-if n == 65
-    xl = xlabel('Jacobian computation strategy / Number of processors');
-else
-    xl = xlabel('Number of processors');
-end
-yl = ylabel('Proportion of TSJacobianEval');
+%l = legend('SparsityPattern', 'Colouring', 'Propagation', 'Recovery');
+%set(l, 'FontSize', 13);
+%set(l, 'Position', [0.15 0.73 0.205 0.19]);
+xl = xlabel('Number of processors');
+yl = ylabel('Relative runtime');
 set(xl, 'FontSize', 12);
 set(yl, 'FontSize', 12);
 set(gca, 'xticklabel', xtick2);
+hText = text(1:size(mat3), ones(size(xtick3), 1) + 0.025, xtick3);
+set(hText, 'VerticalAlignment','bottom', 'HorizontalAlignment', 'center','FontSize',12, 'Color','k');
 pbaspect([2, 1]);
 saveas(gcf, outfile = strcat('plots/adolc', N, '.pdf'));
 
