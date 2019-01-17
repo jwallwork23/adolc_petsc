@@ -51,6 +51,14 @@ int main(int argc,char **argv)
   appctx.kappa = .06;
   appctx.adctx = adctx;
 
+  /* Log events for performance analysis */
+  ierr = PetscLogEventRegister("Propagation",MAT_CLASSID,&adctx->event4);CHKERRQ(ierr);
+  if (&adctx->sparse) {
+    ierr = PetscLogEventRegister("Sparsitypattern",MAT_CLASSID,&adctx->event2);CHKERRQ(ierr);
+    ierr = PetscLogEventRegister("Colouring",MAT_CLASSID,&adctx->event3);CHKERRQ(ierr);
+    ierr = PetscLogEventRegister("Recovery",MAT_CLASSID,&adctx->event5);CHKERRQ(ierr);
+  }
+
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Create distributed array (DMDA) to manage parallel grid and vectors
   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
