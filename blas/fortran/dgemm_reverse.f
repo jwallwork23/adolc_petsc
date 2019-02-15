@@ -1,72 +1,72 @@
-C  =====================================================================
-      SUBROUTINE DGEMMR(TRANSA,TRANSB,M,N,K,ALPHA,A,AB,LDA,B,BB,LDB,
-     +                         BETA,C,CB,LDC)
-C
-      INCLUDE "zero.f"
-      INCLUDE "trans.f"
-C
-C     .. Scalar arguments ..
-      DOUBLE PRECISION ALPHA,BETA
-      INTEGER K,LDA,LDB,LDC,M,N
-      CHARACTER TRANSA,TRANSB
-C
-C     .. Array arguments ..
-      DOUBLE PRECISION A(LDA,*),B(LDB,*),C(LDC,*)
-      DOUBLE PRECISION AB(LDA,*),BB(LDB,*),CB(LDC,*)
-C
-C  ====================================================================
-C
-C     ..
-C     .. External functions ..
-      LOGICAL LSAME
-      EXTERNAL LSAME
-C     ..
-C     .. External subroutines ..
-      EXTERNAL TRANS,ZEROUT,DGEMM,TRANS
-C     ..
-C     .. Arrays ..
-      DOUBLE PRECISION TEMPAB(K,M),TEMPBB(N,K)
-C     ..
-C     .. Logical scalars ..
-      CHARACTER NOTAT,NOTBT
-      LOGICAL NOTA,NOTB
-C     ..
-C     .. Parameters ..
-      DOUBLE PRECISION ONE
-      PARAMETER (ONE=1.0D+0)
-C     ..
-C
-      NOTA = LSAME(TRANSA,'N')
-      NOTB = LSAME(TRANSB,'N')
-      IF (NOTA) THEN
-          NOTAT = 'N'
-      ELSE
-          NOTAT = 'T'
-      END IF
-      IF (NOTB) THEN
-          NOTBT = 'N'
-      ELSE
-          NOTBT = 'T'
-      END IF
+c  =====================================================================
+      subroutine dgemmr(transa,transb,m,n,k,alpha,a,ab,lda,b,bb,ldb,
+     +                         beta,c,cb,ldc)
+c
+      include "zero.f"
+      include "trans.f"
+c
+c     .. scalar arguments ..
+      double precision alpha,beta
+      integer k,lda,ldb,ldc,m,n
+      character transa,transb
+c
+c     .. array arguments ..
+      double precision a(lda,*),b(ldb,*),c(ldc,*)
+      double precision ab(lda,*),bb(ldb,*),cb(ldc,*)
+c
+c  ====================================================================
+c
+c     ..
+c     .. external functions ..
+      logical lsame
+      external lsame
+c     ..
+c     .. external subroutines ..
+      external trans,zerout,dgemm,trans
+c     ..
+c     .. arrays ..
+      double precision tempab(k,m),tempbb(n,k)
+c     ..
+c     .. logical scalars ..
+      character notat,notbt
+      logical nota,notb
+c     ..
+c     .. parameters ..
+      double precision one
+      parameter (one=1.0d+0)
+c     ..
+c
+      nota = lsame(transa,'n')
+      notb = lsame(transb,'n')
+      if (nota) then
+          notat = 'n'
+      else
+          notat = 't'
+      end if
+      if (notb) then
+          notbt = 'n'
+      else
+          notbt = 't'
+      end if
 
-      CALL ZEROUT(M,K,AB)
-      CALL ZEROUT(K,N,BB)
-      TEMPBB = BB
-      IF (NOTA) THEN
-        CALL DGEMM('N',NOTBT,M,K,N,ALPHA,CB,M,B,LDB,ONE,AB,M)
-      ELSE
-        CALL TRANS(M,K,AB,TEMPAB)
-        CALL DGEMM('N',NOTBT,M,K,N,ALPHA,CB,M,B,LDB,ONE,TEMPAB,K)
-        CALL TRANS(K,M,TEMPAB,AB)
-      END IF
-      IF (NOTB) THEN
-        CALL DGEMM(NOTAT,'N',K,N,M,ALPHA,A,LDA,CB,LDC,1,BB,N)
-      ELSE
-        CALL TRANS(K,N,BB,TEMPBB)
-        CALL DGEMM(NOTAT,'N',K,N,M,ALPHA,A,LDA,CB,LDC,1,TEMPBB,N)
-        CALL TRANS(N,K,TEMPBB,BB)
-      END IF
-C
-      RETURN
-C
-      END
+      call zerout(m,k,ab)
+      call zerout(k,n,bb)
+      tempbb = bb
+      if (nota) then
+        call dgemm('n',notbt,m,k,n,alpha,cb,m,b,ldb,one,ab,m)
+      else
+        call trans(m,k,ab,tempab)
+        call dgemm('n',notbt,m,k,n,alpha,cb,m,b,ldb,one,tempab,k)
+        call trans(k,m,tempab,ab)
+      end if
+      if (notb) then
+        call dgemm(notat,'n',k,n,m,alpha,a,lda,cb,ldc,1,bb,n)
+      else
+        call trans(k,n,bb,tempbb)
+        call dgemm(notat,'n',k,n,m,alpha,a,lda,cb,ldc,1,tempbb,n)
+        call trans(n,k,tempbb,bb)
+      end if
+c
+      return
+c
+      end

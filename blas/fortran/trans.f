@@ -1,25 +1,25 @@
-C  =====================================================================
-      SUBROUTINE TRANS(M,N,A,C)
-C
-C     Scalar arguments
-      INTEGER M,N
-C
-C     Array arguments
-      DOUBLE PRECISION A(M,N),C(N,M)
-C
-C  =====================================================================
-C
-C     Local scalars
-      DOUBLE PRECISION TEMP
-      INTEGER I,J
-C
-C     C := A**T
-C
-      DO 10 J = 1,N
-        DO 10 I = 1,M
-          TEMP = A(I,J)
-   10       C(J,I) = TEMP
-C
-      RETURN
-C
-      END
+c  =====================================================================
+      subroutine trans(m,n,a,c)
+c
+c     scalar arguments
+      integer m,n
+c
+c     array arguments
+      double precision a(m,n),c(n,m)
+c
+c  =====================================================================
+c
+c     local scalars
+      double precision temp
+      integer i,j
+c
+c     c := a**t
+c
+      do 10 j = 1,n
+        do 10 i = 1,m
+          temp = a(i,j)
+   10       c(j,i) = temp
+c
+      return
+c
+      end

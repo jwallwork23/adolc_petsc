@@ -1,30 +1,30 @@
-C  =====================================================================
-C
-      SUBROUTINE MXM(M,N,K,A,LDA,B,LDB,C,LDC)
-C
-C     Scalar arguments
-      INTEGER K,M,N,LDA,LDB,LDC
-C
-C     Array arguments
-      DOUBLE PRECISION A(LDA,*),B(LDB,*),C(LDC,*)
-C
-C  =====================================================================
-C
-C     Local scalars
-      DOUBLE PRECISION TEMP
-      INTEGER I,J,L
-C
-C     C := A * B
-C
-      DO 10 J = 1,N
-          DO 20 L = 1,K
-              TEMP = B(L,J)
-              DO 30 I = 1,M
-                  C(I,J) = C(I,J) + TEMP*A(I,L)
-   30         CONTINUE
-   20     CONTINUE
-   10 CONTINUE
-C
-      RETURN
-C
-      END
+c  =====================================================================
+c
+      subroutine mxm(m,n,k,a,lda,b,ldb,c,ldc)
+c
+c     scalar arguments
+      integer k,m,n,lda,ldb,ldc
+c
+c     array arguments
+      double precision a(lda,*),b(ldb,*),c(ldc,*)
+c
+c  =====================================================================
+c
+c     local scalars
+      double precision temp
+      integer i,j,l
+c
+c     c := a * b
+c
+      do 10 j = 1,n
+          do 20 l = 1,k
+              temp = b(l,j)
+              do 30 i = 1,m
+                  c(i,j) = c(i,j) + temp*a(i,l)
+   30         continue
+   20     continue
+   10 continue
+c
+      return
+c
+      end
